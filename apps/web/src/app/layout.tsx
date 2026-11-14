@@ -12,6 +12,7 @@ import { Inter, Newsreader } from 'next/font/google';
 import { preload } from 'react-dom';
 import './globals.css';
 import { AppShell } from '@/components/shell/AppShell';
+import { Providers } from './providers';
 
 /** Inter：界面功能字体（导航、控件、输入、数据标签） */
 const inter = Inter({
@@ -63,9 +64,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     /* html 元素：挂载字体 CSS 变量（图标字体见 globals.css 的 @font-face） */
     <html lang="zh-CN" className={`${inter.variable} ${newsreader.variable}`}>
-      {/* body 元素：承载应用外壳与页面内容 */}
+      {/* body 元素：承载应用外壳与页面内容（Providers 提供 react-query 上下文） */}
       <body className="antialiased">
-        <AppShell>{children}</AppShell>
+        <Providers>
+          <AppShell>{children}</AppShell>
+        </Providers>
       </body>
     </html>
   );

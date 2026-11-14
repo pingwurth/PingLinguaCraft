@@ -11,18 +11,7 @@
  */
 
 import type { WordTiming } from '../types';
-
-/**
- * 已知缩写词词典（小写、不带结尾点）：
- * 这些词虽以句点结尾，但不应触发断句（Mr. Smith / e.g. a cat / U.S. government）
- * 注意：'no'（No. = numero 缩写）刻意不收录——普通单词 no. 的使用频率远高于缩写，
- * 收录会导致 "I said no. Then we left." 永不断句。
- */
-const ABBREVIATIONS = new Set([
-  'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'vs', 'etc',
-  'e.g', 'i.e', 'u.s', 'u.k', 'fig', 'approx', 'dept', 'inc', 'ltd',
-  'co', 'al', 'cf', 'ca', 'vol', 'ed', 'pp',
-]);
+import { ABBREVIATIONS } from './abbreviations';
 
 /** 分句可配置参数 */
 export interface SegmentOptions {

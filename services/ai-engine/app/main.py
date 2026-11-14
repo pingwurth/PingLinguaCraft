@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import settings
+from .api import capabilities as caps_api
 from .api import jobs as jobs_api
 from .api import system as system_api
 from .jobs import JobRunner, echo_handler
@@ -34,8 +35,11 @@ async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化目录、注册任务、启动 worker；关闭时停止"""
     settings.ensure_dirs()
     runner = JobRunner()
-    # M0：注册 echo 联调任务；M1 起注册 stt / tts_batch / translate 等真实任务
+    # 联调任务 + M1 真实任务（stt / tts_batch / yt_download）
     runner.register("echo", echo_handler)
+    runner.register("stt", caps_api.stt_job_handler)
+    runner.register("tts_batch", caps_api.tts_batch_job_handler)
+    runner.register("yt_download", caps_api.yt_download_job_handler)
     await runner.start()
     state.runner = runner
     # 预读一次配置，确保 config.json 存在
@@ -54,5 +58,7 @@ app = FastAPI(
 
 # 能力与系统路由（/health /system/*）
 app.include_router(system_api.router)
+# 能力执行路由（/stt /tts /translate /llm /media/*）
+app.include_router(caps_api.router)
 # 任务路由（/jobs CRUD）
 app.include_router(jobs_api.router)
