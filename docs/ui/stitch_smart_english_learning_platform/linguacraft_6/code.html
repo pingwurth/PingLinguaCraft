@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Newsreader:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"tertiary-fixed-dim":"#d8c3aa","surface-container-highest":"#e2e2e5","on-error":"#ffffff","on-tertiary-container":"#ead5bc","surface":"#f9f9fc","on-surface":"#1a1c1e","surface-container-low":"#f3f3f6","inverse-on-surface":"#f0f0f3","on-secondary":"#ffffff","on-secondary-fixed-variant":"#2e4f00","secondary-container":"#c2ed8d","on-error-container":"#93000a","secondary":"#456818","tertiary-fixed":"#f5dfc5","secondary-fixed":"#c5f090","on-primary-container":"#ffcdc7","on-secondary-container":"#496d1c","error-container":"#ffdad6","surface-variant":"#e2e2e5","background":"#f9f9fc","primary-container":"#b91c1c","error":"#ba1a1a","surface-dim":"#d9dadc","surface-container-high":"#e8e8ea","inverse-primary":"#ffb4ab","inverse-surface":"#2f3133","primary":"#93000b","surface-bright":"#f9f9fc","on-primary-fixed-variant":"#93000b","surface-tint":"#b91c1c","surface-container-lowest":"#ffffff","on-secondary-fixed":"#102000","on-tertiary":"#ffffff","primary-fixed":"#ffdad6","outline-variant":"#e4beb9","tertiary-container":"#6b5c47","primary-fixed-dim":"#ffb4ab","on-primary-fixed":"#410002","on-surface-variant":"#5b403d","on-background":"#1a1c1e","outline":"#8f6f6c","on-tertiary-fixed":"#241a0a","tertiary":"#524431","secondary-fixed-dim":"#a9d477","on-tertiary-fixed-variant":"#524531","surface-container":"#eeeef0","on-primary":"#ffffff"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"space-xl":"2.5rem","gutter-mobile":"1rem","space-xs":"0.25rem","space-md":"1rem","space-sm":"0.5rem","space-2xl":"4rem","margin":"3rem","space-lg":"1.5rem","margin-mobile":"1.25rem","gutter":"1.5rem"},"fontFamily":{"label-md":["Inter"],"headline-lg-mobile":["Newsreader"],"body-sm":["Inter"],"title-sm":["Inter"],"headline-md":["Newsreader"],"body-lg":["Newsreader"],"headline-lg":["Newsreader"],"headline-xl-mobile":["Newsreader"],"body-md":["Inter"],"headline-xl":["Newsreader"],"label-lg":["Newsreader"],"headline-sm":["Newsreader"],"label-sm":["Inter"],"title-md":["Inter"]},"fontSize":{"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"500"}],"headline-lg-mobile":["28px",{"lineHeight":"36px","letterSpacing":"-0.01em","fontWeight":"400"}],"body-sm":["13px",{"lineHeight":"20px","fontWeight":"400"}],"title-sm":["15px",{"lineHeight":"22px","fontWeight":"600"}],"headline-md":["28px",{"lineHeight":"36px","fontWeight":"400"}],"body-lg":["20px",{"lineHeight":"32px","fontWeight":"400"}],"headline-lg":["36px",{"lineHeight":"44px","letterSpacing":"-0.015em","fontWeight":"400"}],"headline-xl-mobile":["34px",{"lineHeight":"42px","letterSpacing":"-0.01em","fontWeight":"400"}],"body-md":["15px",{"lineHeight":"24px","fontWeight":"400"}],"headline-xl":["48px",{"lineHeight":"56px","letterSpacing":"-0.02em","fontWeight":"400"}],"label-lg":["14px",{"lineHeight":"18px","letterSpacing":"0.03em","fontWeight":"500"}],"headline-sm":["22px",{"lineHeight":"30px","fontWeight":"500"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.05em","fontWeight":"600"}],"title-md":["18px",{"lineHeight":"26px","letterSpacing":"-0.01em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low z-50 flex flex-col justify-between py-5 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col gap-6"><div class="px-5 flex items-center gap-3"><div class="w-9 h-9 rounded bg-primary-container text-on-primary flex items-center justify-center font-headline-sm text-headline-sm select-none shadow-[0_1px_4px_rgba(0,0,0,0.12)]">匠</div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none font-semibold">语匠 <span class="font-headline-md text-headline-md font-normal italic text-primary">LinguaCraft</span></span><span class="font-label-sm text-label-sm text-on-surface-variant tracking-wider mt-1">学自己想学的 · 研墨通达</span></div></div><div class="px-4"><div class="h-px w-full bg-surface-container-highest"></div></div><nav class="flex flex-col gap-1.5 px-3" data-active-classes="bg-surface-container-highest text-primary font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.04)]"><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="reader" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">auto_stories</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">精读</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Reader</span></div></a><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="stream" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">graphic_eq</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">语流</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Stream</span></div></a><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="arena" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">swords</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">演练</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Arena</span></div></a><a aria-current="page" class="flex items-center gap-3.5 px-3 py-2.5 rounded transition-colors group bg-surface-container-highest text-primary font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.04)]" data-path="lexicon" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">collections_bookmark</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">词藏</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Lexicon</span></div></a><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="library" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">account_balance</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">藏经阁</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Library</span></div></a></nav></div><div class="flex flex-col gap-3 px-3"><div class="bg-surface-container rounded-lg p-3 flex flex-col gap-2"><div class="flex items-center justify-between text-on-surface-variant"><span class="font-label-sm text-label-sm font-semibold tracking-wider flex items-center gap-1.5"><span class="material-symbols-outlined text-[16px] text-primary">edit_note</span>研习手账</span><span class="font-label-sm text-label-sm text-secondary font-semibold">连续 7 日</span></div><div class="flex items-center justify-between font-label-md text-label-md text-on-surface"><span class="text-body-sm font-body-sm text-on-surface-variant">典籍研读</span><span class="font-title-sm text-title-sm font-semibold text-primary">7 卷已毕</span></div><div class="w-full bg-surface-container-highest rounded-full h-1.5 overflow-hidden"><div class="bg-primary h-full rounded-full w-4/5"></div></div></div><div class="flex items-center justify-between px-1 pt-1"><a class="flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors text-body-sm font-body-sm" data-path="settings" href="#"><span class="material-symbols-outlined text-[18px]">tune</span>研习偏好</a><span class="font-label-sm text-label-sm text-outline">v2.4 纸墨</span></div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-16 bg-surface/90 backdrop-blur-xl z-40 shadow-[0_1px_8px_rgba(0,0,0,0.04)] px-6 flex items-center justify-between gap-4"><div class="flex items-center gap-3 min-w-0 flex-1"><div class="flex items-center gap-2 truncate"><span class="font-label-sm text-label-sm bg-surface-container-highest text-on-surface-variant px-2 py-0.5 rounded font-medium select-none shrink-0">卷一 · 典籍演说</span><span class="font-headline-sm text-headline-sm text-on-surface truncate font-normal tracking-tight">乔布斯斯坦福毕业典礼致辞 (2005)</span></div><div class="hidden xl:flex items-center gap-2 shrink-0"><span class="font-label-sm text-label-sm text-secondary bg-secondary-fixed/50 px-2 py-0.5 rounded font-semibold">C1 雅致度</span><span class="font-body-sm text-body-sm text-on-surface-variant">· 42 句入神 · 386 词元研墨</span></div></div><div class="flex items-center gap-3 shrink-0"><div class="hidden lg:flex items-center bg-surface-container-low rounded-lg p-1 gap-1"><button class="px-2 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1" type="button"><span class="material-symbols-outlined text-[15px]">record_voice_over</span>美音</button><div class="w-px h-3 bg-surface-container-highest"></div><button class="px-2 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1" type="button"><span class="material-symbols-outlined text-[15px]">speed</span>1.0x</button></div><button class="hidden sm:flex items-center gap-2 bg-surface-container-low hover:bg-surface-container text-on-surface-variant hover:text-on-surface px-3 py-1.5 rounded-lg transition-colors font-body-sm text-body-sm" type="button"><span class="material-symbols-outlined text-[18px]">search</span><span class="text-body-sm font-body-sm">检索词句卷帙</span><kbd class="font-label-sm text-label-sm bg-surface-container-highest text-on-surface-variant px-1.5 py-0.5 rounded">⌘K</kbd></button><button class="flex items-center gap-1.5 bg-primary text-on-primary hover:bg-primary-container px-3 py-1.5 rounded transition-colors font-body-sm text-body-sm shadow-[0_1px_3px_rgba(0,0,0,0.08)]" type="button"><span class="material-symbols-outlined text-[18px]">upload_file</span><span class="hidden md:inline font-title-sm text-title-sm font-normal">导入文献</span></button><button class="w-8 h-8 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors relative" title="快捷生词匣" type="button"><span class="material-symbols-outlined text-[20px]">inbox</span><span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary"></span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><main class="relative pt-16 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- 仪表盘大盘概览与艾宾浩斯研习分析 (Lexicon Spaced Repetition Overview) -->
+<section class="px-8 pt-8 pb-10 flex flex-col gap-8 max-w-[1560px] mx-auto w-full">
+<!-- 标头与典籍书卷操作栏 -->
+<div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 relative">
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm tracking-widest font-semibold uppercase">Lexicon Repository</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium">第 14 巡次回流复盘</span>
+</div>
+<div class="flex items-baseline gap-4 flex-wrap">
+<h1 class="font-headline-xl text-headline-xl text-on-surface font-normal tracking-tight">
+            词藏 <span class="font-headline-md text-headline-md italic text-on-surface-variant font-normal">Lexicon & Spaced Repetition</span>
+</h1>
+<span class="font-body-md text-body-md text-on-surface-variant italic">“温故而知新，研墨以致远。”</span>
+</div>
+</div>
+<!-- 快捷操作区 -->
+<div class="flex items-center gap-3 flex-wrap">
+<button class="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-title-sm text-title-sm transition-all shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px] text-tertiary">library_add</span>
+<span>批量录入词元</span>
+</button>
+<button class="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-title-sm text-title-sm transition-all shadow-sm" id="btn-export-sheet" type="button">
+<span class="material-symbols-outlined text-[18px] text-primary">print</span>
+<span>排印随身字帖 (PDF)</span>
+</button>
+<button class="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-title-sm text-title-sm transition-all shadow-md" type="button">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">play_circle</span>
+<span>开启智能研墨复习 (42词)</span>
+</button>
+</div>
+</div>
+<!-- 研墨数据四象限与曲线图 Bento 组合 -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5">
+<!-- 汇总卡片 1: 词藏总揽与分级 -->
+<div class="lg:col-span-4 bg-surface-container-low rounded-xl p-6 flex flex-col justify-between shadow-sm relative overflow-hidden">
+<div class="flex items-start justify-between">
+<div class="flex flex-col gap-1">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Total Vocabulary Ingot</span>
+<span class="font-headline-lg text-headline-lg text-on-surface font-normal">386 <span class="font-label-md text-label-md text-on-surface-variant font-normal">词元</span></span>
+</div>
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[22px]">import_contacts</span>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-3 my-4 pt-3">
+<div class="flex flex-col bg-surface-container rounded-lg p-2.5">
+<span class="font-label-sm text-label-sm text-on-surface-variant">待研磨</span>
+<span class="font-title-md text-title-md text-primary font-semibold mt-0.5">78</span>
+<span class="font-label-sm text-label-sm text-primary/70">今日须温</span>
+</div>
+<div class="flex flex-col bg-surface-container rounded-lg p-2.5">
+<span class="font-label-sm text-label-sm text-on-surface-variant">已通达</span>
+<span class="font-title-md text-title-md text-secondary font-semibold mt-0.5">240</span>
+<span class="font-label-sm text-label-sm text-secondary/80">长期内化</span>
+</div>
+<div class="flex flex-col bg-surface-container rounded-lg p-2.5">
+<span class="font-label-sm text-label-sm text-on-surface-variant">典雅长句</span>
+<span class="font-title-md text-title-md text-tertiary font-semibold mt-0.5">68</span>
+<span class="font-label-sm text-label-sm text-tertiary">原典文脉</span>
+</div>
+</div>
+<!-- 词库通达度长条进度 -->
+<div class="flex flex-col gap-1.5">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>内化通达率 (Long-term Retention)</span>
+<span class="text-on-surface font-semibold">62.1%</span>
+</div>
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden flex">
+<div class="h-full bg-secondary transition-all" style="width: 62.1%"></div>
+<div class="h-full bg-secondary-fixed transition-all" style="width: 18.2%"></div>
+<div class="h-full bg-primary transition-all" style="width: 19.7%"></div>
+</div>
+</div>
+</div>
+<!-- 汇总卡片 2: 艾宾浩斯遗忘衰减波形 (Ebbinghaus Retentive Curve) -->
+<div class="lg:col-span-5 bg-surface-container-low rounded-xl p-6 flex flex-col justify-between shadow-sm relative">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Spaced Repetition Waveform</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-normal">艾宾浩斯抗遗忘波形</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1 font-label-sm text-label-sm text-primary">
+<span class="w-2 h-2 rounded-full bg-primary"></span>今日介入点
+            </span>
+<span class="inline-flex items-center gap-1 font-label-sm text-label-sm text-secondary">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>稳定记忆阈
+            </span>
+</div>
+</div>
+<!-- 矢量波形曲线图 (Inline SVG Chart) -->
+<div class="w-full h-28 my-2 relative flex items-center">
+<svg class="w-full h-full text-on-surface-variant/20 overflow-visible" viewbox="0 0 500 120">
+<!-- 记忆安全阈值基线 -->
+<line stroke="currentColor" stroke-dasharray="4 4" stroke-width="1.5" x1="0" x2="500" y1="55" y2="55"></line>
+<text class="text-[10px] font-mono fill-secondary select-none font-semibold" x="4" y="50">稳固阈值 75%</text>
+<!-- 遗忘衰减虚线 (自然遗忘轨迹) -->
+<path d="M 10 15 Q 80 110, 180 115" fill="none" stroke="currentColor" stroke-dasharray="3 3" stroke-width="1.5"></path>
+<path d="M 180 20 Q 240 100, 320 108" fill="none" stroke="currentColor" stroke-dasharray="3 3" stroke-width="1.5"></path>
+<!-- 间隔复习跃升曲线 (Spaced Repetition Steps) -->
+<path d="M 10 15 
+                     C 60 70, 120 75, 130 75 
+                     L 130 18 
+                     C 190 60, 260 62, 280 62 
+                     L 280 16 
+                     C 350 40, 440 38, 490 28" fill="none" stroke="#93000b" stroke-linecap="round" stroke-width="2.5"></path>
+<!-- 今日点状研习节点标记 -->
+<circle cx="10" cy="15" fill="#93000b" r="4.5"></circle>
+<circle cx="130" cy="18" fill="#93000b" r="4.5"></circle>
+<circle cx="280" cy="16" fill="#456818" r="5" stroke="#ffffff" stroke-width="2"></circle>
+<circle cx="490" cy="28" fill="#456818" r="4"></circle>
+<!-- 跃升刻度批注 -->
+<text class="text-[10px] fill-primary font-semibold select-none font-mono" x="135" y="14">1d 后跃升</text>
+<text class="text-[10px] fill-secondary font-semibold select-none font-mono" x="285" y="12">今日待温 (7d)</text>
+<text class="text-[10px] fill-secondary font-semibold select-none font-mono" x="445" y="24">30d 通达</text>
+</svg>
+</div>
+<div class="flex items-center justify-between pt-1 font-label-sm text-label-sm text-on-surface-variant">
+<span>初遇诵记 (Day 0)</span>
+<span>翌日研习 (Day 1)</span>
+<span class="text-primary font-semibold">今日周期 (Day 7)</span>
+<span>长久内化 (Day 30+)</span>
+</div>
+</div>
+<!-- 汇总卡片 3: 五维词元领悟雷达图 (Lexicon Competency Radar) -->
+<div class="lg:col-span-3 bg-surface-container-low rounded-xl p-6 flex flex-col justify-between shadow-sm relative">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Mastery Radar</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-normal">多维造诣</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-secondary-fixed/60 text-on-secondary-fixed-variant font-label-sm text-label-sm font-semibold">极佳</span>
+</div>
+<div class="w-full flex items-center justify-center my-1">
+<svg class="w-32 h-28 overflow-visible" viewbox="0 0 160 140">
+<!-- 雷达底网 -->
+<polygon fill="none" points="80,15 135,50 115,115 45,115 25,50" stroke="#d9dadc" stroke-width="1"></polygon>
+<polygon fill="none" points="80,35 115,58 102,100 58,100 45,58" stroke="#d9dadc" stroke-dasharray="2 2" stroke-width="0.8"></polygon>
+<line stroke="#d9dadc" stroke-width="0.8" x1="80" x2="80" y1="75" y2="15"></line>
+<line stroke="#d9dadc" stroke-width="0.8" x1="80" x2="135" y1="75" y2="50"></line>
+<line stroke="#d9dadc" stroke-width="0.8" x1="80" x2="115" y1="75" y2="115"></line>
+<line stroke="#d9dadc" stroke-width="0.8" x1="80" x2="45" y1="75" y2="115"></line>
+<line stroke="#d9dadc" stroke-width="0.8" x1="80" x2="25" y1="75" y2="50"></line>
+<!-- 数据填充面 -->
+<polygon fill="rgba(147, 0, 11, 0.15)" points="80,24 125,52 105,108 55,100 32,56" stroke="#93000b" stroke-width="1.8"></polygon>
+<!-- 节点 -->
+<circle cx="80" cy="24" fill="#93000b" r="2.5"></circle>
+<circle cx="125" cy="52" fill="#93000b" r="2.5"></circle>
+<circle cx="105" cy="108" fill="#93000b" r="2.5"></circle>
+<circle cx="55" cy="100" fill="#93000b" r="2.5"></circle>
+<circle cx="32" cy="56" fill="#93000b" r="2.5"></circle>
+<text class="text-[9px] fill-on-surface-variant font-medium" text-anchor="middle" x="80" y="8">词义辨析</text>
+<text class="text-[9px] fill-on-surface-variant font-medium" text-anchor="start" x="142" y="52">听辨语流</text>
+<text class="text-[9px] fill-on-surface-variant font-medium" text-anchor="middle" x="120" y="128">原典例句</text>
+<text class="text-[9px] fill-on-surface-variant font-medium" text-anchor="middle" x="40" y="128">词源构词</text>
+<text class="text-[9px] fill-on-surface-variant font-medium" text-anchor="end" x="18" y="52">意境仿写</text>
+</svg>
+</div>
+<div class="flex items-center justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>优势: <strong class="text-on-surface font-semibold">语境析意</strong></span>
+<span>弱项: <strong class="text-primary font-semibold">听写拼音</strong></span>
+</div>
+</div>
+</div>
+</section>
+<!-- 宽屏双栏多题型研习台 (Dual-Pane Workbench) -->
+<main class="px-8 pb-16 max-w-[1560px] mx-auto w-full">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- 左栏：生词卡片文献库 (Word List with Rich Context) (5 cols) -->
+<section class="lg:col-span-5 flex flex-col gap-5">
+<!-- 检索与分类过滤器 -->
+<div class="bg-surface-container-low rounded-xl p-4 flex flex-col gap-3.5 shadow-sm">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-[20px] text-on-surface-variant">search</span>
+<input class="w-full bg-surface-container pl-10 pr-4 py-2 rounded-lg font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-highest transition-colors" placeholder="检索词根、词缀、中英词义或例句..." type="text"/>
+</div>
+<!-- 筛选胶囊行 -->
+<div class="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-nowrap">
+<div class="flex items-center gap-1.5">
+<button class="px-3 py-1 rounded-full bg-primary text-on-primary font-label-sm text-label-sm font-semibold shadow-xs" type="button">全部 (386)</button>
+<button class="px-3 py-1 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm transition-colors" type="button">待温习 (78)</button>
+<button class="px-3 py-1 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm transition-colors" type="button">已通达 (240)</button>
+<button class="px-3 py-1 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm transition-colors" type="button">生疏印章 (12)</button>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant pl-2">
+<button class="p-1 rounded hover:bg-surface-container text-on-surface" title="按文献来源排序" type="button">
+<span class="material-symbols-outlined text-[18px]">sort</span>
+</button>
+</div>
+</div>
+</div>
+<!-- 词条卡片瀑布流 -->
+<div class="flex flex-col gap-3.5" id="lexicon-deck-container">
+<!-- 活跃卡片: forward -->
+<article class="bg-surface-container-lowest rounded-xl p-5 shadow-sm transition-all relative flex flex-col gap-3 cursor-pointer group" data-word="forward">
+<div class="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l-xl"></div>
+<div class="flex items-start justify-between">
+<div class="flex items-baseline gap-2.5">
+<h3 class="font-headline-md text-headline-md text-on-surface font-semibold group-hover:text-primary transition-colors">forward</h3>
+<span class="font-body-sm text-body-sm text-on-surface-variant font-serif italic">/ˈfɔːwəd/</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">adv. / adj.</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-label-sm text-label-sm font-semibold">今日复习</span>
+<span class="material-symbols-outlined text-[18px] text-primary" style="font-variation-settings: 'FILL' 1;">bookmark</span>
+</div>
+</div>
+<p class="font-title-sm text-title-sm text-on-surface font-normal">向前；朝前；将来的发展；继续前进</p>
+<!-- 典籍例句原典印迹 -->
+<div class="bg-surface-container-low rounded-lg p-3 flex flex-col gap-1.5">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-medium text-tertiary">《乔布斯斯坦福毕业演讲 (2005)》</span>
+<span>句轴 #12</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface italic font-serif leading-relaxed">
+                “You can’t connect the dots looking <mark class="bg-primary-fixed text-on-primary-fixed px-1 rounded">forward</mark>; you can only connect them looking backwards.”
+              </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                你不可能充满预见地将散落的点滴串联起来，唯有在往后回溯时，才能串起因果。
+              </p>
+</div>
+<div class="flex items-center justify-between pt-1 text-on-surface-variant font-label-sm text-label-sm">
+<div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1 text-primary">
+<span class="material-symbols-outlined text-[14px]">history</span> 记忆周期: 7d
+                </span>
+<span>·</span>
+<span>词频 ★★★★★</span>
+</div>
+<span class="text-tertiary font-serif italic">已复习 3 次</span>
+</div>
+</article>
+<!-- 词条卡片 2: deliberate -->
+<article class="bg-surface-container-low hover:bg-surface-container rounded-xl p-5 shadow-sm transition-all flex flex-col gap-3 cursor-pointer group" data-word="deliberate">
+<div class="flex items-start justify-between">
+<div class="flex items-baseline gap-2.5">
+<h3 class="font-headline-md text-headline-md text-on-surface font-medium group-hover:text-primary transition-colors">deliberate</h3>
+<span class="font-body-sm text-body-sm text-on-surface-variant font-serif italic">/dɪˈlɪb.ər.ət/</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">adj. / v.</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold">通达 (28d后)</span>
+<span class="material-symbols-outlined text-[18px] text-outline hover:text-primary transition-colors">bookmark</span>
+</div>
+</div>
+<p class="font-title-sm text-title-sm text-on-surface font-normal">蓄意的；深思熟虑的；审慎从容的</p>
+<div class="bg-surface-container-lowest rounded-lg p-3 flex flex-col gap-1.5">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-medium text-tertiary">《瓦尔登湖 · 梭罗》</span>
+<span>第二章 · 湖畔生活</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface italic font-serif leading-relaxed line-clamp-2">
+                “I went to the woods because I wished to live <mark class="bg-secondary-fixed text-on-secondary-fixed px-1 rounded">deliberately</mark>, to front only the essential facts of life...”
+              </p>
+</div>
+<div class="flex items-center justify-between pt-1 text-on-surface-variant font-label-sm text-label-sm">
+<div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1 text-secondary font-medium">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> 掌握度: 94%
+                </span>
+<span>·</span>
+<span>词频 ★★★★☆</span>
+</div>
+<span class="text-on-surface-variant">《湖畔散记》卷帙</span>
+</div>
+</article>
+<!-- 词条卡片 3: pathways -->
+<article class="bg-surface-container-low hover:bg-surface-container rounded-xl p-5 shadow-sm transition-all flex flex-col gap-3 cursor-pointer group" data-word="pathways">
+<div class="flex items-start justify-between">
+<div class="flex items-baseline gap-2.5">
+<h3 class="font-headline-md text-headline-md text-on-surface font-medium group-hover:text-primary transition-colors">pathways</h3>
+<span class="font-body-sm text-body-sm text-on-surface-variant font-serif italic">/ˈpɑːθ.weɪz/</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">n. [复]</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-label-sm text-label-sm">待温研 (2d后)</span>
+<span class="material-symbols-outlined text-[18px] text-outline hover:text-primary transition-colors">bookmark</span>
+</div>
+</div>
+<p class="font-title-sm text-title-sm text-on-surface font-normal">径路；神经通路；（达成某事的）途径</p>
+<div class="bg-surface-container-lowest rounded-lg p-3 flex flex-col gap-1.5">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-medium text-tertiary">《自然心智导引》</span>
+<span>神经突触篇</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface italic font-serif leading-relaxed line-clamp-2">
+                “Repeated recollection carves deep neural <mark class="bg-surface-container-highest text-on-surface px-1 rounded">pathways</mark> into the parchment of consciousness.”
+              </p>
+</div>
+<div class="flex items-center justify-between pt-1 text-on-surface-variant font-label-sm text-label-sm">
+<div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1 text-tertiary font-medium">
+<span class="material-symbols-outlined text-[14px]">psychology</span> 突触认知词汇
+                </span>
+<span>·</span>
+<span>词频 ★★★☆☆</span>
+</div>
+<span class="text-on-surface-variant">已复习 2 次</span>
+</div>
+</article>
+<!-- 词条卡片 4: resonance -->
+<article class="bg-surface-container-low hover:bg-surface-container rounded-xl p-5 shadow-sm transition-all flex flex-col gap-3 cursor-pointer group" data-word="resonance">
+<div class="flex items-start justify-between">
+<div class="flex items-baseline gap-2.5">
+<h3 class="font-headline-md text-headline-md text-on-surface font-medium group-hover:text-primary transition-colors">resonance</h3>
+<span class="font-body-sm text-body-sm text-on-surface-variant font-serif italic">/ˈrez.ən.əns/</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">n.</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed-variant font-label-sm text-label-sm font-semibold">重度生疏 (1d内)</span>
+<span class="material-symbols-outlined text-[18px] text-primary" style="font-variation-settings: 'FILL' 1;">bookmark</span>
+</div>
+</div>
+<p class="font-title-sm text-title-sm text-on-surface font-normal">共鸣；共振；回声；引起同理心的特质</p>
+<div class="bg-surface-container-lowest rounded-lg p-3 flex flex-col gap-1.5">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-medium text-tertiary">《文心雕龙 · 声律译释》</span>
+<span>清浊相和</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface italic font-serif leading-relaxed line-clamp-2">
+                “Great prose evokes an emotional <mark class="bg-primary-fixed text-on-primary-fixed-variant px-1 rounded">resonance</mark> that outlives its ink.”
+              </p>
+</div>
+<div class="flex items-center justify-between pt-1 text-on-surface-variant font-label-sm text-label-sm">
+<div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1 text-error font-medium">
+<span class="material-symbols-outlined text-[14px]">warning</span> 遗忘预警
+                </span>
+<span>·</span>
+<span>词频 ★★★★☆</span>
+</div>
+<span class="text-on-surface-variant">雅致文学词</span>
+</div>
+</article>
+</div>
+<!-- 底部卷宗分页与概览统计 -->
+<div class="flex items-center justify-between py-3 px-2 font-label-sm text-label-sm text-on-surface-variant">
+<span>展示 1 - 4 卷 · 共 386 个典籍词条</span>
+<div class="flex items-center gap-2">
+<button class="w-8 h-8 rounded bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors" disabled="" type="button">
+<span class="material-symbols-outlined text-[18px] opacity-40">chevron_left</span>
+</button>
+<span class="font-title-sm text-title-sm text-on-surface font-serif">1 / 97</span>
+<button class="w-8 h-8 rounded bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors text-on-surface" type="button">
+<span class="material-symbols-outlined text-[18px]">chevron_right</span>
+</button>
+</div>
+</div>
+</section>
+<!-- 右栏：多题型深度交互演练台 (Interactive Multi-Type Flashcard & Quiz Deck) (7 cols) -->
+<section class="lg:col-span-7 flex flex-col gap-6">
+<!-- 研习工作台主容器 -->
+<div class="bg-surface-container-low rounded-2xl p-7 shadow-md flex flex-col gap-6 relative">
+<!-- 顶部状态栏：当前词元序列、发音试听、题型切换 Tabs -->
+<div class="flex flex-col gap-4">
+<div class="flex items-center justify-between flex-wrap gap-2">
+<div class="flex items-center gap-3">
+<span class="w-7 h-7 rounded-full bg-primary text-on-primary font-serif font-bold text-sm flex items-center justify-center select-none shadow-xs">壹</span>
+<div class="flex items-center gap-2">
+<span class="font-headline-sm text-headline-sm text-on-surface font-semibold tracking-tight">今日复习第 3/42 词</span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant">间隔周期: 7d</span>
+</div>
+</div>
+<!-- 快捷发音播放 -->
+<div class="flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md transition-all shadow-xs" id="audio-play-btn" type="button">
+<span class="material-symbols-outlined text-[18px] text-primary" style="font-variation-settings: 'FILL' 1;">volume_up</span>
+<span>英式 /ˈfɔːwəd/</span>
+</button>
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md transition-all shadow-xs" type="button">
+<span class="material-symbols-outlined text-[18px] text-tertiary">volume_up</span>
+<span>美式 /ˈfɔːrwərd/</span>
+</button>
+</div>
+</div>
+<!-- 题型自由切换 Navigation Tabs -->
+<div class="flex items-center bg-surface-container rounded-xl p-1 gap-1 overflow-x-auto">
+<button class="quiz-tab-btn flex-1 py-2 px-3 rounded-lg bg-surface-container-lowest text-primary font-title-sm text-title-sm font-semibold transition-all shadow-xs flex items-center justify-center gap-1.5" data-tab="tab-choice" type="button">
+<span class="material-symbols-outlined text-[18px]">fact_check</span>
+<span>题型一：语境选义</span>
+</button>
+<button class="quiz-tab-btn flex-1 py-2 px-3 rounded-lg hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-title-sm text-title-sm font-normal transition-all flex items-center justify-center gap-1.5" data-tab="tab-cloze" type="button">
+<span class="material-symbols-outlined text-[18px]">edit_note</span>
+<span>题型二：语境挖空填词</span>
+</button>
+<button class="quiz-tab-btn flex-1 py-2 px-3 rounded-lg hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-title-sm text-title-sm font-normal transition-all flex items-center justify-center gap-1.5" data-tab="tab-dictation" type="button">
+<span class="material-symbols-outlined text-[18px]">headphones</span>
+<span>题型三：真题听写</span>
+</button>
+<button class="quiz-tab-btn flex-1 py-2 px-3 rounded-lg hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-title-sm text-title-sm font-normal transition-all flex items-center justify-center gap-1.5" data-tab="tab-ai-writing" type="button">
+<span class="material-symbols-outlined text-[18px]">draw</span>
+<span>题型四：AI情境仿写</span>
+</button>
+</div>
+</div>
+<!-- 题型内容渲染区 -->
+<div class="flex flex-col gap-6" id="quiz-content-panel">
+<!-- 题型一：语境选义交互 (默认展现) -->
+<div class="quiz-pane flex flex-col gap-5" id="tab-choice-content">
+<!-- 原典出处卷轴语境引言 -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-xs flex flex-col gap-3 relative overflow-hidden">
+<div class="flex items-center justify-between text-on-surface-variant">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-tertiary flex items-center gap-1.5 font-semibold">
+<span class="material-symbols-outlined text-[16px]">menu_book</span>
+                    斯坦福毕业典礼致辞 · 原典语境挖掘
+                  </span>
+<span class="font-label-sm text-label-sm font-serif italic text-outline">Steve Jobs (2005)</span>
+</div>
+<blockquote class="font-body-lg text-body-lg text-on-surface font-serif italic leading-relaxed pt-1">
+                  “Again, you can't connect the dots looking 
+                  <span class="inline-block px-3 py-0.5 mx-1 rounded bg-primary-fixed text-primary font-bold tracking-wider font-mono shadow-xs">
+                    [ ? ]
+                  </span>; 
+                  you can only connect them looking backwards. So you have to trust that the dots will somehow connect in your future.”
+                </blockquote>
+<div class="flex items-center gap-2 pt-2 text-on-surface-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[16px] text-secondary">tips_and_updates</span>
+<span>语义线索：后半句为“looking backwards (向后回溯)”，本空考查反义与前后呼应的方向副词。</span>
+</div>
+</div>
+<!-- 木活字选项栅格 (Movable Type Options) -->
+<div class="flex flex-col gap-3">
+<span class="font-label-sm text-label-sm text-on-surface-variant font-semibold tracking-wider">选择最切合句意的词义项：</span>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="options-grid">
+<!-- 正确选项 -->
+<button class="quiz-opt-btn text-left p-4 rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all flex items-start gap-3 shadow-xs group" data-correct="true" type="button">
+<span class="w-6 h-6 rounded-md bg-surface-container-highest group-hover:bg-primary group-hover:text-on-primary text-on-surface-variant font-serif font-bold text-xs flex items-center justify-center shrink-0 transition-colors">甲</span>
+<div class="flex flex-col gap-0.5">
+<span class="font-title-sm text-title-sm text-on-surface font-medium">向前；朝前；预先地 (adv.)</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">向未来的方向探寻发展</span>
+</div>
+</button>
+<button class="quiz-opt-btn text-left p-4 rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all flex items-start gap-3 shadow-xs group" data-correct="false" type="button">
+<span class="w-6 h-6 rounded-md bg-surface-container-highest group-hover:bg-primary group-hover:text-on-primary text-on-surface-variant font-serif font-bold text-xs flex items-center justify-center shrink-0 transition-colors">乙</span>
+<div class="flex flex-col gap-0.5">
+<span class="font-title-sm text-title-sm text-on-surface font-medium">内省地；向内倾注 (adv.)</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">强调对内心深处的观照</span>
+</div>
+</button>
+<button class="quiz-opt-btn text-left p-4 rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all flex items-start gap-3 shadow-xs group" data-correct="false" type="button">
+<span class="w-6 h-6 rounded-md bg-surface-container-highest group-hover:bg-primary group-hover:text-on-primary text-on-surface-variant font-serif font-bold text-xs flex items-center justify-center shrink-0 transition-colors">丙</span>
+<div class="flex flex-col gap-0.5">
+<span class="font-title-sm text-title-sm text-on-surface font-medium">执着地；固执地 (adv.)</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">不肯轻易改换主意</span>
+</div>
+</button>
+<button class="quiz-opt-btn text-left p-4 rounded-xl bg-surface-container-lowest hover:bg-surface-container-high transition-all flex items-start gap-3 shadow-xs group" data-correct="false" type="button">
+<span class="w-6 h-6 rounded-md bg-surface-container-highest group-hover:bg-primary group-hover:text-on-primary text-on-surface-variant font-serif font-bold text-xs flex items-center justify-center shrink-0 transition-colors">丁</span>
+<div class="flex flex-col gap-0.5">
+<span class="font-title-sm text-title-sm text-on-surface font-medium">迟疑不决地 (adv.)</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">在抉择关口停滞徘徊</span>
+</div>
+</button>
+</div>
+<!-- 交互即时反馈面板 (默认隐藏，点击后触发) -->
+<div class="hidden bg-secondary-container/40 rounded-xl p-4 flex items-start gap-3 mt-2" id="choice-feedback-banner">
+<span class="material-symbols-outlined text-secondary text-[22px] shrink-0">check_circle</span>
+<div class="flex flex-col gap-1">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">回答精妙，完全契合！</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                      在此处乔布斯借由 <code>looking forward</code> 与 <code>looking backwards</code> 构成古典修辞对照，表达人生的因果只能事后参透，前进时必须笃信内心的指引。
+                    </p>
+</div>
+</div>
+</div>
+</div>
+<!-- 题型二：语境挖空填词 (动态隐藏备用) -->
+<div class="quiz-pane hidden flex flex-col gap-5" id="tab-cloze-content">
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-xs flex flex-col gap-4">
+<span class="font-label-sm text-label-sm text-tertiary font-semibold uppercase tracking-wider">Cloze Recall · 语境字墨填空</span>
+<p class="font-body-lg text-body-lg text-on-surface font-serif italic leading-relaxed">
+                  “The committee decided to carry the reform proposal 
+                  <input class="inline-block w-40 px-3 py-1 mx-1 rounded bg-surface-container text-primary font-mono text-title-sm border-b-2 border-primary focus:outline-none focus:bg-surface-container-highest" id="cloze-input" placeholder="键入拼写..." type="text"/>
+                  despite rigorous opposition.”
+                </p>
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span>提示：首字母为 <strong>f...</strong> (6 字母)，词义为“向前推行”。</span>
+<button class="px-4 py-1.5 rounded-lg bg-primary text-on-primary font-title-sm text-title-sm" id="btn-check-cloze" type="button">验证字形</button>
+</div>
+</div>
+</div>
+<!-- 题型三：真题听写 (动态隐藏备用) -->
+<div class="quiz-pane hidden flex flex-col gap-5" id="tab-dictation-content">
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-xs flex flex-col gap-4 items-center text-center">
+<button class="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:scale-105 transition-all shadow-sm" type="button">
+<span class="material-symbols-outlined text-[32px]">graphic_eq</span>
+</button>
+<div class="flex flex-col gap-1">
+<span class="font-title-sm text-title-sm text-on-surface font-medium">聆听原声剪辑，写下听闻的关键词</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">美式原音 · 1.0x 标准语速</span>
+</div>
+<input class="w-72 bg-surface-container px-4 py-2.5 rounded-lg text-center font-mono text-title-sm text-on-surface focus:outline-none focus:bg-surface-container-highest" placeholder="听写词汇..." type="text"/>
+</div>
+</div>
+<!-- 题型四：AI情境仿写 (动态隐藏备用) -->
+<div class="quiz-pane hidden flex flex-col gap-5" id="tab-ai-writing-content">
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-xs flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-primary font-semibold uppercase tracking-wider flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">smart_toy</span> 砚台 AI 伴读品鉴
+                  </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">目标句型：运用 forward 阐述愿景</span>
+</div>
+<textarea class="w-full bg-surface-container p-3 rounded-lg font-body-md text-body-md text-on-surface focus:outline-none focus:bg-surface-container-highest resize-none" placeholder="在此输入你的仿写造句，AI将从文法通达度、典雅修辞、词汇地道性三个维度给出润色点评..." rows="3"></textarea>
+<div class="flex justify-end">
+<button class="px-4 py-2 rounded-lg bg-primary text-on-primary font-title-sm text-title-sm shadow-sm" type="button">提交品鉴</button>
+</div>
+</div>
+</div>
+<!-- 词源溯流板块：词根词缀与拓扑图谱 (Etymology & Word Roots Topology) -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-xs flex flex-col gap-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-tertiary">account_tree</span>
+<h4 class="font-headline-sm text-headline-sm text-on-surface font-normal">词源溯流 · 构词拓扑</h4>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">日耳曼语族原生词缀</span>
+</div>
+<!-- 词根释义与同族拓扑网格 -->
+<div class="flex flex-col gap-3">
+<div class="bg-surface-container-low rounded-lg p-3.5 flex items-start gap-3">
+<span class="px-2 py-0.5 rounded bg-primary/10 text-primary font-mono font-bold text-label-md">-ward / -wards</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                    源自原始印欧语 <em>*wert-</em>（转动、朝向），在古英语中演变为形容词/副词后缀，表示<strong class="text-on-surface">“朝向特定方向或空间状态”</strong>。
+                  </p>
+</div>
+<!-- 拓扑词丛展示 -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+<div class="bg-surface-container-low rounded-lg p-3 flex flex-col gap-1 hover:bg-surface-container transition-colors">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">backward</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono">back + ward</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">向后的；落后的</span>
+</div>
+<div class="bg-surface-container-low rounded-lg p-3 flex flex-col gap-1 hover:bg-surface-container transition-colors">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">awkward</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono">awk + ward</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">笨拙的；偏离的</span>
+</div>
+<div class="bg-surface-container-low rounded-lg p-3 flex flex-col gap-1 hover:bg-surface-container transition-colors">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">toward</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono">to + ward</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">朝向；向着目标</span>
+</div>
+<div class="bg-surface-container-low rounded-lg p-3 flex flex-col gap-1 hover:bg-surface-container transition-colors">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">inward</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono">in + ward</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">向内的；内心的</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 科学间隔重复复习反馈评分条 (Spaced Repetition Feedback Bars) -->
+<div class="bg-surface-container rounded-xl p-5 flex flex-col gap-3 shadow-inner">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-on-surface-variant font-semibold uppercase tracking-wider">
+                  本次演练心境反馈 (SRS 遗忘周期调度)
+                </span>
+<span class="font-label-sm text-label-sm text-outline">快捷键: 1 - 4 键</span>
+</div>
+<!-- 4 个经典复习档次按钮 -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+<!-- 档次 1: 忘却 -->
+<button class="srs-btn flex flex-col items-center justify-center p-3 rounded-lg bg-surface-container-lowest hover:bg-error-container hover:text-on-error-container transition-all group shadow-xs" type="button">
+<span class="font-title-sm text-title-sm font-semibold text-error group-hover:text-on-error-container">忘却遗漏</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">重置 · 1天内温习</span>
+</button>
+<!-- 档次 2: 生疏 -->
+<button class="srs-btn flex flex-col items-center justify-center p-3 rounded-lg bg-surface-container-lowest hover:bg-tertiary-fixed hover:text-on-tertiary-fixed transition-all group shadow-xs" type="button">
+<span class="font-title-sm text-title-sm font-semibold text-tertiary group-hover:text-on-tertiary-fixed">勉强领悟</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">生疏 · 3天后介入</span>
+</button>
+<!-- 档次 3: 良好 -->
+<button class="srs-btn flex flex-col items-center justify-center p-3 rounded-lg bg-surface-container-lowest hover:bg-secondary-container hover:text-on-secondary-container transition-all group shadow-xs" type="button">
+<span class="font-title-sm text-title-sm font-semibold text-secondary group-hover:text-on-secondary-container">领悟熟练</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">平稳 · 7天后介入</span>
+</button>
+<!-- 档次 4: 通达 -->
+<button class="srs-btn flex flex-col items-center justify-center p-3 rounded-lg bg-surface-container-lowest hover:bg-secondary hover:text-on-secondary transition-all group shadow-xs" type="button">
+<span class="font-title-sm text-title-sm font-semibold text-secondary group-hover:text-on-secondary">融会贯通</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">极佳 · 30天后归阁</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- 随行研习心得笔记栏 (Manuscript Margin Notes) -->
+<div class="bg-surface-container-low rounded-xl p-5 shadow-sm flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-primary">history_edu</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-normal">研墨眉批 · 私人札记</span>
+</div>
+<button class="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1" type="button">
+<span class="material-symbols-outlined text-[15px]">add</span>添加新眉批
+            </button>
+</div>
+<div class="bg-surface-container-lowest rounded-lg p-4 flex flex-col gap-2 relative">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-medium text-on-surface">读 Stanford 2005 记</span>
+<span class="font-serif italic">三日前研录</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface italic font-serif leading-relaxed">
+              “looking forward 在此既是视觉上的前瞻，又是心态上的探索未知。切忌翻译为干瘪的‘向前看’，译为‘前瞻点滴’更为雅正。”
+            </p>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- 交互脚本：题型切换、发音播放反馈与选义交互体验 -->
+<script>
+  (function initLexiconHub() {
+    // 题型自由切换
+    const tabButtons = document.querySelectorAll('.quiz-tab-btn');
+    const panes = {
+      'tab-choice': document.getElementById('tab-choice-content'),
+      'tab-cloze': document.getElementById('tab-cloze-content'),
+      'tab-dictation': document.getElementById('tab-dictation-content'),
+      'tab-ai-writing': document.getElementById('tab-ai-writing-content')
+    };
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab;
+        
+        // 更新按钮样式
+        tabButtons.forEach(b => {
+          b.classList.remove('bg-surface-container-lowest', 'text-primary', 'font-semibold', 'shadow-xs');
+          b.classList.add('text-on-surface-variant', 'font-normal');
+        });
+        btn.classList.add('bg-surface-container-lowest', 'text-primary', 'font-semibold', 'shadow-xs');
+        btn.classList.remove('text-on-surface-variant', 'font-normal');
+
+        // 切换对应视窗
+        Object.keys(panes).forEach(k => {
+          if (panes[k]) {
+            if (k === target) {
+              panes[k].classList.remove('hidden');
+            } else {
+              panes[k].classList.add('hidden');
+            }
+          }
+        });
+      });
+    });
+
+    // 语境选义选项交互反馈
+    const optButtons = document.querySelectorAll('.quiz-opt-btn');
+    const feedbackBanner = document.getElementById('choice-feedback-banner');
+
+    optButtons.forEach(opt => {
+      opt.addEventListener('click', () => {
+        const isCorrect = opt.dataset.correct === 'true';
+
+        optButtons.forEach(b => {
+          b.classList.remove('bg-primary-fixed', 'text-on-primary-fixed', 'bg-error-container', 'text-on-error-container');
+        });
+
+        if (isCorrect) {
+          opt.classList.add('bg-secondary-container', 'text-on-secondary-container');
+          if (feedbackBanner) feedbackBanner.classList.remove('hidden');
+        } else {
+          opt.classList.add('bg-error-container', 'text-on-error-container');
+          if (feedbackBanner) feedbackBanner.classList.add('hidden');
+        }
+      });
+    });
+
+    // 艾宾浩斯复习评分按钮动效
+    const srsButtons = document.querySelectorAll('.srs-btn');
+    srsButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const originalText = btn.innerHTML;
+        btn.classList.add('scale-95');
+        setTimeout(() => {
+          btn.classList.remove('scale-95');
+          // 提示已调度
+          const promptBadge = document.createElement('span');
+          promptBadge.className = 'absolute -top-2 right-2 px-2 py-0.5 rounded bg-primary text-on-primary font-label-sm text-label-sm shadow';
+          promptBadge.innerText = '已记录研墨';
+          btn.parentElement.parentElement.appendChild(promptBadge);
+          setTimeout(() => promptBadge.remove(), 1600);
+        }, 150);
+      });
+    });
+
+    // 仿真发音试听交互
+    const audioBtn = document.getElementById('audio-play-btn');
+    if (audioBtn) {
+      audioBtn.addEventListener('click', () => {
+        audioBtn.classList.add('bg-primary-fixed');
+        setTimeout(() => {
+          audioBtn.classList.remove('bg-primary-fixed');
+        }, 600);
+      });
+    }
+
+    // 挖空填词验证
+    const checkClozeBtn = document.getElementById('btn-check-cloze');
+    const clozeInput = document.getElementById('cloze-input');
+    if (checkClozeBtn && clozeInput) {
+      checkClozeBtn.addEventListener('click', () => {
+        if (clozeInput.value.trim().toLowerCase() === 'forward') {
+          clozeInput.classList.remove('border-primary');
+          clozeInput.classList.add('bg-secondary-container', 'text-on-secondary-container');
+          checkClozeBtn.innerText = '研磨通达 ✓';
+        } else {
+          clozeInput.classList.add('bg-error-container');
+          setTimeout(() => {
+            clozeInput.classList.remove('bg-error-container');
+          }, 1000);
+        }
+      });
+    }
+
+    // 左侧词卡选中联动
+    const wordCards = document.querySelectorAll('#lexicon-deck-container article');
+    wordCards.forEach(card => {
+      card.addEventListener('click', () => {
+        wordCards.forEach(c => {
+          c.classList.remove('bg-surface-container-lowest');
+          c.classList.add('bg-surface-container-low');
+          const bar = c.querySelector('.w-1\\.5');
+          if (bar) bar.remove();
+        });
+        card.classList.remove('bg-surface-container-low');
+        card.classList.add('bg-surface-container-lowest');
+      });
+    });
+  })();
+</script></main></div></body></html>

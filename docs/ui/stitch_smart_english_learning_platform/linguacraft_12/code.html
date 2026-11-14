@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="h-full bg-surface" lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_tab" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;width:100%;min-height:100%;background-color:#f9f9fc;color:#1a1c1e;overscroll-behavior-y:none;}.pb-safe{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 0.25rem);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "on-secondary-container": "#496d1c", "primary-fixed": "#ffdad6", "on-secondary-fixed-variant": "#2e4f00", "inverse-on-surface": "#f0f0f3", "surface-container-low": "#f3f3f6", "secondary": "#456818", "primary": "#93000b", "tertiary-fixed-dim": "#d8c3aa", "secondary-container": "#c2ed8d", "secondary-fixed": "#c5f090", "error-container": "#ffdad6", "surface-dim": "#d9dadc", "surface-container-lowest": "#ffffff", "on-surface": "#1a1c1e", "on-secondary": "#ffffff", "on-primary-fixed-variant": "#93000b", "secondary-fixed-dim": "#a9d477", "error": "#ba1a1a", "tertiary-container": "#6b5c47", "tertiary-fixed": "#f5dfc5", "outline-variant": "#e4beb9", "outline": "#8f6f6c", "on-background": "#1a1c1e", "on-error": "#ffffff", "surface": "#f9f9fc", "surface-variant": "#e2e2e5", "on-surface-variant": "#5b403d", "background": "#f9f9fc", "inverse-surface": "#2f3133", "on-tertiary-fixed": "#241a0a", "on-error-container": "#93000a", "on-primary": "#ffffff", "on-tertiary-fixed-variant": "#524531", "inverse-primary": "#ffb4ab", "surface-container-high": "#e8e8ea", "surface-tint": "#b91c1c", "on-tertiary": "#ffffff", "on-tertiary-container": "#ead5bc", "surface-container-highest": "#e2e2e5", "tertiary": "#524431", "surface-bright": "#f9f9fc", "surface-container": "#eeeef0", "primary-fixed-dim": "#ffb4ab", "on-primary-container": "#ffcdc7", "on-primary-fixed": "#410002", "primary-container": "#b91c1c", "on-secondary-fixed": "#102000" }, borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" }, spacing: { "gutter": "1.5rem", "space-2xl": "4rem", "space-md": "1rem", "space-xl": "2.5rem", "margin": "3rem", "margin-mobile": "1.25rem", "space-lg": "1.5rem", "gutter-mobile": "1rem", "space-xs": "0.25rem", "space-sm": "0.5rem" }, fontFamily: { "headline-sm": ["Newsreader"], "body-sm": ["Inter"], "title-sm": ["Inter"], "headline-xl": ["Newsreader"], "headline-lg": ["Newsreader"], "body-md": ["Inter"], "label-md": ["Inter"], "label-sm": ["Inter"], "headline-lg-mobile": ["Newsreader"], "headline-md": ["Newsreader"], "title-md": ["Inter"], "label-lg": ["Newsreader"], "body-lg": ["Newsreader"], "headline-xl-mobile": ["Newsreader"] }, fontSize: { "headline-sm": ["22px", { "lineHeight": "30px", "fontWeight": "500" }], "body-sm": ["13px", { "lineHeight": "20px", "fontWeight": "400" }], "title-sm": ["15px", { "lineHeight": "22px", "fontWeight": "600" }], "headline-xl": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "400" }], "headline-lg": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.015em", "fontWeight": "400" }], "body-md": ["15px", { "lineHeight": "24px", "fontWeight": "400" }], "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "600" }], "headline-lg-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "400" }], "headline-md": ["28px", { "lineHeight": "36px", "fontWeight": "400" }], "title-md": ["18px", { "lineHeight": "26px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "label-lg": ["14px", { "lineHeight": "18px", "letterSpacing": "0.03em", "fontWeight": "500" }], "body-lg": ["20px", { "lineHeight": "32px", "fontWeight": "400" }], "headline-xl-mobile": ["34px", { "lineHeight": "42px", "letterSpacing": "-0.01em", "fontWeight": "400" }] } } } };</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface text-on-surface font-body-md text-body-md min-h-screen flex flex-col antialiased selection:bg-primary-fixed selection:text-primary"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(26,28,30,0.03)]"><div class="h-16 px-gutter-mobile flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-6 h-6 rounded-DEFAULT bg-primary text-on-primary flex items-center justify-center shadow-[0_1px_3px_rgba(147,0,11,0.2)]"><span class="font-headline-sm text-[12px] leading-none select-none font-bold">匠</span></div><div class="flex flex-col"><div class="flex items-center gap-1.5"><span class="font-headline-sm text-headline-sm italic tracking-tight text-on-surface">LinguaCraft</span><span class="font-label-sm text-label-sm text-tertiary tracking-widest pl-0.5">语匠</span></div><span class="font-label-sm text-[10px] leading-[12px] text-on-surface-variant/80 tracking-wider scale-95 origin-left">Library</span></div></div><div class="flex items-center gap-space-xs"><button aria-label="全局检索" class="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high/60 transition-colors"><span class="material-symbols-outlined text-[22px]">search</span></button><div class="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_6px_rgba(147,0,11,0.2)] ring-2 ring-surface-container-low"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-16 pb-24 bg-surface px-margin-mobile"><div class="flex flex-col w-full pb-8 space-y-space-md">
+<!-- 顶部状态与文人印戳 -->
+<section class="flex flex-col space-y-space-xs pt-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-2">
+<span class="inline-block w-1.5 h-3.5 bg-primary rounded-DEFAULT"></span>
+<span class="font-headline-sm text-headline-sm text-on-surface tracking-wide">藏经阁</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant/70 tracking-widest pl-1 font-body-sm">材料汇聚</span>
+</div>
+<!-- 朱砂印泥戳记 -->
+<div class="relative px-2 py-0.5 rounded-DEFAULT bg-primary/10 text-primary flex items-center space-x-1 shadow-sm">
+<span class="material-symbols-outlined text-[13px] leading-none" style="font-variation-settings: 'FILL' 1;">history_edu</span>
+<span class="font-label-sm text-label-sm tracking-wider font-semibold">已收录 12 集 · 86 篇</span>
+</div>
+</div>
+<p class="font-headline-lg-mobile text-headline-lg-mobile italic text-on-surface-variant/80 tracking-tight leading-snug">
+      “墨香生卷帙，语韵入深林。”
+    </p>
+</section>
+<!-- 最近研读流转小卡 (Quick Resume) -->
+<section class="relative overflow-hidden rounded-xl bg-surface-container-lowest p-space-md shadow-sm">
+<div class="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-secondary-container/20 pointer-events-none blur-xl"></div>
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center space-x-1.5 text-secondary">
+<span class="material-symbols-outlined text-[16px] animate-pulse">timelapse</span>
+<span class="font-label-sm text-label-sm tracking-wider uppercase font-semibold">续研书签 · 最近停留</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant/60">32分钟前</span>
+</div>
+<div class="flex items-start justify-between gap-3">
+<div class="min-w-0 flex-1">
+<h4 class="font-title-sm text-title-sm text-on-surface truncate">乔布斯 2005 斯坦福演说</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5 line-clamp-1">
+          已精读至 <span class="font-title-sm text-title-sm text-primary font-medium">第 12 句</span> / 共 42 句 · “Stay hungry, stay foolish”
+        </p>
+</div>
+<button class="shrink-0 flex items-center space-x-1 bg-primary text-on-primary px-3 py-1.5 rounded-full shadow-sm active:scale-95 transition-transform" onclick="alert('进入续研流：乔布斯 2005 斯坦福（第 12 句）')">
+<span class="material-symbols-outlined text-[14px]">play_arrow</span>
+<span class="font-label-sm text-label-sm tracking-widest font-medium">即刻续研</span>
+</button>
+</div>
+<!-- 精微进度指示 -->
+<div class="w-full bg-surface-container mt-3 h-1 rounded-full overflow-hidden">
+<div class="bg-secondary h-full rounded-full" style="width: 28.5%;"></div>
+</div>
+</section>
+<!-- 快速导入入口面板 (Quick Import Card) -->
+<section class="rounded-xl bg-surface-container-low p-space-md shadow-sm">
+<div class="flex items-center justify-between mb-2.5">
+<div class="flex items-center space-x-2">
+<div class="w-7 h-7 rounded-DEFAULT bg-primary-container text-on-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px]">add_link</span>
+</div>
+<div>
+<h3 class="font-title-sm text-title-sm text-on-surface leading-tight">导入新音频 / 视频</h3>
+<p class="font-label-sm text-label-sm text-on-surface-variant/80">解析 YouTube、播客、TED 或本地长篇材料</p>
+</div>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors p-1" id="toggle-import-btn" onclick="toggleImportOptions()">
+<span class="material-symbols-outlined text-[20px] transition-transform duration-200" id="import-chevron">expand_more</span>
+</button>
+</div>
+<div class="flex items-center space-x-2">
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px]">link</span>
+<input class="w-full pl-9 pr-3 py-2 bg-surface-container-lowest text-on-surface font-body-sm text-body-sm rounded-DEFAULT focus:outline-none placeholder:text-on-surface-variant/50" id="media-link-input" placeholder="粘贴音视频链接 (Bilibili/YouTube/Podcast)..." type="url"/>
+</div>
+<button class="bg-primary text-on-primary px-3.5 py-2 rounded-DEFAULT font-label-sm text-label-sm tracking-wider flex items-center space-x-1 shrink-0 active:scale-95 transition-transform" onclick="handleImportSubmit()">
+<span class="material-symbols-outlined text-[16px]">draw</span>
+<span>萃取</span>
+</button>
+</div>
+<!-- 展开项：指定归集与本地文件 -->
+<div class="hidden mt-3 pt-3 border-t border-surface-container-high/60 space-y-2" id="import-advanced-panel">
+<div class="flex items-center justify-between text-body-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant">拟归入材料集：</span>
+<select class="bg-surface-container-lowest text-on-surface font-label-sm text-label-sm px-2.5 py-1 rounded-DEFAULT focus:outline-none">
+<option>《乔布斯典籍演说与科技叙事》</option>
+<option>《BBC 自然哲学慢速纪录片》</option>
+<option>《经济学人深度社论选辑》</option>
+<option>+ 存为独立新材料集</option>
+</select>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="font-label-sm text-label-sm text-on-surface-variant">本地典籍文件：</span>
+<label class="cursor-pointer inline-flex items-center space-x-1 text-secondary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[15px]">upload_file</span>
+<span>选择本地 MP3 / MP4 / SRT</span>
+<input class="hidden" onchange="alert('已载入本地材料：' + (this.files[0]?.name || ''))" type="file"/>
+</label>
+</div>
+</div>
+</section>
+<!-- 材料集分类横向滑轨 (Scrollable Category Tabs) -->
+<section class="flex flex-col space-y-2 pt-1">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-1.5">
+<span class="material-symbols-outlined text-[17px] text-primary">shelves</span>
+<h3 class="font-title-sm text-title-sm text-on-surface">典籍集卷分类</h3>
+</div>
+<!-- 新拟集卷按钮 -->
+<button class="inline-flex items-center space-x-1 font-label-sm text-label-sm text-primary hover:text-primary-container transition-colors py-1 px-1.5" onclick="promptNewVolume()">
+<span class="material-symbols-outlined text-[15px]">create_new_folder</span>
+<span class="tracking-wide">拟定新集</span>
+</button>
+</div>
+<!-- 过滤器药丸选项卡 -->
+<div class="flex items-center space-x-2 overflow-x-auto no-scrollbar py-1 -mx-margin-mobile px-margin-mobile">
+<button class="cat-pill active shrink-0 px-3 py-1 rounded-full bg-primary text-on-primary font-label-sm text-label-sm tracking-wider transition-colors shadow-sm" data-category="all">
+        全部集卷 (12)
+      </button>
+<button class="cat-pill shrink-0 px-3 py-1 rounded-full bg-surface-container-high/70 text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm tracking-wider transition-colors" data-category="literature">
+        文学原典 (3)
+      </button>
+<button class="cat-pill shrink-0 px-3 py-1 rounded-full bg-surface-container-high/70 text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm tracking-wider transition-colors" data-category="speech">
+        大师演说 (4)
+      </button>
+<button class="cat-pill shrink-0 px-3 py-1 rounded-full bg-surface-container-high/70 text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm tracking-wider transition-colors" data-category="journal">
+        播客外刊 (3)
+      </button>
+<button class="cat-pill shrink-0 px-3 py-1 rounded-full bg-surface-container-high/70 text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm tracking-wider transition-colors" data-category="private">
+        自拟私藏 (2)
+      </button>
+</div>
+</section>
+<!-- 核心卡片列表：典籍材料集 (Collection Cards) -->
+<section class="flex flex-col space-y-3.5 pt-0.5">
+<!-- 卡片 1：《乔布斯典籍演说与科技叙事》 -->
+<article class="volume-card group cursor-pointer rounded-xl bg-surface-container-lowest p-space-md shadow-sm transition-all duration-200 active:scale-[0.99]" data-type="speech" onclick="openCollection('乔布斯典籍演说与科技叙事')">
+<div class="flex items-start gap-3">
+<!-- 仿古籍封面图 -->
+<div class="relative w-20 h-24 rounded-lg overflow-hidden shrink-0 bg-surface-container-low shadow-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Traditional cloth-bound book cover mockup for Steve Jobs keynote collection, deep vermilion cloth texture, sumi-e ink typography, gold foil embossing, Japanese wabi-sabi paper aesthetic, macro photograph studio lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEWbRfMgCwMn6ZfPzcY87kL_7OFEpbBOUFByMcbf2-ckdh8Z97jg1K1ZP7e2OcI9g1Rd0-BisFHjoG5Xc42Jb3wYUNOnTi7nNQ8rNKS4eCw6moNtZf28fWi_xs388J7OpulM2QJPnObnxU4hL-kfRr2Zkil3kI0e6jIrEc2xcdIoijpNjGVfGgOTvbpo_vS3hm9mw6INnodZIZ0ZztNNfV6-0rxNQv_D6urjOu1FcR"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/50 via-transparent to-transparent"></div>
+<span class="absolute bottom-1 left-1.5 font-headline-sm text-[11px] text-surface font-medium tracking-tight">卷壹·演说</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+<div>
+<div class="flex items-center justify-between gap-1 mb-1">
+<span class="inline-block px-1.5 py-0.5 rounded-DEFAULT bg-secondary-container/40 text-on-secondary-container font-label-sm text-[10px] tracking-widest font-semibold uppercase">研读中 · 72%</span>
+<div class="flex items-center space-x-0.5 text-primary">
+<span class="material-symbols-outlined text-[15px]" style="font-variation-settings: 'FILL' 1;">save_as</span>
+<span class="font-label-sm text-[10px] tracking-wider">甲级</span>
+</div>
+</div>
+<h4 class="font-title-md text-title-md text-on-surface tracking-tight group-hover:text-primary transition-colors line-clamp-1">
+              《乔布斯典籍演说与科技叙事》
+            </h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant/80 mt-1 line-clamp-1">
+              涵盖 1984 Macintosh 发布至 2005 斯坦福演讲全部修辞拆解。
+            </p>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex items-center space-x-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">演说</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">科技</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant/90">
+<span class="font-semibold text-on-surface">8</span> 篇材料 · <span class="font-semibold text-primary">42</span> 句
+            </div>
+</div>
+</div>
+</div>
+</article>
+<!-- 卡片 2：《BBC 自然哲学慢速纪录片》 -->
+<article class="volume-card group cursor-pointer rounded-xl bg-surface-container-lowest p-space-md shadow-sm transition-all duration-200 active:scale-[0.99]" data-type="literature" onclick="openCollection('BBC 自然哲学慢速纪录片')">
+<div class="flex items-start gap-3">
+<!-- 仿古籍封面图 -->
+<div class="relative w-20 h-24 rounded-lg overflow-hidden shrink-0 bg-surface-container-low shadow-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="British wilderness documentary cinematography, mist-shrouded Scottish highlands, ancient oak tree, sumi ink painting mood with tea-stained parchment tone, cinematic lighting, ultra sharp detailed photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCY9YfYbFktwdPjgXmSPVSOrMxWxTIfo9ydm8TwpiaoefBPKUoAwTX2A00HCRqi2OGZMaA6KVWBuGqBRFFGKAfTA4D7PQvL_IJ1Vq3wgMZLq8ctlL0IghGgMohtztWaaA4qLWs0Lsh0I49WYQE1-xSZfiTYzwMIPz9KhzvB7fV1Z8wdheq8DXHUkpQkLy6-ZotaxSBE646RO3tZlxLhPbl_r0Eq5SE7CaAWpQ0K4efh"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/50 via-transparent to-transparent"></div>
+<span class="absolute bottom-1 left-1.5 font-headline-sm text-[11px] text-surface font-medium tracking-tight">卷贰·自然</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+<div>
+<div class="flex items-center justify-between gap-1 mb-1">
+<span class="inline-block px-1.5 py-0.5 rounded-DEFAULT bg-surface-container-high text-on-surface-variant font-label-sm text-[10px] tracking-widest font-semibold uppercase">C1 雅致度</span>
+<span class="font-label-sm text-[11px] text-secondary font-medium">英格兰学院音</span>
+</div>
+<h4 class="font-title-md text-title-md text-on-surface tracking-tight group-hover:text-primary transition-colors line-clamp-1">
+              《BBC 自然哲学慢速纪录片》
+            </h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant/80 mt-1 line-clamp-1">
+              宏大自然史诗解说，沉浸式品读细腻的感官形容词与倒装句构。
+            </p>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex items-center space-x-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">纪录片</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">英音</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant/90">
+<span class="font-semibold text-on-surface">14</span> 篇材料 · 慢品
+            </div>
+</div>
+</div>
+</div>
+</article>
+<!-- 卡片 3：《经济学人深度社论选辑》 -->
+<article class="volume-card group cursor-pointer rounded-xl bg-surface-container-lowest p-space-md shadow-sm transition-all duration-200 active:scale-[0.99]" data-type="journal" onclick="openCollection('经济学人深度社论选辑')">
+<div class="flex items-start gap-3">
+<!-- 仿古籍封面图 -->
+<div class="relative w-20 h-24 rounded-lg overflow-hidden shrink-0 bg-surface-container-low shadow-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Editorial magazine cover lying on textured washi paper, vintage typographic editorial layout, minimalist fountain pen with dark red ink, soft shadows, warm natural wood desk lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB5hlWJmLt6AuRbalvqSbJNml7SZ6RD0oJwTtGo7Y2UyKhcZz1C4UANVaSFHpxvkiT_4bt00TH8LoMWBb2s-TZhWRICxEXlJC79vN0tEd-Y_3o71qlcylhAldD17jOGhpx0nihYLBupSJ0hOTUmgPKsD4oFrF8x1KQOvtftEFmvXr_VyDes_qJ8WgdCICxB2iq7hvw4tSf_Wa4jxHsxWX2mNqULb4HA2x1DxYzIYkm_"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/50 via-transparent to-transparent"></div>
+<span class="absolute bottom-1 left-1.5 font-headline-sm text-[11px] text-surface font-medium tracking-tight">卷叁·政经</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+<div>
+<div class="flex items-center justify-between gap-1 mb-1">
+<span class="inline-block px-1.5 py-0.5 rounded-DEFAULT bg-primary-fixed text-primary font-label-sm text-[10px] tracking-widest font-semibold uppercase">双语字幕</span>
+<span class="font-label-sm text-[11px] text-on-surface-variant/70">高频长难句</span>
+</div>
+<h4 class="font-title-md text-title-md text-on-surface tracking-tight group-hover:text-primary transition-colors line-clamp-1">
+              《经济学人深度社论选辑》
+            </h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant/80 mt-1 line-clamp-1">
+              提炼政经博弈核心修辞与英式隐喻，附带考究文人译文。
+            </p>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex items-center space-x-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">外刊</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">高级政经</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant/90">
+<span class="font-semibold text-on-surface">22</span> 篇材料 · 深入
+            </div>
+</div>
+</div>
+</div>
+</article>
+<!-- 卡片 4：《牛津通识课：日常思辨》 -->
+<article class="volume-card group cursor-pointer rounded-xl bg-surface-container-lowest p-space-md shadow-sm transition-all duration-200 active:scale-[0.99]" data-type="literature" onclick="openCollection('牛津通识课：日常思辨')">
+<div class="flex items-start gap-3">
+<!-- 仿古籍封面图 -->
+<div class="relative w-20 h-24 rounded-lg overflow-hidden shrink-0 bg-surface-container-low shadow-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Oxford collegiate library interior with antique wooden shelves, stacks of philosophy treatises, soft afternoon rays through leaded glass windows, warm sepia paper ambiance, cinematic editorial shot." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAljWdGclIYWkR2ORNSI583BzD2UScmjrWs6sf4g3QkecWSbZFHFPCDckB4IdbNNWBydJsQ9xM9Gxkq4vrY3_hH0ewETe2lyDVPS9o5xXlgB8WBZxiCsf_b78gJ_eom1yFbQeYy36RSoCxRb3a_qwrm-4z1TFcEOd1XNueu1gzsG2sxRqnSl2sbQeUGxJDbVD03syRGKtKZoRCAP_CzCAJFdsKjJLxzvpcyixG1NLNz"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/50 via-transparent to-transparent"></div>
+<span class="absolute bottom-1 left-1.5 font-headline-sm text-[11px] text-surface font-medium tracking-tight">卷肆·哲学</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+<div>
+<div class="flex items-center justify-between gap-1 mb-1">
+<span class="inline-block px-1.5 py-0.5 rounded-DEFAULT bg-surface-container-high text-on-surface-variant font-label-sm text-[10px] tracking-widest font-semibold uppercase">思辨推演</span>
+<span class="font-label-sm text-[11px] text-on-surface-variant/70">逻辑连词萃选</span>
+</div>
+<h4 class="font-title-md text-title-md text-on-surface tracking-tight group-hover:text-primary transition-colors line-clamp-1">
+              《牛津通识课：日常思辨》
+            </h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant/80 mt-1 line-clamp-1">
+              伦理、时间与心灵哲学核心导读，适合练习学术口语辩论。
+            </p>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex items-center space-x-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">通识</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">学术</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant/90">
+<span class="font-semibold text-on-surface">10</span> 篇材料 · 经典
+            </div>
+</div>
+</div>
+</div>
+</article>
+</section>
+<!-- 底部禅意留白与印纹分隔 -->
+<div class="flex items-center justify-center space-x-3 pt-6 pb-2 text-on-surface-variant/40">
+<div class="w-12 h-px bg-surface-container-highest"></div>
+<span class="font-headline-sm text-[14px] select-none text-tertiary">❖ 研精极虑 ❖</span>
+<div class="w-12 h-px bg-surface-container-highest"></div>
+</div>
+</div>
+<script>
+  // 高亮底部导航当前页：藏经
+  (function initActiveTab() {
+    const navLinks = document.querySelectorAll('nav a[data-path]');
+    navLinks.forEach(link => {
+      if (link.getAttribute('data-path') === 'library') {
+        link.classList.add('text-primary', 'font-semibold');
+        link.classList.remove('text-on-surface-variant');
+        const icon = link.querySelector('.material-symbols-outlined');
+        if (icon) {
+          icon.style.fontVariationSettings = "'FILL' 1";
+        }
+      } else {
+        link.classList.remove('text-primary', 'font-semibold');
+        link.classList.add('text-on-surface-variant');
+      }
+    });
+  })();
+
+  // 展开收起导入高级选项
+  function toggleImportOptions() {
+    const panel = document.getElementById('import-advanced-panel');
+    const chevron = document.getElementById('import-chevron');
+    if (panel.classList.contains('hidden')) {
+      panel.classList.remove('hidden');
+      chevron.style.transform = 'rotate(180deg)';
+    } else {
+      panel.classList.add('hidden');
+      chevron.style.transform = 'rotate(0deg)';
+    }
+  }
+
+  // 提交音视频萃取
+  function handleImportSubmit() {
+    const input = document.getElementById('media-link-input');
+    const val = input.value.trim();
+    if (!val) {
+      alert('请先输入或粘贴待研读的音视频典籍链接');
+      input.focus();
+      return;
+    }
+    alert('已启动语流解析：《' + val + '》\n正在提取多轨英文字幕与双语对照分句...');
+    input.value = '';
+  }
+
+  // 拟定新材料集
+  function promptNewVolume() {
+    const name = prompt('拟定新藏经集卷名录（例如：《罗曼·罗兰传记研读》）：');
+    if (name) {
+      alert('已辟新卷：《' + name + '》！可立即导入材料归入此卷。');
+    }
+  }
+
+  // 进入材料集详情
+  function openCollection(title) {
+    alert('正在开启典籍卷宗：《' + title + '》\n载入材料篇目与句法卡片...');
+  }
+
+  // 标签栏切换交互
+  document.querySelectorAll('.cat-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.cat-pill').forEach(b => {
+        b.classList.remove('bg-primary', 'text-on-primary', 'shadow-sm');
+        b.classList.add('bg-surface-container-high/70', 'text-on-surface-variant');
+      });
+      btn.classList.add('bg-primary', 'text-on-primary', 'shadow-sm');
+      btn.classList.remove('bg-surface-container-high/70', 'text-on-surface-variant');
+
+      const cat = btn.getAttribute('data-category');
+      const cards = document.querySelectorAll('.volume-card');
+      cards.forEach(card => {
+        if (cat === 'all' || card.getAttribute('data-type') === cat) {
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    });
+  });
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-2px_16px_rgba(26,28,30,0.04)]" data-active-classes="text-primary font-title-sm"><div class="flex items-center justify-around h-16 px-space-xs"><a aria-current="page" class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-space-xs transition-colors text-primary font-title-sm" data-path="library" href="#"><span class="material-symbols-outlined text-[24px]">menu_book</span><span class="font-label-sm text-label-sm tracking-wider mt-0.5">藏经</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-space-xs text-on-surface-variant hover:text-on-surface transition-colors" data-path="reading" href="#"><span class="material-symbols-outlined text-[24px]">auto_stories</span><span class="font-label-sm text-label-sm tracking-wider mt-0.5">精读</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-space-xs text-on-surface-variant hover:text-on-surface transition-colors" data-path="flow" href="#"><span class="material-symbols-outlined text-[24px]">waves</span><span class="font-label-sm text-label-sm tracking-wider mt-0.5">语流</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-space-xs text-on-surface-variant hover:text-on-surface transition-colors" data-path="lexicon" href="#"><span class="material-symbols-outlined text-[24px]">bookmark_manager</span><span class="font-label-sm text-label-sm tracking-wider mt-0.5">词藏</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-space-xs text-on-surface-variant hover:text-on-surface transition-colors" data-path="practice" href="#"><span class="material-symbols-outlined text-[24px]">edit_note</span><span class="font-label-sm text-label-sm tracking-wider mt-0.5">演练</span></a></div></nav></body></html>

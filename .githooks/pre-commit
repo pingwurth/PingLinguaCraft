@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# pre-commit —— 提交前代码审查门禁（对应 CLAUDE.md 提交纪律：三件套必过 + AI 审查）
+#
+# 审查内容（按暂存文件类型按需执行，纯文档/配置提交不空跑）：
+#   *.ts / *.tsx / *.js ...  → pnpm -r typecheck && pnpm -r test && pnpm -r lint
+#   services/ai-engine 的 *.py → uv run pytest（虚拟环境未就绪时提示并跳过）
+#   代码文件（TS/JS/Py/Shell）→ scripts/ai-review.sh AI 语义审查
+#     （简洁性/架构/复用/维护/可读性 + .opencodereview/rule.json 项目规范，
+#       critical/high 阻断提交；ocr 缺失或故障时自动降级放行）
+#
+# 启用方式（hooks 目录随仓库版本化，需一次性指给 git）：
+#   git config core.hooksPath .githooks
+#
+# 跳过方式：
+#   git commit --no-verify          # git 原生跳过（紧急情况，慎用）
+#   SKIP_GATES=1 git commit ...     # 同上，等价开关
+#   SKIP_AI=1 git commit ...        # 仅跳过 AI 审查层（三件套仍执行）
+set -euo pipefail
+
+# 钩子可能从子目录被调用，统一回到仓库根执行
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# ---- 逃生口：明确声明跳过门禁 ----
+if [[ "${SKIP_GATES:-0}" == "1" ]]; then
+  echo "[pre-commit] SKIP_GATES=1，跳过代码审查门禁"
+  exit 0
+fi
+
+# ---- 收集暂存文件（新增/复制/修改/重命名，排除删除）----
+# 关闭 core.quotePath：默认开启时含中文/特殊字符的路径会被 C 转义成 "path\344\270\255"
+# 形式，结尾多出引号，下方的扩展名匹配全部失配 → 所有门禁被静默跳过
+staged="$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)"
+
+if [[ -z "$staged" ]]; then
+  echo "[pre-commit] 无暂存文件（如为空提交则直接放行）"
+  exit 0
+fi
+
+# ---- 判断是否涉及 TS/JS 代码或影响其构建的配置（走三件套门禁）----
+# 配置类（package.json/lockfile/tsconfig/eslint 配置）单独改动也可能破坏类型/测试，
+# 只按代码文件触发会漏掉这类提交
+ts_files="$(grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$|(^|/)(package\.json|pnpm-lock\.yaml|tsconfig[^/]*\.json|eslint\.config\.[^/]+|next\.config\.[^/]+)$' <<<"$staged" || true)"
+
+# ---- 判断是否涉及引擎 Python 代码（走 pytest 门禁）----
+py_files="$(grep -E '^services/ai-engine/.*\.py$' <<<"$staged" || true)"
+
+# ---- 判断是否涉及 Shell 脚本（一并纳入 AI 审查范围）----
+sh_files="$(grep -E '\.(sh)$|^\.githooks/' <<<"$staged" || true)"
+
+if [[ -z "$ts_files" && -z "$py_files" && -z "$sh_files" ]]; then
+  echo "[pre-commit] 暂存内容不含代码文件，跳过门禁"
+  exit 0
+fi
+
+fail_gate() { # $1=失败环节 $2=提示
+  printf '\n\033[1;31m[pre-commit] %s 未通过\033[0m\n%s\n' "$1" "$2" >&2
+  exit 1
+}
+
+# ---- 门禁一/二/三：TS/JS 三件套（typecheck → test → lint，串行短路）----
+if [[ -n "$ts_files" ]]; then
+  command -v pnpm >/dev/null 2>&1 \
+    || fail_gate "pnpm" "未找到 pnpm，请先安装（Node ≥22 / pnpm 10）"
+
+  echo "[pre-commit] 门禁 1/5 typecheck ..."
+  pnpm -r typecheck \
+    || fail_gate "typecheck" "类型检查失败：请修复后再提交，或 git commit --no-verify 跳过（慎用）"
+
+  echo "[pre-commit] 门禁 2/5 test ..."
+  pnpm -r test \
+    || fail_gate "test" "单元测试失败：请修复后再提交，或 git commit --no-verify 跳过（慎用）"
+
+  echo "[pre-commit] 门禁 3/5 lint ..."
+  pnpm -r lint \
+    || fail_gate "lint" "代码风格检查失败：请修复后再提交，或 git commit --no-verify 跳过（慎用）"
+fi
+
+# ---- 门禁四：引擎 pytest（工具/虚拟环境未就绪时提示跳过，不误报为测试失败）----
+if [[ -n "$py_files" ]]; then
+  if [[ ! -d "services/ai-engine/.venv" ]]; then
+    echo "[pre-commit] 引擎虚拟环境未初始化，跳过 pytest（首次请运行 ./scripts/engine-setup.sh）"
+  elif ! command -v uv >/dev/null 2>&1; then
+    echo "[pre-commit] 未安装 uv（.venv 已存在），跳过 pytest——工具缺失不等于测试失败"
+  else
+    echo "[pre-commit] 门禁 4/5 引擎 pytest ..."
+    (uv run --directory services/ai-engine pytest -q) \
+      || fail_gate "pytest" "引擎测试失败：请修复后再提交，或 git commit --no-verify 跳过（慎用）"
+  fi
+fi
+
+# ---- 门禁五：AI 语义审查（scripts/ai-review.sh 内部自带降级与 SKIP_AI 逃生口）----
+# 经 bash 调用并做存在性守卫：脚本缺失或丢失执行位时降级放行，
+# 而不是以 126/127 阻断每一次提交（与「AI 层故障绝不卡死提交」的约定一致）
+if [[ -f "$ROOT/scripts/ai-review.sh" ]]; then
+  echo "[pre-commit] 门禁 5/5 AI 语义审查（ocr，约 0.5-2 分钟）..."
+  bash "$ROOT/scripts/ai-review.sh" \
+    || fail_gate "AI 审查" "存在阻断级发现（critical/high）：请修复后重新提交，或 SKIP_AI=1 / git commit --no-verify 跳过（慎用）"
+else
+  echo "[pre-commit] scripts/ai-review.sh 缺失，跳过 AI 审查（降级放行）"
+fi
+
+echo "[pre-commit] 代码审查门禁全部通过 ✓"

@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "on-secondary-container": "#496d1c", "primary-fixed": "#ffdad6", "on-secondary-fixed-variant": "#2e4f00", "inverse-on-surface": "#f0f0f3", "surface-container-low": "#f3f3f6", "secondary": "#456818", "primary": "#93000b", "tertiary-fixed-dim": "#d8c3aa", "secondary-container": "#c2ed8d", "secondary-fixed": "#c5f090", "error-container": "#ffdad6", "surface-dim": "#d9dadc", "surface-container-lowest": "#ffffff", "on-surface": "#1a1c1e", "on-secondary": "#ffffff", "on-primary-fixed-variant": "#93000b", "secondary-fixed-dim": "#a9d477", "error": "#ba1a1a", "tertiary-container": "#6b5c47", "tertiary-fixed": "#f5dfc5", "outline-variant": "#e4beb9", "outline": "#8f6f6c", "on-background": "#1a1c1e", "on-error": "#ffffff", "surface": "#f9f9fc", "surface-variant": "#e2e2e5", "on-surface-variant": "#5b403d", "background": "#f9f9fc", "inverse-surface": "#2f3133", "on-tertiary-fixed": "#241a0a", "on-error-container": "#93000a", "on-primary": "#ffffff", "on-tertiary-fixed-variant": "#524531", "inverse-primary": "#ffb4ab", "surface-container-high": "#e8e8ea", "surface-tint": "#b91c1c", "on-tertiary": "#ffffff", "on-tertiary-container": "#ead5bc", "surface-container-highest": "#e2e2e5", "tertiary": "#524431", "surface-bright": "#f9f9fc", "surface-container": "#eeeef0", "primary-fixed-dim": "#ffb4ab", "on-primary-container": "#ffcdc7", "on-primary-fixed": "#410002", "primary-container": "#b91c1c", "on-secondary-fixed": "#102000" }, "borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" }, "spacing": { "gutter": "1.5rem", "space-2xl": "4rem", "space-md": "1rem", "space-xl": "2.5rem", "margin": "3rem", "margin-mobile": "1.25rem", "space-lg": "1.5rem", "gutter-mobile": "1rem", "space-xs": "0.25rem", "space-sm": "0.5rem" }, "fontFamily": { "headline-sm": ["Newsreader"], "body-sm": ["Inter"], "title-sm": ["Inter"], "headline-xl": ["Newsreader"], "headline-lg": ["Newsreader"], "body-md": ["Inter"], "label-md": ["Inter"], "label-sm": ["Inter"], "headline-lg-mobile": ["Newsreader"], "headline-md": ["Newsreader"], "title-md": ["Inter"], "label-lg": ["Newsreader"], "body-lg": ["Newsreader"], "headline-xl-mobile": ["Newsreader"] }, "fontSize": { "headline-sm": ["22px", { "lineHeight": "30px", "fontWeight": "500" }], "body-sm": ["13px", { "lineHeight": "20px", "fontWeight": "400" }], "title-sm": ["15px", { "lineHeight": "22px", "fontWeight": "600" }], "headline-xl": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "400" }], "headline-lg": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.015em", "fontWeight": "400" }], "body-md": ["15px", { "lineHeight": "24px", "fontWeight": "400" }], "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "600" }], "headline-lg-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "400" }], "headline-md": ["28px", { "lineHeight": "36px", "fontWeight": "400" }], "title-md": ["18px", { "lineHeight": "26px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "label-lg": ["14px", { "lineHeight": "18px", "letterSpacing": "0.03em", "fontWeight": "500" }], "body-lg": ["20px", { "lineHeight": "32px", "fontWeight": "400" }], "headline-xl-mobile": ["34px", { "lineHeight": "42px", "letterSpacing": "-0.01em", "fontWeight": "400" }] } } } };</script></head><body class="bg-surface font-body-md text-on-surface antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low z-50 flex flex-col justify-between py-space-lg px-space-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col gap-space-lg"><div class="flex items-center gap-space-sm px-space-sm"><div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-on-primary font-headline-sm text-headline-sm select-none">印</div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">LinguaCraft</span><span class="font-label-sm text-label-sm text-on-surface-variant tracking-widest mt-space-xs uppercase">纸墨研习斋</span></div></div><div class="px-space-sm pt-space-xs"><span class="font-label-sm text-label-sm text-outline tracking-wider uppercase">书斋门廊</span></div><nav class="flex flex-col gap-space-xs" data-active-classes="bg-surface-container-highest text-on-surface font-title-sm text-title-sm shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-md text-body-md" data-path="reader" href="#"><span class="material-symbols-outlined text-[20px]">auto_stories</span><span>精读 Reader</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-md text-body-md" data-path="stream" href="#"><span class="material-symbols-outlined text-[20px]">waterfall_chart</span><span>语流 Stream</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-md text-body-md" data-path="arena" href="#"><span class="material-symbols-outlined text-[20px]">swords</span><span>演练 Arena</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-md text-body-md" data-path="lexicon" href="#"><span class="material-symbols-outlined text-[20px]">local_library</span><span>词藏 Lexicon</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-md text-body-md" data-path="library" href="#"><span class="material-symbols-outlined text-[20px]">shelves</span><span>藏经阁 Library</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors font-body-md text-body-md" data-path="notebook" href="#"><span class="material-symbols-outlined text-[20px]">edit_note</span><span>研习手账</span></a></nav></div><div class="flex flex-col gap-space-sm px-space-sm pt-space-md"><div class="p-space-sm rounded bg-surface-container flex items-center justify-between"><div class="flex flex-col"><span class="font-label-sm text-label-sm text-outline">今日墨韵</span><span class="font-title-sm text-title-sm text-secondary">四十三卷 · 已毕</span></div><span class="material-symbols-outlined text-secondary text-[20px]">spa</span></div><div class="flex items-center justify-between text-outline hover:text-on-surface transition-colors pt-space-xs"><span class="font-label-sm text-label-sm">墨池修治 v2.4</span><span class="material-symbols-outlined text-[16px]">brush</span></div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 z-40 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 w-full px-space-xl flex items-center justify-between"><div class="flex items-center gap-space-md flex-1 max-w-xl"><div class="relative w-full flex items-center"><span class="material-symbols-outlined absolute left-space-sm text-outline text-[20px]">search</span><input class="w-full bg-surface-container-low text-on-surface placeholder:text-outline font-body-sm text-body-sm pl-9 pr-space-md py-space-xs rounded focus:outline-none focus:bg-surface-container focus:ring-1 focus:ring-primary transition-all" placeholder="搜研名篇、金句语卷、章回典籍..." type="text"/></div></div><div class="flex items-center gap-space-md"><button class="flex items-center gap-space-xs bg-primary hover:bg-primary-container text-on-primary px-space-md py-space-xs rounded transition-colors font-label-md text-label-md" type="button"><span class="material-symbols-outlined text-[18px]">library_add</span><span>导入文献</span></button><div class="h-6 w-px bg-surface-variant mx-space-xs"></div><div class="flex items-center gap-space-sm"><div class="flex flex-col text-right hidden sm:flex"><span class="font-title-sm text-title-sm text-on-surface leading-tight">宗师文墨</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-tight">翰林学士 · 研习位</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></div></header><main class="relative pt-16 w-full px-space-xl bg-surface min-h-screen"><div class="flex flex-col w-full pb-space-2xl">
+<!-- Top Subtle Texture Glow -->
+<div class="relative w-full">
+<div class="absolute -top-10 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute top-20 right-10 w-80 h-80 bg-secondary/5 rounded-full blur-3xl pointer-events-none"></div>
+<!-- 1. Collection Header (卷首抬头) -->
+<div class="relative bg-surface-container-low rounded-lg p-space-xl shadow-sm mb-space-xl overflow-hidden">
+<!-- Decorative Asian Seal Watermark & Japanese Motif Lines -->
+<div class="absolute -right-8 -bottom-10 select-none pointer-events-none opacity-[0.04] text-primary">
+<span class="font-headline-xl text-[180px] leading-none">文</span>
+</div>
+<!-- Breadcrumb -->
+<div class="flex items-center gap-space-xs text-on-surface-variant font-label-md text-label-md mb-space-md">
+<a class="hover:text-primary transition-colors flex items-center gap-1" href="#">
+<span class="material-symbols-outlined text-[16px]">shelves</span>
+<span>藏经阁 (Library)</span>
+</a>
+<span class="text-outline/40">/</span>
+<span class="text-on-surface font-title-sm text-title-sm tracking-wide">卷一 · 乔布斯典籍演说与科技叙事 (Steve Jobs Archives)</span>
+<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant text-[11px] font-label-sm">
+          私享藏本
+        </span>
+</div>
+<!-- Main Title Block & Meta Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
+<div class="lg:col-span-8 flex flex-col gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="w-2.5 h-8 bg-primary rounded-sm inline-block"></span>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">
+              乔布斯典籍演说与科技叙事
+            </h1>
+</div>
+<p class="font-body-lg text-body-lg text-on-surface-variant italic leading-relaxed pl-space-md bg-surface-container-lowest/60 py-space-sm rounded">
+            “收录乔布斯历年发布会、斯坦福毕业演讲及未公开录音，研习科技叙事与顶级修辞演说之精髓。”
+          </p>
+<!-- Badges & Quantitative Metrics -->
+<div class="flex flex-wrap items-center gap-space-md pt-space-xs text-on-surface-variant font-body-sm text-body-sm">
+<div class="flex items-center gap-1.5 bg-surface-container px-space-sm py-1 rounded">
+<span class="material-symbols-outlined text-outline text-[18px]">movie</span>
+<span>典籍文献：<strong class="text-on-surface font-title-sm">8 部音视频</strong></span>
+</div>
+<div class="flex items-center gap-1.5 bg-surface-container px-space-sm py-1 rounded">
+<span class="material-symbols-outlined text-outline text-[18px]">schedule</span>
+<span>卷册总长：<strong class="text-on-surface font-title-sm">02:45:18</strong></span>
+</div>
+<div class="flex items-center gap-1.5 bg-surface-container px-space-sm py-1 rounded">
+<span class="material-symbols-outlined text-secondary text-[18px]">translate</span>
+<span>经卷词藏：<strong class="text-secondary font-title-sm">1,420 词</strong> (阶梯 C1)</span>
+</div>
+<div class="flex items-center gap-1.5 bg-surface-container px-space-sm py-1 rounded">
+<span class="material-symbols-outlined text-outline text-[18px]">calendar_today</span>
+<span>集录于：癸卯初冬 (2023.11)</span>
+</div>
+</div>
+</div>
+<!-- Action Panel / Stamp Buttons -->
+<div class="lg:col-span-4 flex flex-col gap-space-sm justify-end items-end w-full">
+<div class="flex flex-wrap items-center justify-end gap-space-sm w-full">
+<button class="flex-1 sm:flex-none flex items-center justify-center gap-space-xs bg-primary hover:bg-primary-container text-on-primary px-space-lg py-2.5 rounded shadow-sm hover:shadow transition-all font-label-md text-label-md" type="button">
+<span class="material-symbols-outlined text-[18px]">add_box</span>
+<span>+ 导入新材料到此集</span>
+</button>
+<button class="flex items-center gap-1 bg-surface-container hover:bg-surface-container-high text-on-surface px-space-md py-2.5 rounded transition-colors font-label-md text-label-md" type="button">
+<span class="material-symbols-outlined text-[18px]">checklist</span>
+<span>批量编辑</span>
+</button>
+</div>
+<div class="flex items-center justify-end gap-space-sm w-full">
+<button class="flex items-center gap-1 bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface px-space-md py-2 rounded transition-colors font-body-sm text-body-sm shadow-sm" type="button">
+<span class="material-symbols-outlined text-[16px]">file_download</span>
+<span>导出双语学习卷</span>
+</button>
+<button class="flex items-center gap-1 bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface px-space-md py-2 rounded transition-colors font-body-sm text-body-sm shadow-sm" title="集册设定" type="button">
+<span class="material-symbols-outlined text-[16px]">tune</span>
+<span>设置 (名称/题签)</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Progress Ribbon for the entire collection -->
+<div class="mt-space-lg pt-space-md bg-surface-container/50 -mx-space-xl -mb-space-xl px-space-xl py-space-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-sm">
+<div class="flex items-center gap-space-md w-full sm:w-auto">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">卷册修研总度</span>
+<div class="w-48 bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-secondary h-full rounded-full" style="width: 52%;"></div>
+</div>
+<span class="font-title-sm text-title-sm text-secondary">52% (4/8 部已通读)</span>
+</div>
+<div class="flex items-center gap-space-sm text-on-surface-variant font-label-sm text-label-sm">
+<span class="inline-block w-2 h-2 rounded-full bg-secondary"></span>
+<span>今日已温习 42 句 · 耗时 28 分钟</span>
+</div>
+</div>
+</div>
+<!-- 2. Search, Filters & View Toolbar (检索、筛选与视图工具栏) -->
+<div class="bg-surface-container-lowest rounded-lg p-space-md shadow-sm mb-space-lg flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-space-md">
+<!-- Search Input -->
+<div class="relative flex-1 max-w-lg">
+<span class="material-symbols-outlined absolute left-space-sm top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+<input class="w-full bg-surface-container-low text-on-surface placeholder:text-outline font-body-sm text-body-sm pl-9 pr-space-md py-2 rounded focus:outline-none focus:bg-surface-container focus:ring-1 focus:ring-primary transition-all" placeholder="在本科卷中检索材料标题、音视频来源或包含的生词..." type="text"/>
+</div>
+<!-- Filters & Sorting controls -->
+<div class="flex flex-wrap items-center gap-space-sm justify-between lg:justify-end">
+<!-- Segmented Filter Chips -->
+<div class="flex items-center gap-1 p-0.5 bg-surface-container-low rounded-lg overflow-x-auto text-on-surface-variant font-label-md text-label-md">
+<button class="px-space-sm py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs" type="button">全部 (8)</button>
+<button class="px-space-sm py-1 rounded hover:text-on-surface transition-colors" type="button">视频 (5)</button>
+<button class="px-space-sm py-1 rounded hover:text-on-surface transition-colors" type="button">纯音频 (3)</button>
+<span class="h-3 w-px bg-outline/20 mx-1"></span>
+<button class="px-space-sm py-1 rounded hover:text-on-surface transition-colors" type="button">已完卷 (4)</button>
+<button class="px-space-sm py-1 rounded hover:text-on-surface transition-colors" type="button">研习中 (3)</button>
+<button class="px-space-sm py-1 rounded hover:text-on-surface transition-colors" type="button">未开卷 (1)</button>
+</div>
+<!-- Sort Select -->
+<div class="flex items-center gap-1.5 text-on-surface-variant font-body-sm text-body-sm bg-surface-container-low px-space-sm py-1.5 rounded">
+<span class="material-symbols-outlined text-[16px] text-outline">sort</span>
+<span class="font-label-sm text-label-sm text-outline">排序：</span>
+<select class="bg-transparent text-on-surface font-body-sm text-body-sm focus:outline-none cursor-pointer pr-1">
+<option>最近导入 (Imported)</option>
+<option>研习进度 (Progress)</option>
+<option>时长长短 (Duration)</option>
+<option>生词密集度 (Lexicon)</option>
+</select>
+</div>
+</div>
+</div>
+<!-- 3. Collection Material List (材料集文献列表) -->
+<div class="flex flex-col gap-space-sm mb-space-xl">
+<!-- ITEM 1: Active / Focused Card -->
+<div class="relative bg-surface-container-lowest hover:bg-surface-container-lowest/90 transition-all rounded-lg p-space-lg shadow-sm hover:shadow-md group">
+<!-- Visual Accent Marker on active material -->
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l-lg"></div>
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-md items-center">
+<!-- Left: Thumbnail & Badges -->
+<div class="xl:col-span-4 flex items-start sm:items-center gap-space-md">
+<div class="relative w-36 sm:w-44 h-24 rounded bg-surface-container-high flex-shrink-0 overflow-hidden group-hover:scale-[1.02] transition-transform">
+<div class="w-full h-full bg-cover bg-center" data-alt="Monochrome cinematic portrait of Steve Jobs delivering the Stanford commencement speech under natural outdoor sunlight, high contrast warm parchment aesthetic, vintage film grain." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBCZOrlPQhpq6cMLgYslfnU8qN7Vq_ycT7RfOAxN9gXy7lm7ztpy7oANFjCedCyn1bSqgm-j76aayMoNeDZZzRIxA6tGow82LN7NfVL7PsCB6FmMJWrDwWUTXSibOiY5alT4wprjPhrAxffG2jmD9JWdh9hWCeZQzDzngN7o7DmnX4vwJJfBUKoIm6LP_a58WlMd-PImqWjvWfxetKyh70WS9dgP7K54Rbzciw0NY5_')"></div>
+<span class="absolute bottom-1 right-1 bg-surface-dim/90 backdrop-blur-xs text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm">
+                14:45
+              </span>
+<span class="absolute top-1 left-1 bg-primary text-on-primary px-1.5 py-0.5 rounded font-label-sm text-label-sm uppercase flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[12px]">smart_display</span> MP4
+              </span>
+</div>
+<div class="flex flex-col gap-1 min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-label-sm text-label-sm text-primary tracking-wide">卷册 · 01 正在研习</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2 hover:text-primary transition-colors cursor-pointer">
+                2005 斯坦福大学毕业典礼致辞：连缀人生点滴
+              </h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">
+                Stanford University Commencement Address: "Connecting the Dots"
+              </p>
+</div>
+</div>
+<!-- Middle: Rich Linguistic Metadata & Progress Gauge -->
+<div class="xl:col-span-5 grid grid-cols-3 sm:grid-cols-4 gap-space-sm items-center py-2 px-space-md bg-surface-container-low/70 rounded">
+<!-- Metric: Sentences -->
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">章回句数</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-on-surface">42</span>
+<span class="text-body-sm text-outline">句</span>
+</div>
+</div>
+<!-- Metric: Vocabulary -->
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">去重词藏</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-secondary">386</span>
+<span class="text-body-sm text-outline">词</span>
+</div>
+</div>
+<!-- Metric: Subtitles / Alignment -->
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">校订状态</span>
+<span class="inline-flex items-center gap-1 text-secondary font-label-sm text-label-sm mt-1">
+<span class="material-symbols-outlined text-[14px]">verified</span>
+                双语 Whisper 精校
+              </span>
+</div>
+<!-- Metric: Reading Progress -->
+<div class="flex flex-col col-span-3 sm:col-span-1">
+<div class="flex justify-between items-center text-label-sm font-label-sm text-outline">
+<span>进度 35%</span>
+<span class="text-primary font-semibold">第12句</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mt-1">
+<div class="bg-primary h-full rounded-full" style="width: 35%;"></div>
+</div>
+</div>
+</div>
+<!-- Right: Actions -->
+<div class="xl:col-span-3 flex items-center justify-end gap-space-sm">
+<button class="flex items-center gap-1.5 bg-primary hover:bg-primary-container text-on-primary px-space-md py-2 rounded shadow-sm hover:shadow transition-all font-label-md text-label-md" type="button">
+<span class="material-symbols-outlined text-[16px]">menu_book</span>
+<span>继续精读</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded transition-colors" title="语流校对" type="button">
+<span class="material-symbols-outlined text-[18px]">hearing</span>
+</button>
+<button class="p-2 text-outline hover:text-error hover:bg-error-container/20 rounded transition-colors" title="移出本集" type="button">
+<span class="material-symbols-outlined text-[18px]">folder_delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- ITEM 2: Complete Audio Material -->
+<div class="bg-surface-container-lowest hover:bg-surface-container-lowest/90 transition-all rounded-lg p-space-lg shadow-sm hover:shadow-md">
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-md items-center">
+<!-- Left: Thumbnail & Badges -->
+<div class="xl:col-span-4 flex items-start sm:items-center gap-space-md">
+<div class="relative w-36 sm:w-44 h-24 rounded bg-surface-container-high flex-shrink-0 overflow-hidden flex items-center justify-center">
+<div class="w-full h-full bg-cover bg-center" data-alt="Minimalist recording microphone sitting in an old wood paneled acoustic studio with antique books and manuscripts in soft warm ambient light." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA8TRHdKGJFEWIeSsUVPKsue71-OldXUZ2WzyG-uVLqPdlPO8-vDXzuUvGHEb_p1PEevRpS7VSfRdkgOrzvNeKmmTaNoOHh88WjVEST-tOYaRbpagnd0UkmTZw-QoXg4EBf1sd9w7qBZOwEJPni22UDymXkXgRB73zCXa83JSM8a5OyjGWfr6c-ccAUWld6mTh_3HDlnFWS2HFDWjtvmNd8IoqT_aW06IcoOunDxPqO')"></div>
+<span class="absolute bottom-1 right-1 bg-surface-dim/90 backdrop-blur-xs text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm">
+                03:20
+              </span>
+<span class="absolute top-1 left-1 bg-tertiary text-on-tertiary px-1.5 py-0.5 rounded font-label-sm text-label-sm uppercase flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[12px]">graphic_eq</span> M4A
+              </span>
+</div>
+<div class="flex flex-col gap-1 min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-label-sm text-label-sm text-secondary tracking-wide flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> 卷册 · 02 已完卷
+                </span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2 hover:text-primary transition-colors cursor-pointer">
+                1997 苹果非同凡想 (Think Different) 原声演讲
+              </h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">
+                "Here's to the crazy ones. The misfits. The rebels."
+              </p>
+</div>
+</div>
+<!-- Middle: Rich Linguistic Metadata & Progress Gauge -->
+<div class="xl:col-span-5 grid grid-cols-3 sm:grid-cols-4 gap-space-sm items-center py-2 px-space-md bg-surface-container-low/70 rounded">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">章回句数</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-on-surface">18</span>
+<span class="text-body-sm text-outline">句</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">去重词藏</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-secondary">142</span>
+<span class="text-body-sm text-outline">词</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">校订状态</span>
+<span class="inline-flex items-center gap-1 text-secondary font-label-sm text-label-sm mt-1">
+<span class="material-symbols-outlined text-[14px]">brush</span>
+                AI文人润色完毕
+              </span>
+</div>
+<div class="flex flex-col col-span-3 sm:col-span-1">
+<div class="flex justify-between items-center text-label-sm font-label-sm text-secondary">
+<span>已通读</span>
+<span class="font-semibold">100%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mt-1">
+<div class="bg-secondary h-full rounded-full" style="width: 100%;"></div>
+</div>
+</div>
+</div>
+<!-- Right: Actions -->
+<div class="xl:col-span-3 flex items-center justify-end gap-space-sm">
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface px-space-md py-2 rounded transition-all font-label-md text-label-md" type="button">
+<span class="material-symbols-outlined text-[16px]">replay</span>
+<span>复读温习</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded transition-colors" title="音律语速" type="button">
+<span class="material-symbols-outlined text-[18px]">speed</span>
+</button>
+<button class="p-2 text-outline hover:text-error hover:bg-error-container/20 rounded transition-colors" title="移出本集" type="button">
+<span class="material-symbols-outlined text-[18px]">folder_delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- ITEM 3: Unread / 0% Material -->
+<div class="bg-surface-container-lowest hover:bg-surface-container-lowest/90 transition-all rounded-lg p-space-lg shadow-sm hover:shadow-md">
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-md items-center">
+<!-- Left: Thumbnail & Badges -->
+<div class="xl:col-span-4 flex items-start sm:items-center gap-space-md">
+<div class="relative w-36 sm:w-44 h-24 rounded bg-surface-container-high flex-shrink-0 overflow-hidden">
+<div class="w-full h-full bg-cover bg-center" data-alt="Vintage 1984 Macintosh computer on an exhibition wooden table with beige casing, lit with dramatic museum stage spotlights and paper documents." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAjJ0PoI4IcKjHBfqcTd2cCtQaBSjcu6ZGQ2WPZ-ws-cYoLAYrhMht7Zl0Gy1SsdaWL2zCp2d0pQWytjhb5tuBbdh-nz3XfBY3WX2JpSpKvvSMgQ-0AAHsCLYKtPrkOeYOUH9c1C_EtrG6wEt7ZTfm9_9u8KH2HFH3YPBk7uIONzzQq7oqgI_PTipNlqyj1zq0Y-H8wZKR04O8ZdWCdTk1yg03ZA1gpSgecpsBDHQu6')"></div>
+<span class="absolute bottom-1 right-1 bg-surface-dim/90 backdrop-blur-xs text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm">
+                28:10
+              </span>
+<span class="absolute top-1 left-1 bg-surface-dim text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm uppercase flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[12px]">hd</span> 1080P
+              </span>
+</div>
+<div class="flex flex-col gap-1 min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-label-sm text-label-sm text-outline tracking-wide">卷册 · 03 待启卷</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2 hover:text-primary transition-colors cursor-pointer">
+                1984 第一代 Macintosh 发布会揭幕讲说
+              </h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">
+                The Historical Unveiling of the Macintosh Computer at Flint Center
+              </p>
+</div>
+</div>
+<!-- Middle: Rich Linguistic Metadata & Progress Gauge -->
+<div class="xl:col-span-5 grid grid-cols-3 sm:grid-cols-4 gap-space-sm items-center py-2 px-space-md bg-surface-container-low/70 rounded">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">章回句数</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-on-surface">88</span>
+<span class="text-body-sm text-outline">句</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">去重词藏</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-on-surface">780</span>
+<span class="text-body-sm text-outline">词</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">校订状态</span>
+<span class="inline-flex items-center gap-1 text-on-surface-variant font-label-sm text-label-sm mt-1">
+<span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                AI 字幕已生成
+              </span>
+</div>
+<div class="flex flex-col col-span-3 sm:col-span-1">
+<div class="flex justify-between items-center text-label-sm font-label-sm text-outline">
+<span>未研读</span>
+<span>0%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mt-1">
+<div class="bg-outline/20 h-full rounded-full" style="width: 0%;"></div>
+</div>
+</div>
+</div>
+<!-- Right: Actions -->
+<div class="xl:col-span-3 flex items-center justify-end gap-space-sm">
+<button class="flex items-center gap-1.5 bg-primary/10 hover:bg-primary hover:text-on-primary text-primary px-space-md py-2 rounded transition-all font-label-md text-label-md" type="button">
+<span class="material-symbols-outlined text-[16px]">play_circle</span>
+<span>开启首研</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded transition-colors" title="查词预习" type="button">
+<span class="material-symbols-outlined text-[18px]">find_in_page</span>
+</button>
+<button class="p-2 text-outline hover:text-error hover:bg-error-container/20 rounded transition-colors" title="移出本集" type="button">
+<span class="material-symbols-outlined text-[18px]">folder_delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- ITEM 4: Progress 60% Material -->
+<div class="bg-surface-container-lowest hover:bg-surface-container-lowest/90 transition-all rounded-lg p-space-lg shadow-sm hover:shadow-md">
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-md items-center">
+<div class="xl:col-span-4 flex items-start sm:items-center gap-space-md">
+<div class="relative w-36 sm:w-44 h-24 rounded bg-surface-container-high flex-shrink-0 overflow-hidden">
+<div class="w-full h-full bg-cover bg-center" data-alt="Bondi blue original translucent iMac computer from 1998 captured on an art gallery pedestal with soft museum illumination." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCoADaD5u5gXASmnAC7ujcSPC2zv5_sqsIyz3CYmc-aCkJNGkAj11NEG4wQr9cV7LcjVnj87Y1a7q2wlItrszx5F7s_s0c2a3mR0ZjyK4JHGNDRTF08UIhzSadjIwVT_sYvv3ECliMRTbAJZ70DyvmBDWx_RtcCBc98mJRr-jy3i_LUzTrzCVe_2RmWaGQ3TbCmrMNlzTWcENgfYrWzvXveMsvlUI7FcqvX8YuxP2HB')"></div>
+<span class="absolute bottom-1 right-1 bg-surface-dim/90 backdrop-blur-xs text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm">
+                18:30
+              </span>
+<span class="absolute top-1 left-1 bg-surface-dim text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm uppercase flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[12px]">smart_display</span> 视频
+              </span>
+</div>
+<div class="flex flex-col gap-1 min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-label-sm text-label-sm text-on-surface-variant tracking-wide">卷册 · 04 研读过半</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2 hover:text-primary transition-colors cursor-pointer">
+                1998 iMac 问世：重塑个人电脑美学
+              </h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">
+                Introducing the Bondi Blue iMac: Say hello to the future of consumer tech
+              </p>
+</div>
+</div>
+<div class="xl:col-span-5 grid grid-cols-3 sm:grid-cols-4 gap-space-sm items-center py-2 px-space-md bg-surface-container-low/70 rounded">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">章回句数</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-on-surface">56</span>
+<span class="text-body-sm text-outline">句</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">去重词藏</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-secondary">490</span>
+<span class="text-body-sm text-outline">词</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">校订状态</span>
+<span class="inline-flex items-center gap-1 text-secondary font-label-sm text-label-sm mt-1">
+<span class="material-symbols-outlined text-[14px]">check</span>
+                双语精校
+              </span>
+</div>
+<div class="flex flex-col col-span-3 sm:col-span-1">
+<div class="flex justify-between items-center text-label-sm font-label-sm text-outline">
+<span>进度 60%</span>
+<span class="text-secondary font-semibold">第34句</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mt-1">
+<div class="bg-secondary h-full rounded-full" style="width: 60%;"></div>
+</div>
+</div>
+</div>
+<div class="xl:col-span-3 flex items-center justify-end gap-space-sm">
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface px-space-md py-2 rounded transition-all font-label-md text-label-md" type="button">
+<span class="material-symbols-outlined text-[16px]">menu_book</span>
+<span>研习续览</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded transition-colors" title="生词卡" type="button">
+<span class="material-symbols-outlined text-[18px]">style</span>
+</button>
+<button class="p-2 text-outline hover:text-error hover:bg-error-container/20 rounded transition-colors" title="移出本集" type="button">
+<span class="material-symbols-outlined text-[18px]">folder_delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- ITEM 5: Progress 15% Material -->
+<div class="bg-surface-container-lowest hover:bg-surface-container-lowest/90 transition-all rounded-lg p-space-lg shadow-sm hover:shadow-md">
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-md items-center">
+<div class="xl:col-span-4 flex items-start sm:items-center gap-space-md">
+<div class="relative w-36 sm:w-44 h-24 rounded bg-surface-container-high flex-shrink-0 overflow-hidden">
+<div class="w-full h-full bg-cover bg-center" data-alt="Keynote presentation auditorium in 2007 showing silhouettes of an audience watching a stage demonstration with warm amber ambient lighting." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB5oU-a0e1E6g-nCJjnJFhNl-mNZ-z-tebDZp8Zj1jfJoqLFZV3Qc6-pWcHURaaov5VSag4tnmoAZOUPggyNOcgNQn878EEIelGTIeHDV2NyDI3KikGx5xMpX6MpnsNuDuEVdQrQeT8Hteb3KI5Xy10DnsGoptlnu6ysNoVHozf6ou-00S6PGQvI7uxJzqDSDCrtei2EwVBoqolsVFGVaDD2uJpNmrl9bG_tG3IW7fT')"></div>
+<span class="absolute bottom-1 right-1 bg-surface-dim/90 backdrop-blur-xs text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm">
+                32:15
+              </span>
+<span class="absolute top-1 left-1 bg-surface-dim text-on-surface px-1.5 py-0.5 rounded font-label-sm text-label-sm uppercase flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[12px]">smart_display</span> 视频
+              </span>
+</div>
+<div class="flex flex-col gap-1 min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-label-sm text-label-sm text-on-surface-variant tracking-wide">卷册 · 05 初启研磨</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug line-clamp-2 hover:text-primary transition-colors cursor-pointer">
+                2007 iPhone 重新发明手机：三位一体演讲
+              </h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">
+                "An iPod, a phone, and an internet communicator... Are you getting it?"
+              </p>
+</div>
+</div>
+<div class="xl:col-span-5 grid grid-cols-3 sm:grid-cols-4 gap-space-sm items-center py-2 px-space-md bg-surface-container-low/70 rounded">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">章回句数</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-on-surface">112</span>
+<span class="text-body-sm text-outline">句</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">去重词藏</span>
+<div class="flex items-baseline gap-1 mt-0.5">
+<span class="font-title-md text-title-md text-secondary">920</span>
+<span class="text-body-sm text-outline">词</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">校订状态</span>
+<span class="inline-flex items-center gap-1 text-secondary font-label-sm text-label-sm mt-1">
+<span class="material-symbols-outlined text-[14px]">done_all</span>
+                双语已对齐
+              </span>
+</div>
+<div class="flex flex-col col-span-3 sm:col-span-1">
+<div class="flex justify-between items-center text-label-sm font-label-sm text-outline">
+<span>进度 15%</span>
+<span class="text-primary font-semibold">第17句</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mt-1">
+<div class="bg-primary h-full rounded-full" style="width: 15%;"></div>
+</div>
+</div>
+</div>
+<div class="xl:col-span-3 flex items-center justify-end gap-space-sm">
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface px-space-md py-2 rounded transition-all font-label-md text-label-md" type="button">
+<span class="material-symbols-outlined text-[16px]">menu_book</span>
+<span>研习续览</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded transition-colors" title="文献摘要" type="button">
+<span class="material-symbols-outlined text-[18px]">notes</span>
+</button>
+<button class="p-2 text-outline hover:text-error hover:bg-error-container/20 rounded transition-colors" title="移出本集" type="button">
+<span class="material-symbols-outlined text-[18px]">folder_delete</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- 4. Pagination & Control Bar (纸墨典雅风格分页控件) -->
+<div class="bg-surface-container-lowest rounded-lg p-space-md shadow-sm flex flex-col md:flex-row items-center justify-between gap-space-md text-on-surface-variant font-body-sm text-body-sm">
+<!-- Record Summary & Page Size selector -->
+<div class="flex items-center gap-space-md flex-wrap">
+<div class="flex items-center gap-1 text-outline">
+<span class="material-symbols-outlined text-[18px]">history_edu</span>
+<span>显示第 <strong class="text-on-surface font-title-sm">1 - 5</strong> 条，共 <strong class="text-on-surface font-title-sm">8</strong> 条典籍材料</span>
+</div>
+<div class="h-4 w-px bg-outline/20"></div>
+<div class="flex items-center gap-1.5">
+<span class="text-outline font-label-sm text-label-sm">每页阅览：</span>
+<select class="bg-surface-container-low text-on-surface font-label-md text-label-md px-2 py-1 rounded focus:outline-none cursor-pointer">
+<option selected="">5 条 / 卷</option>
+<option>10 条 / 卷</option>
+<option>20 条 / 卷</option>
+</select>
+</div>
+</div>
+<!-- Pagination Numbers & Step Controls -->
+<div class="flex items-center gap-space-xs flex-wrap">
+<!-- Prev Button -->
+<button class="flex items-center gap-1 px-space-sm py-1.5 rounded bg-surface-container-low text-outline/50 cursor-not-allowed font-label-md text-label-md" disabled="" type="button">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+<span>上一卷</span>
+</button>
+<!-- Pages -->
+<button class="w-8 h-8 rounded bg-primary text-on-primary font-headline-sm text-[15px] flex items-center justify-center shadow-xs" type="button">
+          1
+        </button>
+<button class="w-8 h-8 rounded hover:bg-surface-container text-on-surface font-headline-sm text-[15px] flex items-center justify-center transition-colors" type="button">
+          2
+        </button>
+<button class="w-8 h-8 rounded hover:bg-surface-container text-on-surface font-headline-sm text-[15px] flex items-center justify-center transition-colors" type="button">
+          3
+        </button>
+<span class="px-1 text-outline">···</span>
+<button class="w-8 h-8 rounded hover:bg-surface-container text-on-surface font-headline-sm text-[15px] flex items-center justify-center transition-colors" type="button">
+          8
+        </button>
+<!-- Next Button -->
+<button class="flex items-center gap-1 px-space-sm py-1.5 rounded bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors font-label-md text-label-md" type="button">
+<span>下一卷</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+<!-- Direct Jump Input -->
+<div class="flex items-center gap-1.5 ml-space-sm text-outline font-label-sm text-label-sm">
+<span>转至</span>
+<input class="w-12 text-center bg-surface-container-low text-on-surface py-1 rounded focus:outline-none focus:ring-1 focus:ring-primary font-body-sm text-body-sm" max="8" min="1" type="number" value="1"/>
+<span>卷</span>
+<button class="px-2 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface rounded transition-colors font-label-sm text-label-sm" type="button">
+            印证
+          </button>
+</div>
+</div>
+</div>
+<!-- Editorial Callout Section at Foot of Page -->
+<div class="mt-space-xl p-space-lg rounded-lg bg-surface-container-low flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md">
+<div class="flex items-start gap-space-sm">
+<span class="material-symbols-outlined text-primary text-[24px] mt-0.5">auto_stories</span>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">研读法门建议</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant max-w-2xl mt-0.5">
+            乔布斯文稿修辞极其严谨，主张“三原则表达法（Rule of Three）”与“对比修辞（Contrast Rhetoric）”。建议先以 1.0x 语流盲听一遍，再启双语精读，并在手账中收纳其开场与结语经典句式。
+          </span>
+</div>
+</div>
+<button class="flex items-center gap-1.5 text-secondary hover:text-on-secondary-container transition-colors font-title-sm text-title-sm whitespace-nowrap" type="button">
+<span>查阅修辞剖析笔记</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+</div></main></div></body></html>

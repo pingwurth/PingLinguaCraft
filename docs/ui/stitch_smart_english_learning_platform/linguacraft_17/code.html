@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_stack" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100%;margin:0;padding:0;}body{overscroll-behavior-y:none;-webkit-font-smoothing:antialiased;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "surface-container-highest": "#e2e2e5", "surface": "#f9f9fc", "outline": "#8f6f6c", "on-tertiary": "#ffffff", "surface-container-high": "#e8e8ea", "on-primary-fixed-variant": "#93000b", "on-secondary": "#ffffff", "on-surface": "#1a1c1e", "on-background": "#1a1c1e", "inverse-surface": "#2f3133", "primary-container": "#b91c1c", "on-tertiary-container": "#ead5bc", "on-primary-container": "#ffcdc7", "primary-fixed-dim": "#ffb4ab", "on-error-container": "#93000a", "surface-tint": "#b91c1c", "on-surface-variant": "#5b403d", "primary-fixed": "#ffdad6", "surface-container-lowest": "#ffffff", "tertiary-fixed-dim": "#d8c3aa", "secondary-container": "#c2ed8d", "on-error": "#ffffff", "tertiary": "#524431", "error": "#ba1a1a", "on-tertiary-fixed-variant": "#524531", "on-tertiary-fixed": "#241a0a", "primary": "#93000b", "outline-variant": "#e4beb9", "on-secondary-fixed": "#102000", "inverse-on-surface": "#f0f0f3", "surface-dim": "#d9dadc", "secondary-fixed": "#c5f090", "surface-variant": "#e2e2e5", "secondary": "#456818", "background": "#f9f9fc", "on-primary-fixed": "#410002", "tertiary-fixed": "#f5dfc5", "error-container": "#ffdad6", "surface-bright": "#f9f9fc", "surface-container": "#eeeef0", "on-primary": "#ffffff", "surface-container-low": "#f3f3f6", "on-secondary-container": "#496d1c", "tertiary-container": "#6b5c47", "on-secondary-fixed-variant": "#2e4f00", "secondary-fixed-dim": "#a9d477", "inverse-primary": "#ffb4ab" }, borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" }, spacing: { "space-2xl": "4rem", "space-sm": "0.5rem", "space-xl": "2.5rem", "gutter": "1.5rem", "space-lg": "1.5rem", "margin-mobile": "1.25rem", "gutter-mobile": "1rem", "margin": "3rem", "space-md": "1rem", "space-xs": "0.25rem" }, fontFamily: { "body-lg": ["Newsreader", "serif"], "label-lg": ["Newsreader", "serif"], "label-sm": ["Inter", "sans-serif"], "headline-lg": ["Newsreader", "serif"], "headline-md": ["Newsreader", "serif"], "headline-lg-mobile": ["Newsreader", "serif"], "title-md": ["Inter", "sans-serif"], "body-sm": ["Inter", "sans-serif"], "label-md": ["Inter", "sans-serif"], "title-sm": ["Inter", "sans-serif"], "headline-xl-mobile": ["Newsreader", "serif"], "headline-xl": ["Newsreader", "serif"], "body-md": ["Inter", "sans-serif"], "headline-sm": ["Newsreader", "serif"] }, fontSize: { "body-lg": ["20px", { "lineHeight": "32px", "fontWeight": "400" }], "label-lg": ["14px", { "lineHeight": "18px", "letterSpacing": "0.03em", "fontWeight": "500" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "600" }], "headline-lg": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.015em", "fontWeight": "400" }], "headline-md": ["28px", { "lineHeight": "36px", "fontWeight": "400" }], "headline-lg-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "400" }], "title-md": ["18px", { "lineHeight": "26px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "body-sm": ["13px", { "lineHeight": "20px", "fontWeight": "400" }], "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }], "title-sm": ["15px", { "lineHeight": "22px", "fontWeight": "600" }], "headline-xl-mobile": ["34px", { "lineHeight": "42px", "letterSpacing": "-0.01em", "fontWeight": "400" }], "headline-xl": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "400" }], "body-md": ["15px", { "lineHeight": "24px", "fontWeight": "400" }], "headline-sm": ["22px", { "lineHeight": "30px", "fontWeight": "500" }] } } } };</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-full"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.03)]"><div class="h-16 px-gutter-mobile flex items-center justify-between"><div class="flex items-center gap-space-xs"><button aria-label="返回" class="w-11 h-11 flex items-center justify-center text-on-surface hover:text-primary transition-colors" onclick="history.back()" type="button"><span class="material-symbols-outlined text-[22px]">arrow_back_ios_new</span></button><span class="font-label-md text-label-md text-tertiary tracking-wider select-none">返回</span></div><div class="flex flex-col items-center justify-center"><h1 class="font-headline-sm text-headline-sm text-on-surface tracking-normal font-serif select-none">另辟新案 · 拟定材料集</h1><span class="font-label-sm text-[10px] text-outline tracking-[0.2em] uppercase select-none mt-0.5">LINGUACRAFT · FOLIO</span></div><div class="flex items-center gap-space-xs"><button aria-label="存案归档" class="w-11 h-11 flex items-center justify-center rounded-DEFAULT text-primary hover:bg-surface-container-high transition-colors" type="button"><span class="material-symbols-outlined text-[22px]">bookmark_added</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex flex-col relative w-full pt-16 pb-safe bg-surface min-h-screen"><div class="flex flex-col w-full pb-28">
+<!-- Top Breadcrumb & Header Unit -->
+<section class="px-margin-mobile pt-space-md pb-space-lg flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-xs text-outline font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[15px]">import_contacts</span>
+<span>藏经阁 · 典册存案</span>
+<span class="text-outline-variant font-serif">/</span>
+<span class="text-tertiary">另辟新案</span>
+</div>
+<div class="flex items-center justify-between mt-1">
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile font-serif text-on-surface tracking-tight">
+        另辟新案 · 拟定材料集
+      </h2>
+<span class="px-2.5 py-1 bg-surface-container-high text-primary font-label-sm text-label-sm rounded-full tracking-wider shadow-sm flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+        卷帙编纂制式
+      </span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant font-serif italic leading-relaxed mt-1">
+      “为即将研读的篇帙开辟专属卷册，设定封面典籍印记、研习梯级与生词萃取规则。”
+    </p>
+</section>
+<!-- Section 1: 实时装帧试样 (Touch Bookbinding Preview Carousel / Card) -->
+<section class="px-margin-mobile mb-space-xl">
+<div class="flex items-center justify-between mb-space-sm">
+<div class="flex items-center gap-2">
+<span class="w-1 h-3.5 bg-primary rounded-full"></span>
+<span class="font-label-md text-label-md uppercase tracking-[0.18em] text-tertiary font-semibold">实时装帧试样 · 卷首阅览</span>
+</div>
+<span class="font-label-sm text-label-sm text-outline">仿古四孔线装 · 宣麻拓印</span>
+</div>
+<!-- Book Binding Preview Canvas -->
+<div class="relative w-full rounded-xl bg-surface-container-low p-space-md shadow-md overflow-hidden flex flex-col items-center">
+<!-- Ambient paper glow -->
+<div class="absolute inset-0 bg-gradient-to-b from-surface-container-lowest/80 via-transparent to-surface-container-high/40 pointer-events-none"></div>
+<!-- Realistic Tangible Book Folio Card -->
+<div class="relative w-full max-w-[310px] aspect-[1/1.42] bg-[#F5EFEB] rounded-md shadow-xl flex overflow-hidden transition-all duration-300" id="book-spine-card">
+<!-- Left spine: Traditional thread-bound strip -->
+<div class="w-9 h-full bg-[#E8DDD1] flex flex-col items-center justify-between py-5 shrink-0 relative shadow-[inset_-3px_0_6px_rgba(0,0,0,0.06)]">
+<!-- Thread binding stitch stitches -->
+<div class="w-1 h-3 bg-surface rounded-full shadow-inner"></div>
+<div class="w-1 h-3 bg-surface rounded-full shadow-inner"></div>
+<div class="w-1 h-3 bg-surface rounded-full shadow-inner"></div>
+<div class="w-1 h-3 bg-surface rounded-full shadow-inner"></div>
+<div class="w-1 h-3 bg-surface rounded-full shadow-inner"></div>
+<!-- Spine Calligraphy spine text -->
+<span class="[writing-mode:vertical-rl] font-serif text-[11px] tracking-[0.3em] text-tertiary select-none opacity-80">
+            文墨研习藏本 · 卷初
+          </span>
+</div>
+<!-- Book Cover Surface -->
+<div class="flex-1 p-space-md flex flex-col justify-between relative bg-cover bg-center">
+<!-- Top Row: Classical Seal Stamp & Volume index -->
+<div class="flex items-start justify-between">
+<!-- Red Vermilion Han-stamp seal (朱红印章) -->
+<div class="w-9 h-9 border-2 border-primary/90 bg-primary/10 rounded flex flex-col items-center justify-center text-primary shadow-sm rotate-[-3deg]">
+<span class="font-serif text-[10px] leading-tight font-bold tracking-tighter">研墨</span>
+<span class="font-serif text-[10px] leading-tight font-bold tracking-tighter">校注</span>
+</div>
+<!-- Volume Archive Number -->
+<div class="text-right">
+<span class="font-label-sm text-[10px] text-tertiary font-mono tracking-widest block opacity-75">LC-FOLIO #8042</span>
+<span class="inline-block mt-0.5 px-2 py-0.5 bg-secondary-container text-on-secondary-container font-label-sm text-[10px] rounded-full font-serif font-medium">
+                C1 雅致研习
+              </span>
+</div>
+</div>
+<!-- Cover Center: Classical Landscape Woodcut Print -->
+<div class="my-auto w-full flex flex-col items-center py-2">
+<div class="w-full h-32 rounded bg-surface-container-high overflow-hidden shadow-inner relative flex items-center justify-center">
+<img class="w-full h-full object-cover filter contrast-[1.05] sepia-[0.25]" data-alt="A delicate and serene East Asian sumi-e ink wash landscape illustration featuring mist-covered mountain peaks, solitary pine trees on textured aged Xuan paper, and distant migrating cranes. Warm parchment tones, vermilion accent highlights, minimal zen composition with ample atmospheric negative space." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDJ2-k1w9w5J2tPXgVMnuz1HarFZIyokm3akwavShWEY0IdZEDEK1vb6ksZLinAwNo6fPc1knf58AxiPhBcFyEr3EXK1I2jqrRTwbatp4QTFHj-635nv0IJwGu_Oa2l1CMbRFvk5czrqzDovdak6_nqubY1pDC_ZuLeQve1G9M_DKGN-g9Ht04h_fwRKTiDszxEF_YhpKEHGayuZouC640dCzLT6E75-W8ZQNRzy0tr"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container/60 via-transparent to-transparent"></div>
+<span class="absolute bottom-1.5 right-2 font-serif text-[9px] text-tertiary tracking-widest bg-surface-container-lowest/80 px-1.5 py-0.5 rounded backdrop-blur-sm">
+                木版水印 · 意象图
+              </span>
+</div>
+<!-- Title & Subtitle block on cover -->
+<div class="mt-3 text-center px-1">
+<h3 class="font-headline-sm text-headline-sm font-serif text-on-surface tracking-normal leading-snug drop-shadow-sm" id="preview-cover-title">
+                科技哲学与大师演说选辑
+              </h3>
+<p class="font-body-sm text-[12px] text-on-surface-variant font-serif italic mt-1 line-clamp-2 px-2 text-outline leading-tight" id="preview-cover-subtitle">
+                “在现实与理想的十字路口，研磨科技叙事之顶尖修辞与语流。”
+              </p>
+</div>
+</div>
+<!-- Bottom Cover Sign-off Bar -->
+<div class="pt-2 flex items-center justify-between border-t border-outline-variant/30 text-outline font-serif text-[11px]">
+<span>文墨典藏 · 官修本</span>
+<span class="material-symbols-outlined text-[14px]">auto_stories</span>
+<span>四时常新</span>
+</div>
+</div>
+</div>
+<!-- Quick Style Switcher (装帧质地与经纬色调) -->
+<div class="w-full mt-space-md pt-space-sm flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm text-tertiary tracking-wider font-medium text-center">
+          装帧质地与经纬色调
+        </span>
+<div class="grid grid-cols-4 gap-2 w-full mt-1">
+<button class="flex flex-col items-center gap-1 p-2 rounded-lg bg-surface-container-lowest shadow-sm hover:bg-surface-container transition-all active:scale-95 group" type="button">
+<span class="w-5 h-5 rounded-full bg-[#E6DCCF] shadow-sm flex items-center justify-center">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+</span>
+<span class="font-label-sm text-[11px] text-primary font-medium">粗麻布纹</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 rounded-lg bg-surface-container-high/60 shadow-sm hover:bg-surface-container transition-all active:scale-95" type="button">
+<span class="w-5 h-5 rounded-full bg-[#F5EAC8] shadow-sm"></span>
+<span class="font-label-sm text-[11px] text-tertiary">宣纸洒金</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 rounded-lg bg-surface-container-high/60 shadow-sm hover:bg-surface-container transition-all active:scale-95" type="button">
+<span class="w-5 h-5 rounded-full bg-[#2C3E50] shadow-sm"></span>
+<span class="font-label-sm text-[11px] text-tertiary">深黛靛蓝</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 rounded-lg bg-surface-container-high/60 shadow-sm hover:bg-surface-container transition-all active:scale-95" type="button">
+<span class="w-5 h-5 rounded-full bg-[#8E4A34] shadow-sm"></span>
+<span class="font-label-sm text-[11px] text-tertiary">赭石古籍</span>
+</button>
+</div>
+</div>
+<!-- Quick Cover Illustration Actions -->
+<div class="w-full flex items-center gap-2 mt-space-sm pt-space-xs">
+<button class="flex-1 h-9 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md flex items-center justify-center gap-1.5 shadow-sm active:opacity-90" type="button">
+<span class="material-symbols-outlined text-[16px]">draw</span>
+<span>文心重绘卷首</span>
+</button>
+<button class="flex-1 h-9 rounded-lg bg-surface-container-highest text-on-surface font-label-md text-label-md flex items-center justify-center gap-1.5 shadow-sm active:bg-surface-container" type="button">
+<span class="material-symbols-outlined text-[16px]">photo_library</span>
+<span>更换自选配图</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Section 2: 壹 · 基础案目 (Basic Book Fields) -->
+<section class="px-margin-mobile mb-space-xl flex flex-col gap-space-md">
+<div class="flex items-center gap-2 pb-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<h3 class="font-headline-sm text-headline-sm font-serif text-on-surface">壹 · 基础案目</h3>
+<span class="font-label-sm text-[11px] text-outline font-serif">典籍名目与宗旨</span>
+</div>
+<!-- Title Field -->
+<div class="flex flex-col gap-1.5 bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
+<div class="flex items-center justify-between">
+<label class="font-label-md text-label-md text-on-surface font-medium flex items-center gap-1" for="book-title-input">
+<span>材料集题名</span>
+<span class="text-primary">*</span>
+</label>
+<span class="font-label-sm text-label-sm text-outline font-mono" id="title-counter">15/40</span>
+</div>
+<input class="w-full bg-surface-container-low px-3.5 py-2.5 rounded-lg text-on-surface font-serif text-[16px] placeholder:text-outline-variant focus:outline-none focus:bg-surface-container-lowest shadow-inner transition-colors" id="book-title-input" placeholder="例如：科技哲学与大师演说选辑" type="text" value="科技哲学与大师演说选辑"/>
+</div>
+<!-- Subtitle & Epigraph Field -->
+<div class="flex flex-col gap-1.5 bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
+<div class="flex items-center justify-between">
+<label class="font-label-md text-label-md text-on-surface font-medium" for="book-subtitle-input">
+          卷帙副标与题记 (墨客留白)
+        </label>
+<span class="font-label-sm text-[11px] text-outline font-serif">选填 · 凝练心境</span>
+</div>
+<textarea class="w-full bg-surface-container-low p-3 rounded-lg text-on-surface font-serif text-[14px] leading-relaxed placeholder:text-outline-variant focus:outline-none focus:bg-surface-container-lowest shadow-inner resize-none transition-colors" id="book-subtitle-input" placeholder="在现实与理想的十字路口，研磨科技叙事之顶尖修辞与语流。" rows="2">在现实与理想的十字路口，研磨科技叙事之顶尖修辞与语流。</textarea>
+</div>
+<!-- Category & Tags (Multi-select) -->
+<div class="flex flex-col gap-2 bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-medium">主题门类 · 签条归卷 (可多选)</span>
+<span class="font-label-sm text-[11px] text-primary">已定 2 类</span>
+</div>
+<div class="flex flex-wrap gap-2 pt-1">
+<!-- Selected tags with steeped tea or cinnabar subtle styling -->
+<button class="h-8 px-3 rounded-full bg-secondary-container text-on-secondary-container font-label-md text-label-md flex items-center gap-1 shadow-sm" type="button">
+<span>大师演说</span>
+<span class="material-symbols-outlined text-[14px]">done</span>
+</button>
+<button class="h-8 px-3 rounded-full bg-secondary-container text-on-secondary-container font-label-md text-label-md flex items-center gap-1 shadow-sm" type="button">
+<span>科技哲学</span>
+<span class="material-symbols-outlined text-[14px]">done</span>
+</button>
+<button class="h-8 px-3 rounded-full bg-surface-container text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors" type="button">
+          文学原典
+        </button>
+<button class="h-8 px-3 rounded-full bg-surface-container text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors" type="button">
+          经政外刊
+        </button>
+<button class="h-8 px-3 rounded-full bg-surface-container text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-high transition-colors" type="button">
+          学术公开课
+        </button>
+<button class="h-8 px-3 rounded-full bg-surface-container-high text-primary font-label-md text-label-md flex items-center gap-1" type="button">
+<span class="material-symbols-outlined text-[14px]">add</span>
+<span>自定义标签</span>
+</button>
+</div>
+</div>
+<!-- CEFR Target Proficiency Segmented Cards -->
+<div class="flex flex-col gap-2.5 bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-medium">CEFR 目标研习梯级</span>
+<span class="font-label-sm text-[11px] text-primary font-serif">推荐对应雅思 7.5+ / GRE</span>
+</div>
+<div class="grid grid-cols-5 gap-1.5 pt-1">
+<!-- A2 -->
+<button class="py-2.5 rounded-lg bg-surface-container-low text-on-surface-variant flex flex-col items-center justify-center hover:bg-surface-container transition-all" type="button">
+<span class="font-mono font-bold text-title-sm text-[13px]">A2</span>
+<span class="font-serif text-[10px] text-outline mt-0.5">启蒙</span>
+</button>
+<!-- B1 -->
+<button class="py-2.5 rounded-lg bg-surface-container-low text-on-surface-variant flex flex-col items-center justify-center hover:bg-surface-container transition-all" type="button">
+<span class="font-mono font-bold text-title-sm text-[13px]">B1</span>
+<span class="font-serif text-[10px] text-outline mt-0.5">登堂</span>
+</button>
+<!-- B2 -->
+<button class="py-2.5 rounded-lg bg-surface-container-low text-on-surface-variant flex flex-col items-center justify-center hover:bg-surface-container transition-all" type="button">
+<span class="font-mono font-bold text-title-sm text-[13px]">B2</span>
+<span class="font-serif text-[10px] text-outline mt-0.5">沉潜</span>
+</button>
+<!-- C1 ACTIVE (朱红印染强调) -->
+<button class="py-2.5 rounded-lg bg-primary-container text-on-primary flex flex-col items-center justify-center shadow-md relative overflow-hidden ring-0" type="button">
+<span class="font-mono font-bold text-title-sm text-[13px] tracking-tight">C1</span>
+<span class="font-serif text-[10px] text-primary-fixed mt-0.5">文采雅致</span>
+<span class="absolute top-0.5 right-1 text-[8px] opacity-80 font-serif">✓</span>
+</button>
+<!-- C2 -->
+<button class="py-2.5 rounded-lg bg-surface-container-low text-on-surface-variant flex flex-col items-center justify-center hover:bg-surface-container transition-all" type="button">
+<span class="font-mono font-bold text-title-sm text-[13px]">C2</span>
+<span class="font-serif text-[10px] text-outline mt-0.5">神会</span>
+</button>
+</div>
+<p class="font-body-sm text-[11px] text-outline font-serif mt-1 leading-normal">
+        梯级将调控 AI 侍读对语篇长难句的解构深度，以及生词本对同义高阶替换词的推荐粒度。
+      </p>
+</div>
+</section>
+<!-- Section 3: 贰 · 研习规则与 AI 侍读预设 (Study Rules & AI) -->
+<section class="px-margin-mobile mb-space-xl flex flex-col gap-space-md">
+<div class="flex items-center gap-2 pb-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<h3 class="font-headline-sm text-headline-sm font-serif text-on-surface">贰 · 研习规约与侍读配置</h3>
+<span class="font-label-sm text-[11px] text-outline font-serif">智能助读与析词</span>
+</div>
+<!-- STT Subtitle Engine Radio Cards -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-2.5">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-medium">默认字幕与音素解析源</span>
+<span class="font-label-sm text-[11px] text-outline">时间轴与音画共振</span>
+</div>
+<div class="flex flex-col gap-2 pt-1">
+<!-- Radio 1: Whisper-v3 ACTIVE -->
+<label class="flex items-start gap-3 p-3 rounded-lg bg-surface-container-low cursor-pointer transition-colors hover:bg-surface-container">
+<input checked="" class="mt-1 accent-primary" name="stt-engine" type="radio"/>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-title-sm text-title-sm text-on-surface">Whisper-v3 极精细轴</span>
+<span class="px-1.5 py-0.2 bg-secondary-container text-on-secondary-container font-label-sm text-[10px] rounded">音素级切分</span>
+</div>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">
+              双语精准时间对齐，音素级切分，自动纠偏吞音与弱读连读。
+            </p>
+</div>
+</label>
+<!-- Radio 2: Official Original Subtitle -->
+<label class="flex items-start gap-3 p-3 rounded-lg bg-surface-container-lowest cursor-pointer transition-colors hover:bg-surface-container-low">
+<input class="mt-1 accent-primary" name="stt-engine" type="radio"/>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-title-sm text-title-sm text-on-surface">官方原挂轴</span>
+<span class="px-1.5 py-0.2 bg-surface-container-high text-tertiary font-label-sm text-[10px] rounded">原汁原味</span>
+</div>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">
+              优先导入 YouTube/播客 CC 原版字幕，保留演讲者原始分段。
+            </p>
+</div>
+</label>
+<!-- Radio 3: English Immersion -->
+<label class="flex items-start gap-3 p-3 rounded-lg bg-surface-container-lowest cursor-pointer transition-colors hover:bg-surface-container-low">
+<input class="mt-1 accent-primary" name="stt-engine" type="radio"/>
+<div class="flex flex-col min-w-0">
+<span class="font-title-sm text-title-sm text-on-surface">单语纯享沉浸轴</span>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">
+              隐藏初阶中文对照，仅在生词唤出时呈现双语注疏。
+            </p>
+</div>
+</label>
+</div>
+</div>
+<!-- Lexical Extraction Toggles -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-space-md">
+<span class="font-label-md text-label-md text-on-surface font-medium">生词萃取与语块提炼规约</span>
+<!-- Toggle 1: Filter Low-level Words -->
+<div class="flex items-center justify-between gap-3">
+<div class="flex flex-col min-w-0">
+<span class="font-title-sm text-title-sm text-on-surface">过滤基础词汇 (CET-4 / 高考及以下)</span>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">
+            仅将具备学术研习与修辞表达价值的高阶生词移入词藏。
+          </p>
+</div>
+<!-- Zen Vermilion Switch ON -->
+<label class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+<!-- Divider line -->
+<div class="w-full h-px bg-surface-container-high"></div>
+<!-- Toggle 2: Phrasal Collocations Extraction -->
+<div class="flex items-center justify-between gap-3">
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-title-sm text-title-sm text-on-surface">自动提炼动宾搭配与地道成语语块</span>
+<span class="px-1.5 py-0.5 bg-primary/10 text-primary font-label-sm text-[10px] rounded-full">推荐开启</span>
+</div>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">
+            识别非字面惯用语 (Collocations) 并智能标注上下文语境逻辑。
+          </p>
+</div>
+<!-- Zen Vermilion Switch ON -->
+<label class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+</div>
+<!-- Practice Quiz Checkbox Matrix -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-2.5">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-medium">默认闯关考卷题型预置</span>
+<span class="font-label-sm text-[11px] text-outline">立卷后各章节自动套用</span>
+</div>
+<div class="grid grid-cols-2 gap-2 pt-1">
+<label class="p-2.5 rounded-lg bg-surface-container-low flex items-center gap-2.5 cursor-pointer">
+<input checked="" class="w-4 h-4 accent-primary rounded" type="checkbox"/>
+<span class="font-title-sm text-title-sm text-on-surface">选词拼句</span>
+</label>
+<label class="p-2.5 rounded-lg bg-surface-container-low flex items-center gap-2.5 cursor-pointer">
+<input checked="" class="w-4 h-4 accent-primary rounded" type="checkbox"/>
+<span class="font-title-sm text-title-sm text-on-surface">真题盲听</span>
+</label>
+<label class="p-2.5 rounded-lg bg-surface-container-low flex items-center gap-2.5 cursor-pointer">
+<input checked="" class="w-4 h-4 accent-primary rounded" type="checkbox"/>
+<span class="font-title-sm text-title-sm text-on-surface">语境挖空</span>
+</label>
+<label class="p-2.5 rounded-lg bg-surface-container-low flex items-center gap-2.5 cursor-pointer">
+<input checked="" class="w-4 h-4 accent-primary rounded" type="checkbox"/>
+<span class="font-title-sm text-title-sm text-on-surface">AI 情境仿写</span>
+</label>
+</div>
+</div>
+</section>
+<!-- Section 4: 叁 · 典藏权限与即刻挂载 (Permissions & Fast Mount) -->
+<section class="px-margin-mobile mb-space-xl flex flex-col gap-space-md">
+<div class="flex items-center gap-2 pb-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<h3 class="font-headline-sm text-headline-sm font-serif text-on-surface">叁 · 典藏权限与初始挂载</h3>
+<span class="font-label-sm text-[11px] text-outline font-serif">归阁秘籍或入林借阅</span>
+</div>
+<!-- Permission Scope Radio -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-2.5">
+<span class="font-label-md text-label-md text-on-surface font-medium">查阅与共研权限</span>
+<div class="flex flex-col gap-2 pt-1">
+<!-- Private (Active) -->
+<label class="p-3 rounded-lg bg-surface-container-low flex items-start gap-3 cursor-pointer">
+<input checked="" class="mt-1 accent-primary" name="privacy-scope" type="radio"/>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5 text-on-surface font-title-sm text-title-sm">
+<span class="material-symbols-outlined text-[16px] text-tertiary">lock</span>
+<span>私享典藏 (个人研习)</span>
+</div>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">
+              仅自己案头可见，生词札记与思辨笔记完全私密封存，不被书林检索。
+            </p>
+</div>
+</label>
+<!-- Public Library -->
+<label class="p-3 rounded-lg bg-surface-container-lowest flex items-start gap-3 cursor-pointer hover:bg-surface-container-low transition-colors">
+<input class="mt-1 accent-primary" name="privacy-scope" type="radio"/>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5 text-on-surface font-title-sm text-title-sm">
+<span class="material-symbols-outlined text-[16px] text-tertiary">public</span>
+<span>开放借阅 (书林文库)</span>
+</div>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">
+              公布至书友文林借阅交流，其他研习生可克隆材料集并共鉴生词札记。
+            </p>
+</div>
+</label>
+</div>
+</div>
+<!-- Fast Mount First Media Chapter (Optional) -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<label class="font-label-md text-label-md text-on-surface font-medium flex items-center gap-1" for="first-media-url">
+<span class="material-symbols-outlined text-[16px] text-primary">link</span>
+<span>初始文献挂载 (可选)</span>
+</label>
+<span class="font-label-sm text-[11px] text-outline font-serif">立卷即解析</span>
+</div>
+<div class="relative flex items-center">
+<input class="w-full bg-surface-container-low pl-3 pr-24 py-2.5 rounded-lg text-on-surface font-body-sm text-body-sm placeholder:text-outline-variant focus:outline-none focus:bg-surface-container-lowest shadow-inner" id="first-media-url" placeholder="粘贴视频或播客网址，立卷后即刻解析首篇文献..." type="text"/>
+<button class="absolute right-1.5 h-8 px-2.5 rounded-md bg-surface-container-highest text-tertiary font-label-sm text-label-sm font-medium hover:bg-surface-container transition-colors flex items-center gap-1" type="button">
+<span class="material-symbols-outlined text-[14px]">sensors</span>
+<span>智能探测</span>
+</button>
+</div>
+<p class="font-body-sm text-[11px] text-outline font-serif mt-0.5">
+        支持 YouTube 哲学公开课、Bilibili 人文演讲、Spotify 播客及本地音视频格式。
+      </p>
+</div>
+</section>
+<!-- Sticky Bottom Desk Action Bar (吸底案台操作栏) -->
+<aside class="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-xl border-t border-outline-variant/30 px-margin-mobile py-2.5 flex items-center justify-between gap-3 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
+<!-- Left: Auto-save status / Draft action -->
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-label-sm text-[11px] text-tertiary font-medium">已自动存案</span>
+</div>
+<span class="font-body-sm text-[10px] text-outline truncate font-mono">墨池云端同步 17:42</span>
+</div>
+<!-- Right: Primary Vermilion Seal Action Button -->
+<div class="flex items-center gap-2">
+<button class="h-11 px-3.5 rounded-lg bg-surface-container-high text-tertiary font-label-md text-label-md hover:bg-surface-container-highest transition-colors active:scale-95 flex items-center gap-1" type="button">
+<span class="material-symbols-outlined text-[16px]">save_as</span>
+<span>存为草卷</span>
+</button>
+<button class="h-11 px-5 rounded-lg bg-primary-container text-on-primary font-title-sm text-title-sm font-semibold tracking-wide shadow-md active:bg-primary transition-all active:scale-95 flex items-center gap-2" id="btn-create-collection" type="button">
+<span class="material-symbols-outlined text-[18px]">menu_book</span>
+<span>立卷成册 · 即刻创建</span>
+</button>
+</div>
+</aside>
+<!-- Script for lightweight reactive preview -->
+<script>
+    (function initFolioCreation() {
+      const titleInput = document.getElementById('book-title-input');
+      const subtitleInput = document.getElementById('book-subtitle-input');
+      const previewTitle = document.getElementById('preview-cover-title');
+      const previewSubtitle = document.getElementById('preview-cover-subtitle');
+      const counter = document.getElementById('title-counter');
+
+      if (titleInput && previewTitle && counter) {
+        titleInput.addEventListener('input', (e) => {
+          const val = e.target.value;
+          previewTitle.textContent = val.trim() || '未命卷册';
+          counter.textContent = `${val.length}/40`;
+        });
+      }
+
+      if (subtitleInput && previewSubtitle) {
+        subtitleInput.addEventListener('input', (e) => {
+          const val = e.target.value;
+          previewSubtitle.textContent = val.trim() ? `“${val.trim()}”` : '';
+        });
+      }
+
+      const createBtn = document.getElementById('btn-create-collection');
+      if (createBtn) {
+        createBtn.addEventListener('click', () => {
+          createBtn.classList.add('scale-95');
+          setTimeout(() => {
+            createBtn.classList.remove('scale-95');
+            const alertTag = document.createElement('div');
+            alertTag.className = 'fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-primary text-on-primary rounded-full shadow-lg font-serif text-[13px] flex items-center gap-1.5 transition-all';
+            alertTag.innerHTML = '<span class="material-symbols-outlined text-[16px]">verified</span> 卷帙已成案，正步入首篇文献挂载...';
+            document.body.appendChild(alertTag);
+            setTimeout(() => alertTag.remove(), 2400);
+          }, 150);
+        });
+      }
+    })();
+  </script>
+</div></main></body></html>

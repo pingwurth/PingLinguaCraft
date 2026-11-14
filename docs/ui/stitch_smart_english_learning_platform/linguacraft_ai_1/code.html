@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Newsreader:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"tertiary-fixed-dim":"#d8c3aa","surface-container-highest":"#e2e2e5","on-error":"#ffffff","on-tertiary-container":"#ead5bc","surface":"#f9f9fc","on-surface":"#1a1c1e","surface-container-low":"#f3f3f6","inverse-on-surface":"#f0f0f3","on-secondary":"#ffffff","on-secondary-fixed-variant":"#2e4f00","secondary-container":"#c2ed8d","on-error-container":"#93000a","secondary":"#456818","tertiary-fixed":"#f5dfc5","secondary-fixed":"#c5f090","on-primary-container":"#ffcdc7","on-secondary-container":"#496d1c","error-container":"#ffdad6","surface-variant":"#e2e2e5","background":"#f9f9fc","primary-container":"#b91c1c","error":"#ba1a1a","surface-dim":"#d9dadc","surface-container-high":"#e8e8ea","inverse-primary":"#ffb4ab","inverse-surface":"#2f3133","primary":"#93000b","surface-bright":"#f9f9fc","on-primary-fixed-variant":"#93000b","surface-tint":"#b91c1c","surface-container-lowest":"#ffffff","on-secondary-fixed":"#102000","on-tertiary":"#ffffff","primary-fixed":"#ffdad6","outline-variant":"#e4beb9","tertiary-container":"#6b5c47","primary-fixed-dim":"#ffb4ab","on-primary-fixed":"#410002","on-surface-variant":"#5b403d","on-background":"#1a1c1e","outline":"#8f6f6c","on-tertiary-fixed":"#241a0a","tertiary":"#524431","secondary-fixed-dim":"#a9d477","on-tertiary-fixed-variant":"#524531","surface-container":"#eeeef0","on-primary":"#ffffff"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"space-xl":"2.5rem","gutter-mobile":"1rem","space-xs":"0.25rem","space-md":"1rem","space-sm":"0.5rem","space-2xl":"4rem","margin":"3rem","space-lg":"1.5rem","margin-mobile":"1.25rem","gutter":"1.5rem"},"fontFamily":{"label-md":["Inter"],"headline-lg-mobile":["Newsreader"],"body-sm":["Inter"],"title-sm":["Inter"],"headline-md":["Newsreader"],"body-lg":["Newsreader"],"headline-lg":["Newsreader"],"headline-xl-mobile":["Newsreader"],"body-md":["Inter"],"headline-xl":["Newsreader"],"label-lg":["Newsreader"],"headline-sm":["Newsreader"],"label-sm":["Inter"],"title-md":["Inter"]},"fontSize":{"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"500"}],"headline-lg-mobile":["28px",{"lineHeight":"36px","letterSpacing":"-0.01em","fontWeight":"400"}],"body-sm":["13px",{"lineHeight":"20px","fontWeight":"400"}],"title-sm":["15px",{"lineHeight":"22px","fontWeight":"600"}],"headline-md":["28px",{"lineHeight":"36px","fontWeight":"400"}],"body-lg":["20px",{"lineHeight":"32px","fontWeight":"400"}],"headline-lg":["36px",{"lineHeight":"44px","letterSpacing":"-0.015em","fontWeight":"400"}],"headline-xl-mobile":["34px",{"lineHeight":"42px","letterSpacing":"-0.01em","fontWeight":"400"}],"body-md":["15px",{"lineHeight":"24px","fontWeight":"400"}],"headline-xl":["48px",{"lineHeight":"56px","letterSpacing":"-0.02em","fontWeight":"400"}],"label-lg":["14px",{"lineHeight":"18px","letterSpacing":"0.03em","fontWeight":"500"}],"headline-sm":["22px",{"lineHeight":"30px","fontWeight":"500"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.05em","fontWeight":"600"}],"title-md":["18px",{"lineHeight":"26px","letterSpacing":"-0.01em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low z-50 flex flex-col justify-between py-5 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col gap-6"><div class="px-5 flex items-center gap-3"><div class="w-9 h-9 rounded bg-primary-container text-on-primary flex items-center justify-center font-headline-sm text-headline-sm select-none shadow-[0_1px_4px_rgba(0,0,0,0.12)]">匠</div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none font-semibold">语匠 <span class="font-headline-md text-headline-md font-normal italic text-primary">LinguaCraft</span></span><span class="font-label-sm text-label-sm text-on-surface-variant tracking-wider mt-1">学自己想学的 · 研墨通达</span></div></div><div class="px-4"><div class="h-px w-full bg-surface-container-highest"></div></div><nav class="flex flex-col gap-1.5 px-3" data-active-classes="bg-surface-container-highest text-primary font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.04)]"><a aria-current="page" class="flex items-center gap-3.5 px-3 py-2.5 rounded transition-colors group bg-surface-container-highest text-primary font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.04)]" data-path="reader" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">auto_stories</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">精读</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Reader</span></div></a><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="stream" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">graphic_eq</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">语流</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Stream</span></div></a><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="arena" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">swords</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">演练</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Arena</span></div></a><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="lexicon" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">collections_bookmark</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">词藏</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Lexicon</span></div></a><a class="flex items-center gap-3.5 px-3 py-2.5 rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors group" data-path="library" href="#"><span class="material-symbols-outlined text-[20px] transition-colors">account_balance</span><div class="flex items-baseline justify-between w-full"><span class="font-title-sm text-title-sm">藏经阁</span><span class="font-label-sm text-label-sm opacity-60 tracking-wider font-normal">Library</span></div></a></nav></div><div class="flex flex-col gap-3 px-3"><div class="bg-surface-container rounded-lg p-3 flex flex-col gap-2"><div class="flex items-center justify-between text-on-surface-variant"><span class="font-label-sm text-label-sm font-semibold tracking-wider flex items-center gap-1.5"><span class="material-symbols-outlined text-[16px] text-primary">edit_note</span>研习手账</span><span class="font-label-sm text-label-sm text-secondary font-semibold">连续 7 日</span></div><div class="flex items-center justify-between font-label-md text-label-md text-on-surface"><span class="text-body-sm font-body-sm text-on-surface-variant">典籍研读</span><span class="font-title-sm text-title-sm font-semibold text-primary">7 卷已毕</span></div><div class="w-full bg-surface-container-highest rounded-full h-1.5 overflow-hidden"><div class="bg-primary h-full rounded-full w-4/5"></div></div></div><div class="flex items-center justify-between px-1 pt-1"><a class="flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors text-body-sm font-body-sm" data-path="settings" href="#"><span class="material-symbols-outlined text-[18px]">tune</span>研习偏好</a><span class="font-label-sm text-label-sm text-outline">v2.4 纸墨</span></div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-16 bg-surface/90 backdrop-blur-xl z-40 shadow-[0_1px_8px_rgba(0,0,0,0.04)] px-6 flex items-center justify-between gap-4"><div class="flex items-center gap-3 min-w-0 flex-1"><div class="flex items-center gap-2 truncate"><span class="font-label-sm text-label-sm bg-surface-container-highest text-on-surface-variant px-2 py-0.5 rounded font-medium select-none shrink-0">卷一 · 典籍演说</span><span class="font-headline-sm text-headline-sm text-on-surface truncate font-normal tracking-tight">乔布斯斯坦福毕业典礼致辞 (2005)</span></div><div class="hidden xl:flex items-center gap-2 shrink-0"><span class="font-label-sm text-label-sm text-secondary bg-secondary-fixed/50 px-2 py-0.5 rounded font-semibold">C1 雅致度</span><span class="font-body-sm text-body-sm text-on-surface-variant">· 42 句入神 · 386 词元研墨</span></div></div><div class="flex items-center gap-3 shrink-0"><div class="hidden lg:flex items-center bg-surface-container-low rounded-lg p-1 gap-1"><button class="px-2 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1" type="button"><span class="material-symbols-outlined text-[15px]">record_voice_over</span>美音</button><div class="w-px h-3 bg-surface-container-highest"></div><button class="px-2 py-1 rounded font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1" type="button"><span class="material-symbols-outlined text-[15px]">speed</span>1.0x</button></div><button class="hidden sm:flex items-center gap-2 bg-surface-container-low hover:bg-surface-container text-on-surface-variant hover:text-on-surface px-3 py-1.5 rounded-lg transition-colors font-body-sm text-body-sm" type="button"><span class="material-symbols-outlined text-[18px]">search</span><span class="text-body-sm font-body-sm">检索词句卷帙</span><kbd class="font-label-sm text-label-sm bg-surface-container-highest text-on-surface-variant px-1.5 py-0.5 rounded">⌘K</kbd></button><button class="flex items-center gap-1.5 bg-primary text-on-primary hover:bg-primary-container px-3 py-1.5 rounded transition-colors font-body-sm text-body-sm shadow-[0_1px_3px_rgba(0,0,0,0.08)]" type="button"><span class="material-symbols-outlined text-[18px]">upload_file</span><span class="hidden md:inline font-title-sm text-title-sm font-normal">导入文献</span></button><button class="w-8 h-8 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors relative" title="快捷生词匣" type="button"><span class="material-symbols-outlined text-[20px]">inbox</span><span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary"></span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><main class="relative pt-16 bg-surface min-h-screen"><div class="flex flex-col w-full text-on-surface">
+<!-- 顶栏精研控制副栏 (Editorial Sub-Navigation Bar) -->
+<div class="w-full bg-surface-container-low px-8 py-3 flex items-center justify-between shadow-sm">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-3">
+<span class="w-6 h-6 rounded bg-primary-container text-on-primary flex items-center justify-center font-headline-sm text-body-sm shadow-sm select-none">壹</span>
+<span class="font-headline-sm text-headline-sm tracking-tight text-on-surface">生命之点 · 串联过往 <span class="font-body-sm text-body-sm text-on-surface-variant font-normal">/ Connecting The Dots</span></span>
+</div>
+<div class="h-4 w-px bg-surface-container-highest"></div>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant">研读进度</span>
+<div class="w-32 bg-surface-container-highest h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 28.5%;"></div>
+</div>
+<span class="font-label-sm text-label-sm font-semibold text-primary">12 / 42 句</span>
+</div>
+</div>
+<!-- 右侧排印与专注视效工具 -->
+<div class="flex items-center gap-3">
+<div class="flex items-center bg-surface-container rounded p-0.5 gap-1">
+<button class="px-2.5 py-1 rounded bg-surface-container-lowest text-on-surface font-label-sm text-label-sm shadow-sm flex items-center gap-1.5 transition-all" type="button">
+<span class="material-symbols-outlined text-[15px] text-primary">splitscreen</span>
+<span>三轨并研</span>
+</button>
+<button class="px-2.5 py-1 rounded text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm flex items-center gap-1.5 transition-all" type="button">
+<span class="material-symbols-outlined text-[15px]">menu_book</span>
+<span>纯净卷轴</span>
+</button>
+</div>
+<div class="h-4 w-px bg-surface-container-highest"></div>
+<div class="flex items-center gap-1">
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-primary font-label-sm text-label-sm flex items-center gap-1 transition-colors" id="loopToggleBtn" title="单句精研循环 [L]" type="button">
+<span class="material-symbols-outlined text-[16px]">repeat_one</span>
+<span>句环启用</span>
+</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container transition-colors" title="影音字幕设定" type="button">
+<span class="material-symbols-outlined text-[18px]">subtitles</span>
+</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container transition-colors" title="专注全屏 [F]" type="button">
+<span class="material-symbols-outlined text-[18px]">fit_screen</span>
+</button>
+</div>
+</div>
+</div>
+<!-- 主工作台：三轨自适应网格 -->
+<div class="grid grid-cols-12 gap-5 p-6 w-full max-w-[1920px] mx-auto items-start">
+<!-- ==================== 左轨：影音视窗 + 巨幕精读卡片 (5/12 宽屏) ==================== -->
+<div class="col-span-12 xl:col-span-5 flex flex-col gap-5">
+<!-- 1. 典雅胶片影音视窗 (16:9) -->
+<div class="relative w-full aspect-video rounded-xl bg-inverse-surface overflow-hidden shadow-md flex flex-col justify-between group">
+<!-- 视频实景底图与纸墨胶片噪点层 -->
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105" data-alt="Steve Jobs standing at Stanford University commencement podium delivering his iconic 2005 speech, soft natural outdoor morning lighting, warm paper texture vignette, cinematic depth of field, documentary style in warm sumi-ink and parchment tones." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBKdxWWrC8ErkS60wujd10ed7Xpof1YLrugiyIcQZT5jbNfVzvOb0KctLm7eOz-q-7Q6USfksL6fCI2sQHBZ2OljhLPXqov4MoDB2Uxaff-NCHVFXOe3Xbuh7HhIDiTIq1BtQzi8lQedS1Zi4dJ4q5_qaHjsEj7Ua0ewOFWBlQ_MtkAyGM88gJbyESgG5dnW1E33GNnvCD3BS7ZpuAcydJ03VpzZ0Ley_cT8deRyb-4')">
+</div>
+<!-- 极简阴影蒙版 -->
+<div class="absolute inset-0 bg-gradient-to-t from-inverse-surface via-inverse-surface/30 to-transparent"></div>
+<!-- 视频顶部状态标记 (A-B标记点与胶片标签) -->
+<div class="relative z-10 p-4 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 rounded bg-surface/20 backdrop-blur-md text-surface font-label-sm text-label-sm tracking-wider uppercase flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container animate-pulse"></span>
+              原声母带 · 4K 60FPS
+            </span>
+<span class="px-1.5 py-0.5 rounded bg-surface/10 backdrop-blur-md text-surface font-label-sm text-label-sm">A-B: 02:10 - 02:18</span>
+</div>
+<div class="flex items-center gap-1 bg-inverse-surface/40 backdrop-blur-md rounded-md p-1">
+<button class="w-6 h-6 flex items-center justify-center text-surface hover:text-primary-fixed transition-colors" title="倒退 3 秒 (←)" type="button">
+<span class="material-symbols-outlined text-[16px]">replay_5</span>
+</button>
+<button class="w-6 h-6 flex items-center justify-center text-surface hover:text-primary-fixed transition-colors" title="慢速 0.8x" type="button">
+<span class="material-symbols-outlined text-[16px]">slow_motion_video</span>
+</button>
+</div>
+</div>
+<!-- 视频双语精简浮层 (实时预览) -->
+<div class="relative z-10 px-6 pb-2 text-center flex flex-col items-center">
+<p class="font-headline-sm text-headline-sm text-surface drop-shadow-md tracking-wide font-normal">
+            "You can't connect the dots looking <span class="text-tertiary-fixed underline decoration-primary decoration-2 underline-offset-4 font-semibold">forward</span>; you can only connect them looking backwards."
+          </p>
+<p class="font-body-sm text-body-sm text-tertiary-fixed-dim/90 drop-shadow mt-1">
+            你无法预先将生命中的点滴串联起来；只有在回首往事时，方能看清脉络。
+          </p>
+</div>
+<!-- 极简纤细声谱进度控制条 (Bottom Bar) -->
+<div class="relative z-10 px-4 py-2 bg-gradient-to-t from-inverse-surface to-transparent flex flex-col gap-1.5">
+<!-- 声谱波纹交互进度条 (Inline SVG Mini Spectrum) -->
+<div class="relative w-full h-4 flex items-center cursor-pointer group/bar">
+<div class="w-full bg-surface/20 h-1 rounded-full overflow-hidden relative">
+<div class="bg-primary h-full rounded-full relative" style="width: 22.8%;">
+<span class="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-surface shadow-sm"></span>
+</div>
+</div>
+<!-- 句间锚点 (Sentence markers) -->
+<div class="absolute left-[15%] w-1 h-2 bg-surface/60 rounded-full"></div>
+<div class="absolute left-[22.8%] w-1.5 h-3 bg-primary-fixed rounded-full shadow"></div>
+<div class="absolute left-[31%] w-1 h-2 bg-surface/60 rounded-full"></div>
+<div class="absolute left-[44%] w-1 h-2 bg-surface/60 rounded-full"></div>
+</div>
+<div class="flex items-center justify-between text-surface font-label-sm text-label-sm">
+<div class="flex items-center gap-3">
+<button class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-sm hover:scale-105 transition-transform" id="playBtn" type="button">
+<span class="material-symbols-outlined text-[18px]">pause</span>
+</button>
+<div class="flex items-baseline gap-1 font-body-sm">
+<span class="text-surface font-semibold">02:14</span>
+<span class="text-surface-dim">/ 14:45</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-tertiary-fixed flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">graphic_eq</span>
+                波形对齐 · 98%
+              </span>
+<button class="text-surface hover:text-primary transition-colors flex items-center gap-0.5" type="button">
+<span class="material-symbols-outlined text-[16px]">volume_up</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- 2. 当前句巨幕精读卡片 (Sentence Focus Board) -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-sm flex flex-col gap-5 relative overflow-hidden">
+<!-- 宣纸水墨装饰水印角标 (Decorative Stamp Mark) -->
+<div class="absolute -right-3 -top-3 w-20 h-20 rounded-full bg-primary-fixed/20 flex items-center justify-center select-none pointer-events-none">
+<span class="font-headline-lg text-primary/30 font-bold rotate-12">精</span>
+</div>
+<!-- 句首元数据 -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 rounded bg-primary text-on-primary font-label-sm text-label-sm font-semibold shadow-sm">句 #12</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">timer</span> 02:10 - 02:18
+            </span>
+<span class="font-label-sm text-label-sm text-secondary bg-secondary-fixed/40 px-2 py-0.5 rounded font-medium">B2 意境高远</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant">
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center transition-colors text-primary" title="单句循环练习" type="button">
+<span class="material-symbols-outlined text-[18px]">replay</span>
+</button>
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center transition-colors" title="慢速领读 (0.75x)" type="button">
+<span class="material-symbols-outlined text-[18px]">hearing</span>
+</button>
+<button class="w-8 h-8 rounded hover:bg-surface-container flex items-center justify-center transition-colors" title="存入随身生词笺" type="button">
+<span class="material-symbols-outlined text-[18px]">bookmark_add</span>
+</button>
+</div>
+</div>
+<!-- 活字印模大字号可交互原句 (Movable-Type Interactive Tokens) -->
+<div class="flex flex-col gap-2 pt-1">
+<div class="font-headline-md text-headline-md text-on-surface leading-relaxed tracking-tight flex flex-wrap items-baseline gap-x-2 gap-y-3 font-normal">
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">You</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">can't</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">connect</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">the</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">dots</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">looking</span>
+<!-- 当前激活词元 (Active Word Token) 触发浮动研墨词笺 -->
+<span class="relative inline-block">
+<button class="bg-primary text-on-primary px-2.5 py-0.5 rounded shadow-sm font-semibold tracking-wide cursor-pointer hover:bg-primary-container transition-all" id="activeTokenBtn" type="button">
+                forward;
+              </button>
+<!-- 纸墨词笺浮窗 (Callout Popover) -->
+<div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 w-80 bg-surface-container-low rounded-lg shadow-xl p-4 z-30 flex flex-col gap-2.5" id="lexiconPopover">
+<div class="flex items-start justify-between">
+<div class="flex flex-col">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm font-semibold text-primary">forward</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-mono">/ˈfɔːwəd/</span>
+</div>
+<span class="font-label-sm text-label-sm text-secondary font-medium">adv. / adj. 向前；向未来；未至之时</span>
+</div>
+<span class="px-1.5 py-0.5 rounded bg-tertiary-fixed text-tertiary font-label-sm text-label-sm">高频 ★★★★★</span>
+</div>
+<div class="bg-surface-container-lowest rounded p-2.5 flex flex-col gap-1 text-on-surface">
+<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[13px] text-primary">history_edu</span>
+                    词源考究 · 纸墨释意
+                  </span>
+<p class="font-body-sm text-body-sm leading-snug">
+                    由古英语 <em class="font-headline-sm text-body-sm text-on-surface">fore-</em> (在前方) + <em class="font-headline-sm text-body-sm text-on-surface">-weard</em> (朝向) 汇聚而成。在乔布斯演说中，引申为“凡夫俗子试图在尚未发生时预设因果的妄念”。
+                  </p>
+</div>
+<div class="flex items-center justify-between pt-1">
+<button class="text-primary hover:text-primary-container font-label-sm text-label-sm flex items-center gap-1" type="button">
+<span class="material-symbols-outlined text-[14px]">volume_up</span> 真实发音
+                  </button>
+<button class="bg-primary text-on-primary px-2.5 py-1 rounded font-label-sm text-label-sm flex items-center gap-1 shadow-sm hover:bg-primary-container transition-colors" type="button">
+<span class="material-symbols-outlined text-[14px]">post_add</span> 采摘入生词匣
+                  </button>
+</div>
+<!-- 浮窗小指示三角 (Tailwind pure CSS shape) -->
+<div class="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 bg-surface-container-low rotate-45"></div>
+</div>
+</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">you</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">can</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">only</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">connect</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">them</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">looking</span>
+<span class="cursor-pointer hover:text-primary transition-colors py-0.5 px-1 rounded hover:bg-surface-container">backwards.</span>
+</div>
+<!-- 林语堂风名师雅译 (Literary Master Translation) -->
+<div class="mt-3 bg-surface-container-low p-4 rounded-lg flex flex-col gap-1.5 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="flex items-center justify-between text-on-surface-variant">
+<span class="font-label-sm text-label-sm uppercase tracking-wider font-semibold flex items-center gap-1 text-primary">
+<span class="material-symbols-outlined text-[15px]">translate</span>
+                名家雅致译笔 · 林语堂散文体式
+              </span>
+<span class="font-label-sm text-label-sm text-outline">研读典藏</span>
+</div>
+<p class="font-body-lg text-body-lg text-on-surface italic leading-relaxed pl-1">
+              “你无法预先将生命中的点滴串联起来；只有在未来回顾时，方解其中因果。”
+            </p>
+</div>
+</div>
+<!-- 研墨笔记与语法匠心拆解 (Syntactic Breakdown Callout) -->
+<div class="bg-surface-container-low/70 rounded-lg p-3.5 flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm font-semibold text-tertiary flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-tertiary">draw</span>
+              随文研墨剖析
+            </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">双重对仗 · 现在分词伴随状语</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+            句中运用了经典的并列反衬分号修辞：前半句以 <code class="font-label-sm text-label-sm bg-surface-container-highest px-1.5 py-0.5 rounded text-primary">can't...looking forward</code> 否定预判之狂妄，后半句以 <code class="font-label-sm text-label-sm bg-surface-container-highest px-1.5 py-0.5 rounded text-secondary">can only...looking backwards</code> 确立顿悟之谦逊，极具演说节奏张力。
+          </p>
+</div>
+<!-- 底部研读工具栏 -->
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-2">
+<button class="bg-surface-container hover:bg-surface-container-high px-3 py-1.5 rounded font-label-md text-label-md flex items-center gap-1.5 transition-colors text-on-surface" type="button">
+<span class="material-symbols-outlined text-[16px] text-primary">mic</span>
+<span>AI 跟读校音</span>
+</button>
+<button class="bg-surface-container hover:bg-surface-container-high px-3 py-1.5 rounded font-label-md text-label-md flex items-center gap-1.5 transition-colors text-on-surface" type="button">
+<span class="material-symbols-outlined text-[16px]">content_copy</span>
+<span>采纳金句</span>
+</button>
+</div>
+<div class="flex items-center gap-3">
+<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px] text-primary">grade</span>
+              已入阁采摘 482 次
+            </span>
+<button class="w-8 h-8 rounded bg-primary text-on-primary flex items-center justify-center shadow hover:bg-primary-container transition-colors" title="下一句 (Space / J)" type="button">
+<span class="material-symbols-outlined text-[18px]">arrow_downward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- ==================== 中轨：全文双语卷轴流 (Full Transcript Stream) (4/12 宽屏) ==================== -->
+<div class="col-span-12 xl:col-span-4 flex flex-col gap-4">
+<!-- 卷轴控制与过滤药丸标签 (Scroll Control & Filter Pills) -->
+<div class="bg-surface-container-lowest rounded-xl p-4 shadow-sm flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]">receipt_long</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">演说全文卷帙</span>
+<span class="font-label-sm text-label-sm bg-surface-container text-on-surface-variant px-2 py-0.5 rounded">42 句全文</span>
+</div>
+<button class="font-label-sm text-label-sm text-secondary flex items-center gap-1 hover:underline" title="开启声波平滑自跟随" type="button">
+<span class="material-symbols-outlined text-[14px]">sync</span> 自动卷随
+          </button>
+</div>
+<!-- 过滤维度选择 -->
+<div class="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+<button class="px-2.5 py-1 rounded bg-primary text-on-primary font-label-sm text-label-sm font-semibold shrink-0 shadow-sm" type="button">全部句子</button>
+<button class="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm shrink-0 transition-colors" type="button">难句标朱 (7)</button>
+<button class="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm shrink-0 transition-colors" type="button">生词密集 (4)</button>
+<button class="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm shrink-0 transition-colors" type="button">名家考点 (12)</button>
+</div>
+</div>
+<!-- 双语对读列表 (Transcript List) -->
+<div class="flex flex-col gap-3 max-h-[820px] overflow-y-auto pr-1">
+<!-- #10 句 (Past context) -->
+<div class="bg-surface-container-lowest/60 hover:bg-surface-container-lowest p-4 rounded-xl shadow-sm transition-all cursor-pointer flex flex-col gap-2 group">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-semibold group-hover:text-primary">#10 · 01:52</span>
+<span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 transition-opacity">play_circle</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-normal">
+            None of this had even a hope of any practical application in my life.
+          </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+            当时看来，所有这些东西在我的实际生活中都不抱有任何实用的希望。
+          </p>
+</div>
+<!-- #11 句 (Past context) -->
+<div class="bg-surface-container-lowest/60 hover:bg-surface-container-lowest p-4 rounded-xl shadow-sm transition-all cursor-pointer flex flex-col gap-2 group">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-semibold group-hover:text-primary">#11 · 02:01</span>
+<span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 transition-opacity">play_circle</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-normal">
+            But ten years later, when we were designing the first Macintosh computer, it all came back to me.
+          </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+            但十年之后，当我们设计第一台麦金塔电脑时，这一切又重回我的脑海。
+          </p>
+</div>
+<!-- #12 句 (当前正在播放与精读高亮句 - Active Highlight) -->
+<div class="bg-surface-container-lowest p-5 rounded-xl shadow-md ring-2 ring-primary/40 flex flex-col gap-3 relative overflow-hidden">
+<div class="absolute left-0 top-0 bottom-0 w-1.5 bg-primary"></div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+<span class="font-label-sm text-label-sm text-primary font-bold">正在研习 · 02:14 - 02:18</span>
+</div>
+<!-- 律动波纹小动画 (Inline SVG Spectrum) -->
+<div class="flex items-end gap-0.5 h-4">
+<div class="w-1 bg-primary rounded-full animate-bounce" style="height: 60%; animation-delay: 0.1s;"></div>
+<div class="w-1 bg-primary rounded-full animate-bounce" style="height: 100%; animation-delay: 0.3s;"></div>
+<div class="w-1 bg-primary rounded-full animate-bounce" style="height: 40%; animation-delay: 0.2s;"></div>
+<div class="w-1 bg-primary rounded-full animate-bounce" style="height: 80%; animation-delay: 0.4s;"></div>
+</div>
+</div>
+<p class="font-headline-sm text-headline-sm text-on-surface font-semibold leading-snug">
+            "You can't connect the dots looking forward; you can only connect them looking backwards."
+          </p>
+<p class="font-body-sm text-body-sm text-on-surface leading-relaxed bg-surface-container-low p-2 rounded">
+            你无法预先将生命中的点滴串联起来；只有在未来回顾时，方解其中因果。
+          </p>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<span class="font-label-sm text-label-sm bg-primary/10 text-primary px-2 py-0.5 rounded font-medium">核心金句</span>
+<span class="font-label-sm text-label-sm bg-secondary-fixed/50 text-secondary px-2 py-0.5 rounded font-medium">伴随状语</span>
+</div>
+<button class="text-primary hover:text-primary-container font-label-sm text-label-sm flex items-center gap-1 font-semibold" type="button">
+<span class="material-symbols-outlined text-[15px]">replay</span> 单句复读
+            </button>
+</div>
+</div>
+<!-- #13 句 (Next) -->
+<div class="bg-surface-container-lowest/60 hover:bg-surface-container-lowest p-4 rounded-xl shadow-sm transition-all cursor-pointer flex flex-col gap-2 group">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-semibold group-hover:text-primary">#13 · 02:19</span>
+<span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 transition-opacity">play_circle</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-normal">
+            So you have to trust that the dots will somehow connect in your future.
+          </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+            所以你必须心怀信念，坚信这些点滴在未来冥冥中自会串联。
+          </p>
+</div>
+<!-- #14 句 (Next) -->
+<div class="bg-surface-container-lowest/60 hover:bg-surface-container-lowest p-4 rounded-xl shadow-sm transition-all cursor-pointer flex flex-col gap-2 group">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-semibold group-hover:text-primary">#14 · 02:26</span>
+<span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 transition-opacity">play_circle</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-normal">
+            You have to trust in something — your gut, destiny, life, karma, whatever.
+          </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+            你必须信赖某些依托——直觉、命运、生命、因果宿命，凡此种种。
+          </p>
+</div>
+<!-- #15 句 (Next) -->
+<div class="bg-surface-container-lowest/60 hover:bg-surface-container-lowest p-4 rounded-xl shadow-sm transition-all cursor-pointer flex flex-col gap-2 group">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-semibold group-hover:text-primary">#15 · 02:34</span>
+<span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 transition-opacity">play_circle</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-normal">
+            Because believing that the dots will connect down the road will give you the confidence to follow your heart...
+          </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+            因为坚信点滴会在岁月尽头相逢，将给予你听从内心的浩然勇气……
+          </p>
+</div>
+<!-- #16 句 (Next) -->
+<div class="bg-surface-container-lowest/60 hover:bg-surface-container-lowest p-4 rounded-xl shadow-sm transition-all cursor-pointer flex flex-col gap-2 group">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span class="font-semibold group-hover:text-primary">#16 · 02:44</span>
+<span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 transition-opacity">play_circle</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-normal">
+            ...even when it leads you off the well-worn path; and that will make all the difference.
+          </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+            ……即使它引你远离寻常辙迹；而这，将成就所有的截然不同。
+          </p>
+</div>
+</div>
+</div>
+<!-- ==================== 右轨：语匠 AI 侍读阁 (AI Companion Drawer) (3/12 宽屏) ==================== -->
+<div class="col-span-12 xl:col-span-3 flex flex-col gap-4">
+<!-- 侍读阁卡片顶头封签 -->
+<div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm flex flex-col gap-4">
+<!-- 侍读署名印章徽标 -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded bg-primary text-on-primary flex items-center justify-center font-headline-sm text-title-sm font-semibold shadow-sm select-none">
+              侍
+            </div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm font-semibold text-on-surface flex items-center gap-1">
+                语匠 AI 侍读阁
+                <span class="font-label-sm text-label-sm px-1 rounded bg-secondary-fixed text-on-secondary-fixed font-normal">v4.5 Turbo</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">学而时习之 · 伴读随侍</span>
+</div>
+</div>
+<div class="flex items-center gap-1">
+<button class="w-7 h-7 rounded hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors" title="刷新推演" type="button">
+<span class="material-symbols-outlined text-[16px]">refresh</span>
+</button>
+<button class="w-7 h-7 rounded hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors" title="收起侍读匣" type="button">
+<span class="material-symbols-outlined text-[16px]">dock_to_right</span>
+</button>
+</div>
+</div>
+<div class="h-px w-full bg-surface-container-highest"></div>
+<!-- 侍读解惑卷一：树状语法骨架解构 -->
+<div class="flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm font-semibold text-primary uppercase tracking-wider flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+              壹 · 句法骨架与伴随状语拆解
+            </span>
+</div>
+<!-- 树状语法分段可视化 (Pure CSS/Structure Tree) -->
+<div class="bg-surface-container-low rounded-lg p-3 flex flex-col gap-2.5 font-label-md text-label-md">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2 text-on-surface font-semibold">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-primary font-mono text-label-sm">主干 A</span>
+<span>You can't connect the dots</span>
+</div>
+<div class="pl-4 ml-1.5 border-l-2 border-primary/40 flex items-center gap-1.5 text-on-surface-variant text-label-sm">
+<span class="material-symbols-outlined text-[14px] text-primary">subdirectory_arrow_right</span>
+<span>现在分词伴随状语：<code class="text-on-surface">looking forward</code> (时间/方式)</span>
+</div>
+</div>
+<div class="h-px bg-surface-container-highest w-full my-0.5"></div>
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2 text-on-surface font-semibold">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-secondary font-mono text-label-sm">对仗 B</span>
+<span>you can only connect them</span>
+</div>
+<div class="pl-4 ml-1.5 border-l-2 border-secondary/40 flex items-center gap-1.5 text-on-surface-variant text-label-sm">
+<span class="material-symbols-outlined text-[14px] text-secondary">subdirectory_arrow_right</span>
+<span>对仗分词伴随：<code class="text-on-surface">looking backwards</code> (反照回溯)</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 侍读解惑卷二：典籍拾珠 (Connect the dots 词源考据) -->
+<div class="flex flex-col gap-2">
+<span class="font-label-sm text-label-sm font-semibold text-tertiary uppercase tracking-wider flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+            贰 · 典籍拾珠 (Connect the dots)
+          </span>
+<div class="bg-surface-container-low rounded-lg p-3 text-body-sm text-body-sm leading-relaxed text-on-surface flex flex-col gap-1.5">
+<p>
+              本指西方儿童经典填色智力游戏：按编号将离散点逐一描线以绘出真容。乔布斯于此化俗为雅，升华为“人生看似无序之经历，终成画卷”的至哲隐喻。
+            </p>
+</div>
+</div>
+<!-- 侍读解惑卷三：软件架构师场景定制仿写 (Custom Scenario Imitation) -->
+<div class="flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm font-semibold text-secondary uppercase tracking-wider flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+              叁 · 软件架构师定制仿写
+            </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">场景：工程技术</span>
+</div>
+<div class="bg-surface-container-low rounded-lg p-3.5 flex flex-col gap-2">
+<p class="font-headline-sm text-body-md text-on-surface font-normal italic leading-relaxed">
+              "You can't master design patterns just reading manuals; you can only truly understand them building real products."
+            </p>
+<div class="h-px bg-surface-container-highest w-full"></div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+<span class="text-secondary font-semibold">雅释：</span>“纸上读册断难参透设计模式之奥义；唯在躬行铸造真实产品之际，方获真知。”
+            </p>
+</div>
+</div>
+<!-- 底部智能交互栏 (Query & Action Pills) -->
+<div class="flex flex-col gap-2.5 pt-2">
+<!-- 快捷交互标签 (Quick Action Pills) -->
+<div class="flex flex-wrap gap-1.5">
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">
+              换产品经理场景
+            </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">
+              考校测验
+            </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm transition-colors" type="button">
+              口语连读技巧
+            </button>
+</div>
+<!-- 输入提问框 (Parchment Styled Input) -->
+<div class="relative w-full">
+<input class="w-full bg-surface-container-low text-on-surface placeholder:text-on-surface-variant/60 font-body-sm text-body-sm rounded-lg pl-3 pr-10 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary shadow-sm" placeholder="向侍读垂询此句语法、典故或情境仿写..." type="text"/>
+<button class="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded bg-primary text-on-primary flex items-center justify-center shadow-sm hover:bg-primary-container transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">arrow_upward</span>
+</button>
+</div>
+<span class="font-label-sm text-label-sm text-outline text-center">输入 ⌘ / 随时唤起典故库检索</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 轻量交互脚本：词笺显隐、播放暂停与单句循环模拟 -->
+<script>
+    (function initWorkspaceInteractions() {
+      const activeTokenBtn = document.getElementById('activeTokenBtn');
+      const lexiconPopover = document.getElementById('lexiconPopover');
+      const loopToggleBtn = document.getElementById('loopToggleBtn');
+      const playBtn = document.getElementById('playBtn');
+
+      if (activeTokenBtn && lexiconPopover) {
+        activeTokenBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          lexiconPopover.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!lexiconPopover.contains(e.target) && e.target !== activeTokenBtn) {
+            lexiconPopover.classList.add('hidden');
+          }
+        });
+      }
+
+      if (loopToggleBtn) {
+        loopToggleBtn.addEventListener('click', () => {
+          const isLooping = loopToggleBtn.classList.contains('bg-primary');
+          if (isLooping) {
+            loopToggleBtn.classList.remove('bg-primary', 'text-on-primary');
+            loopToggleBtn.classList.add('bg-surface-container', 'text-primary');
+          } else {
+            loopToggleBtn.classList.remove('bg-surface-container', 'text-primary');
+            loopToggleBtn.classList.add('bg-primary', 'text-on-primary');
+          }
+        });
+      }
+
+      if (playBtn) {
+        playBtn.addEventListener('click', () => {
+          const icon = playBtn.querySelector('.material-symbols-outlined');
+          if (icon) {
+            icon.textContent = icon.textContent === 'pause' ? 'play_arrow' : 'pause';
+          }
+        });
+      }
+    })();
+  </script>
+</div></main></div></body></html>

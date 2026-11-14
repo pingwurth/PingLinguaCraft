@@ -1,0 +1,35 @@
+# ai-engine 项目配置（uv 管理，Python 3.12 锁定 —— whisperx 兼容性要求）
+# 引擎说明：
+# - 核心依赖：fastapi / uvicorn / httpx / orjson（云端透传与任务 API）
+# - 可选引擎（uv sync --extra xxx）：
+#   stt    = faster-whisper（默认 STT，含 GPU 支持）
+#   tts    = edge-tts + kokoro-onnx（两套 TTS）
+#   align  = whisperx（音素/词级对齐之一；MFA 走 Docker 不入依赖）
+[project]
+name = "pinglc-ai-engine"
+version = "0.1.0"
+description = "PingLinguaCraft 本地 AI 引擎：STT/TTS/对齐/翻译/LLM 能力路由与任务执行"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "httpx>=0.28",
+    "orjson>=3.10",
+]
+
+[project.optional-dependencies]
+stt = ["faster-whisper>=1.1", "nvidia-cublas-cu12>=12", "nvidia-cudnn-cu12>=9"]
+tts = ["edge-tts>=7", "kokoro-onnx>=0.4"]
+align = ["whisperx>=3.4"]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.28"]
+
+[tool.pytest.ini_options]
+# 从项目根（services/ai-engine）导入 app 包；tests 为唯一测试目录
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.uv]
+# 隔离的虚拟环境目录（.gitignore 已排除）
+package = false

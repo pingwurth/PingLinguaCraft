@@ -1,0 +1,197 @@
+/*
+ * PingLinguaCraft 全局样式与设计 token 层
+ *
+ * 将 docs/ui/editorial_zen_paper/DESIGN.md 的「Editorial & Zen Paper（纸墨禅意）」
+ * 设计系统映射为 Tailwind CSS v4 的 CSS-first 主题：
+ * - 暖纸底色分层（书桌 #FBF9F5 / 纸卡 #F5F1E8 / 压印 #EDE8DF）
+ * - 朱砂印泥主色 #B91C1C（焦点动作、学习里程碑）
+ * - 竹青茶色辅色 #3F6212（掌握确认、正确反馈、进度）
+ * - 墨色文本 #1E2022（浓墨）与 #4B4F54（次级）
+ * - 1px 书边细线 #E3DDD2 代替投影；圆角 4px（书页裁切感）
+ * 深浅色：当前设计稿全部为浅色纸墨风，深色模式后续里程碑再加。
+ */
+
+/* 导入 Tailwind v4（含 preflight 与工具类） */
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+ * 语义 token（shadcn/ui 约定的 CSS 变量）
+ * 命名与 shadcn 保持一致，未来用 shadcn CLI 添加组件时可直接复用
+ * ------------------------------------------------------------------------- */
+:root {
+  /* 书桌底色：暖象牙纸 */
+  --background: #fbf9f5;
+  --foreground: #1e2022; /* 浓墨主文本（不用纯黑） */
+
+  /* 纸卡层：压制纸浆羊皮纸 */
+  --card: #f5f1e8;
+  --card-foreground: #1e2022;
+
+  /* 压印层：风化纤维（输入框、引用块底色） */
+  --muted: #ede8df;
+  --muted-foreground: #4b4f54; /* 次级支持文本 */
+
+  /* 焦点环：浓墨细环（拒绝蓝色光晕） */
+  --ring: #1e2022;
+
+  /* 朱砂印泥：主操作按钮、活动高亮、学习里程碑 */
+  --primary: #b91c1c;
+  --primary-foreground: #fbf9f5;
+  --primary-hover: #991b1b; /* 印泥按压后的深朱 */
+
+  /* 竹青茶色：掌握确认、正确反馈、温和进度 */
+  --secondary: #3f6212;
+  --secondary-foreground: #fbf9f5;
+
+  /* 强调底色（悬停淡染、选中染纸） */
+  --accent: #f0ede4;
+  --accent-foreground: #1e2022;
+
+  /* 破坏性操作（删除等） */
+  --destructive: #ba1a1a;
+  --destructive-foreground: #fbf9f5;
+
+  /* 输入框描边：原稿纸格线 */
+  --input: #d6cebf;
+  /* 书边细线：装订折痕（卡片/分隔线统一用色） */
+  --border: #e3ddd2;
+
+  /* 赭褐色：文学性元数据、章节标签、译文标题 */
+  --ochre: #8c7b65;
+
+  /* 圆角：书页裁切的柔和 4px */
+  --radius: 0.25rem;
+}
+
+/* ---------------------------------------------------------------------------
+ * Tailwind v4 主题映射：把上述变量注册为颜色工具类
+ * 生成 bg-background / text-foreground / border-border / bg-primary 等工具类
+ * ------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-ochre: var(--ochre);
+
+  /* 圆角 token（shadcn 组件读取 --radius 派生值） */
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+
+  /* 字体族：layout.tsx 中 next/font 注入的变量 */
+  --font-serif: var(--font-newsreader), 'Songti SC', serif; /* 标题/文学引文 */
+  --font-sans: var(--font-inter), 'PingFang SC', 'Noto Sans SC', sans-serif; /* 界面功能文本 */
+
+  /* 动画：控制条渐隐等过渡 */
+  --animate-fade: fade 0.3s ease;
+}
+
+/* 渐隐动画关键帧（播放器控制条等） */
+@keyframes fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 全局基础样式
+ * ------------------------------------------------------------------------- */
+@layer base {
+  * {
+    /* 边框统一使用书边细线色 */
+    border-color: var(--border);
+  }
+
+  body {
+    /* 书桌底色 + 浓墨文本 + 功能字体 */
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    /* 移动端播放页需要动态视口高度，交由各布局使用 100dvh */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 文学衬线标题默认字重与墨色 */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    color: var(--foreground);
+  }
+
+  /* 选中文本：朱砂淡染（呼应「划词」功能） */
+  ::selection {
+    background: rgba(185, 28, 28, 0.14);
+  }
+
+  /* 焦点可达性：键盘焦点用浓墨细环，不喧哗 */
+  :focus-visible {
+    outline: 1.5px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* 图标基类：span.material-symbols-outlined 内容写图标名（ligature），如 menu_book。
+   * 放在 base 层（Tailwind 分层最低优先级）：leading-* / font-bold 等工具类可覆盖
+   * line-height / 字重；需要实心图标处用工具类或内联设 'FILL' 1。
+   * 不钉死 wght 轴与 font-weight（否则与「字重 100~700 全区间可用」矛盾且无法加粗） */
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    /* 变体轴默认值（描边 / 0 渐变 / 24 光学尺寸）；wght 交给 font-weight 继承控制 */
+    font-variation-settings: 'FILL' 0, 'GRAD' 0, 'opsz' 24;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Material Symbols 图标字体（自托管，无外网依赖）
+ * woff2 位于 public/fonts/；display:block 避免加载期闪现 ligature 原文
+ * （加载窗口由 layout.tsx 的 preload 压到最短）
+ * ------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  /* 变量字体：字重 100~700 全区间可用（具体字重由使用处的 font-weight 决定） */
+  font-weight: 100 700;
+  src: url('/fonts/material-symbols-outlined.woff2') format('woff2');
+  font-display: block;
+}
+
+/* ---------------------------------------------------------------------------
+ * 通用工具类
+ * ------------------------------------------------------------------------- */
+@layer utilities {
+  /* 安全区内边距（刘海屏/手势条） */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* 说明：动态视口高度（h-dvh/min-h-dvh/max-dvh）与默认边框色（border-color）
+   * 直接使用 Tailwind v4 内建工具类，不再自定义同名/同效规则 */
+}

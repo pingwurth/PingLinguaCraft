@@ -1,0 +1,5 @@
+# pnpm 工作区定义：声明 monorepo 中所有可管理的包
+# apps/* 为应用（web、未来的 mobile），packages/* 为共享库（core）
+packages:
+  - "apps/*"
+  - "packages/*"

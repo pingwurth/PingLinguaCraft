@@ -1,0 +1,7 @@
+<!-- PingLinguaCraft 应用图标（占位）：朱砂印泥底 + 纸墨「书」字意象，正式印章图标后续替换 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 印泥底：圆角方章 -->
+  <rect x="32" y="32" width="448" height="448" rx="64" fill="#B91C1C"/>
+  <!-- 墨书字母 P：衬线笔画意象 -->
+  <path d="M180 120 h120 a80 80 0 0 1 0 160 h-70 v112 h-50 z m50 110 h65 a30 30 0 0 0 0 -60 h-65 z" fill="#FBF9F5"/>
+</svg>

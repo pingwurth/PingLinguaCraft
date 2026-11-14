@@ -1,0 +1,35 @@
+{
+  "excludes": ["**/pnpm-lock.yaml", "**/dist/**", "**/.next/**", "**/node_modules/**", "**/migrations/meta/**"],
+  "rules": [
+    {
+      "path": "packages/core/**",
+      "rule": "#### @pinglc/core 纪律（强制）\n- 本包是双端共享纯逻辑包，**零运行时依赖（强制）**：禁止 import 任何第三方运行时库\n- 禁止引入 react / node 专属 API（如 fs、path、process），必须保证 Expo（React Native）也能直接消费\n- 新增类型/函数必须是纯 TypeScript，不依赖 DOM 或平台特性\n- 文件头部必须有中文注释说明文件作用，每个函数必须有完整的中文 doc",
+      "merge_system_rule": true
+    },
+    {
+      "path": "apps/web/**",
+      "rule": "#### apps/web 规范（强制）\n- **设计系统**：语义色一律用 token（如 bg-primary / text-ink），禁止写裸色值（如 #B91C1C、bg-red-500、rgb(...)）——这是纸墨风设计系统的硬约束\n- **架构**：DB 写入只发生在 web（编排者角色）；engine 是无状态执行器，web 是 engine 的唯一调用方\n- **媒体流**：/api/media/[materialId] 相关代码必须保持 HTTP Range/206 语义\n- **播放器时钟**：读 currentTime 用 rAF（不用 timeupdate 事件）；循环回跳在 rAF tick 内完成\n- 文件头部中文注释、函数中文 doc、HTML 元素中文注释（React 组件内 JSX 亦然）",
+      "merge_system_rule": true
+    },
+    {
+      "path": "services/ai-engine/**",
+      "rule": "#### ai-engine 规范（强制）\n- **无状态执行器**：引擎绝不写数据库，只做计算并回传结果；DB 写入只发生在 web 侧\n- Python 版本锁定 3.12（whisperx 兼容性），禁止使用 3.12+ 专属语法之外的新特性依赖\n- 服务仅监听 127.0.0.1:8765，禁止绑定 0.0.0.0\n- API Key 只在服务端读取，接口永不回传密钥明文\n- 文件头部中文注释、函数中文 doc",
+      "merge_system_rule": true
+    },
+    {
+      "path": "scripts/**/*.sh",
+      "rule": "#### Shell 脚本规范（强制）\n- 必须设置 set -euo pipefail 严格模式\n- 文件头部中文注释：说明作用、设计要点、用法\n- 后台服务必须可被 ./scripts/stop.sh 按进程组清理，不留孤儿进程",
+      "merge_system_rule": true
+    },
+    {
+      "path": ".githooks/*",
+      "rule": "#### Shell 脚本规范（强制）\n- 必须设置 set -euo pipefail 严格模式\n- 文件头部中文注释：说明钩子作用与启用方式\n- 钩子必须提供逃生口（如 SKIP_GATES=1），且失败时输出清晰的中文指引",
+      "merge_system_rule": true
+    },
+    {
+      "path": "**/*.{ts,tsx,js,jsx,py,sh}",
+      "rule": "#### 通用编码规范（强制）\n- 每个代码文件开头必须有中文注释说明文件作用\n- 每个函数必须有完整的中文 doc 注释\n- 注释与代码同步更新：若本次变更改变了函数行为，检查注释是否需要调整",
+      "merge_system_rule": true
+    }
+  ]
+}
