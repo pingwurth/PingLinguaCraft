@@ -240,9 +240,18 @@ export const favorites = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     userId: integer('user_id').notNull().default(1),
-    cueId: integer('cue_id')
-      .notNull()
-      .references(() => cues.id, { onDelete: 'cascade' }),
+    // cue 消亡（重 STT/重导入的删旧插新、单句删除）时行存活、链接置空——
+    // 收藏（AI 解析 + 笔记）是学习资产，不得随转写静默陪葬；文本走快照列
+    cueId: integer('cue_id').references(() => cues.id, { onDelete: 'set null' }),
+    /** 出处材料快照（set null：材料随卷删除时收藏仍存活——与 originCueId 语义
+     *  一致；cascade 会让「长期存活的收藏」连快照一起被物理删除，自相矛盾） */
+    materialId: integer('material_id').references(() => materials.id, {
+      onDelete: 'set null',
+    }),
+    /** 原句快照（收藏时；cue 存活时读取以 live 文本优先） */
+    textEn: text('text_en'),
+    /** 译文快照（同上） */
+    textZh: text('text_zh'),
     categoryId: integer('category_id').references(() => favoriteCategories.id, {
       onDelete: 'set null',
     }),
@@ -255,8 +264,10 @@ export const favorites = sqliteTable(
     ...timestamps,
   },
   (t) => [
+    // cueId 可空（孤儿收藏互异——SQLite 唯一索引对 NULL 互不相等，正合语义）
     uniqueIndex('uq_favorites_cue').on(t.userId, t.cueId),
     index('idx_favorites_category').on(t.categoryId),
+    index('idx_favorites_material').on(t.materialId),
   ]
 );
 
@@ -372,9 +383,8 @@ export const recordings = sqliteTable(
     materialId: integer('material_id')
       .notNull()
       .references(() => materials.id, { onDelete: 'cascade' }),
-    cueId: integer('cue_id')
-      .notNull()
-      .references(() => cues.id, { onDelete: 'cascade' }),
+    // cue 消亡时行存活（音频文件是练习资产），置空链接；materialId 仍在
+    cueId: integer('cue_id').references(() => cues.id, { onDelete: 'set null' }),
     /** 录音文件路径（相对 ~/.pinglc/media） */
     filePath: text('file_path').notNull(),
     durationMs: integer('duration_ms'),

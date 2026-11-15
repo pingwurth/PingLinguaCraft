@@ -84,6 +84,10 @@ export function openDatabase(): { sqlite: Database.Database; dbExisted: boolean 
   const dbExisted = existsSync(DB_PATH);
   const sqlite = new Database(DB_PATH);
   // WAL 模式：读写并发更平滑；busy 超时避免偶发锁冲突直接报错
+  // 注意：better-sqlite3 默认开启 foreign_keys（与 sqlite3 CLI 相反）——运行时
+  // 与迁移连接的 FK 都在生效，schema 的 cascade/set null 一直有效；也正因如此，
+  // 含悬空引用的库在跑 rebuild 类迁移（如 0004 的 INSERT SELECT）前必须先清理
+  //（见 cleanDanglingRefs，须在任何 rebuild 迁移之前执行）
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('busy_timeout = 5000');
   return { sqlite, dbExisted };
@@ -216,6 +220,62 @@ function rotateSnapshots(): void {
 }
 
 /**
+ * 迁移前清理悬空外键引用（幂等，表不存在时静默跳过——全新库场景）
+ *
+ * better-sqlite3 默认开 FK，0004 这类表重建迁移的 INSERT SELECT 会被 FK 校验，
+ * 含悬空引用的行直接失败；而 0004 已应用于真实库不可改（哈希纪律），清理只能
+ * 前置到迁移执行之前。0005 内的同款清理保留作双保险（覆盖 pnpm db:migrate
+ * 直跑路径），但真正保序的是本函数。
+ *
+ * 结构感知：正常运行（FK 开启）不会产生悬空——级联/置空即时处理；悬空只来自
+ * sqlite3 CLI 直改（FK 默认关）等旁路。旧结构（0004 前，cue_id NOT NULL 且无
+ * 快照列）的悬空行只能删除（本就是死引用且无文本可保）；新结构置空保行。
+ */
+function cleanDanglingRefs(sqlite: Database.Database): void {
+  const tables = new Set(
+    (sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(
+      (r) => r.name
+    )
+  );
+
+  /** 列信息（存在性与 NOT NULL）：守卫必须查「列」而非父表——旧结构的
+   *  favorites 没有 material_id 列，按父表存在性拼 UPDATE 会 no such column */
+  const col = (
+    table: string,
+    column: string
+  ): { exists: boolean; notNull: boolean } => {
+    if (!tables.has(table)) return { exists: false, notNull: false };
+    const info = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    const c = info.find((x) => x.name === column);
+    return { exists: c != null, notNull: c?.notnull === 1 };
+  };
+
+  /** 单列悬空清理：NOT NULL（旧结构无快照）删行，可空（新结构）置空保行 */
+  const sweep = (childTable: string, childCol: string, parentTable: string, parentCol: string): string => {
+    const c = col(childTable, childCol);
+    if (!c.exists || !tables.has(parentTable)) return '';
+    return c.notNull
+      ? `DELETE FROM ${childTable} WHERE ${childCol} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ${parentTable} WHERE ${parentTable}.${parentCol} = ${childTable}.${childCol});`
+      : `UPDATE ${childTable} SET ${childCol} = NULL WHERE ${childCol} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ${parentTable} WHERE ${parentTable}.${parentCol} = ${childTable}.${childCol});`;
+  };
+
+  sqlite.exec(
+    [
+      sweep('favorites', 'cue_id', 'cues', 'id'),
+      sweep('favorites', 'material_id', 'materials', 'id'),
+      sweep('favorites', 'category_id', 'favorite_categories', 'id'),
+      sweep('recordings', 'cue_id', 'cues', 'id'),
+      sweep('recordings', 'material_id', 'materials', 'id'),
+    ]
+      .filter(Boolean)
+      .join('\n') || 'SELECT 1;'
+  );
+}
+
+/**
  * 在已打开的连接上执行迁移（全局单飞 + 失败缓存；已 done 时为空操作）
  * 状态经 globalThis 共享：instrumentation bundle 与路由 chunk 各自的模块副本
  * 读写同一份，单飞与失败缓存对两条路径都成立。
@@ -246,6 +306,8 @@ export function runMigrations(sqlite: Database.Database, dbExisted: boolean): vo
       const snap = snapshotDbFile(sqlite);
       if (snap) console.log(`[db] 检测到待执行迁移，已快照库文件 → ${snap}（迁移失败时可拷回恢复）`);
     }
+    // 悬空清理必须先于任何迁移执行（0004 重建表的 INSERT SELECT 会做 FK 校验）
+    cleanDanglingRefs(sqlite);
     migrate(drizzle(sqlite), { migrationsFolder });
     state.status = 'done';
   } catch (err) {
@@ -279,6 +341,20 @@ export function ensureDatabaseReady(): void {
   const { sqlite, dbExisted } = openDatabase();
   try {
     runMigrations(sqlite, dbExisted);
+    // 外键体检（迁移连接上执行，只读不写）：0005 只清理 favorites/recordings 的
+    // 悬空引用，其余表在 FK 长期关闭年代可能残留悬空行——运行时开 FK 后新的
+    // 写入会撞约束，启动时留痕而非静默，方便人工定向修复（不阻断启动）
+    const violations = sqlite
+      .prepare('PRAGMA foreign_key_check;')
+      .all() as Array<{ table: string; rowid: number; parent: string; fkid: number }>;
+    if (violations.length > 0) {
+      const byTable: Record<string, number> = {};
+      for (const v of violations) byTable[v.table] = (byTable[v.table] ?? 0) + 1;
+      console.warn(
+        `[db] foreign_key_check 发现 ${violations.length} 行悬空引用（运行时外键已开启，建议尽快修复）：`,
+        JSON.stringify(byTable)
+      );
+    }
   } finally {
     sqlite.close();
   }

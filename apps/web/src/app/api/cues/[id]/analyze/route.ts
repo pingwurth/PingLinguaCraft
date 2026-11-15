@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues, favorites } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { favoriteSnapshotOf } from '@/lib/server/favorites';
 import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
@@ -38,6 +39,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .values({
         userId: 1,
         cueId,
+        // 快照（cue 消亡后收藏展示的唯一来源，两条收藏路径共用同一 helper）
+        ...favoriteSnapshotOf(cue),
         categoryId: body.categoryId ?? null,
         aiAnalysisStatus: 'pending',
         createdAt: now,

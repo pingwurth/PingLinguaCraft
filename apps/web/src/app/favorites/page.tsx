@@ -18,7 +18,8 @@ interface CategoryDTO {
 /** 收藏形态 */
 interface FavoriteDTO {
   id: number;
-  cueId: number;
+  /** 原句消亡（重 STT/重导入）后为 null——文本走快照，仅失去句内定位 */
+  cueId: number | null;
   categoryId: number | null;
   aiAnalysisMd: string | null;
   aiAnalysisStatus: 'none' | 'pending' | 'ready' | 'failed';

@@ -46,6 +46,10 @@ function createDb() {
     console.error('[db] 自动迁移失败（连接已关闭，重启进程后才会重试）：', err);
     throw err;
   }
+  // 外键强制（显式声明 better-sqlite3 的默认行为，自文档）：schema 声明的
+  // ON DELETE cascade/set null 依赖此开关生效；存量悬空引用由启动路径的
+  // cleanDanglingRefs 前置清理 + foreign_key_check 体检兜底
+  sqlite.pragma('foreign_keys = ON');
   return drizzle(sqlite, { schema });
 }
 

@@ -42,6 +42,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const db = getDb();
   const fav = db.select().from(favorites).where(eq(favorites.id, pid)).all()[0];
   if (!fav) return NextResponse.json({ error: '收藏不存在' }, { status: 404 });
+  // 孤儿收藏（原句随重转写/重导入消亡）无法重新解析：管线按 cueId 取句，
+  // 硬走必然失败且 status 会停在 pending（前端据此无限轮询）
+  if (fav.cueId == null) {
+    return NextResponse.json({ error: '原句已随重转写/重导入失效，无法重新生成解析（收藏文本以快照保留）' }, { status: 400 });
+  }
   db.update(favorites)
     .set({ aiAnalysisStatus: 'pending', updatedAt: new Date() })
     .where(eq(favorites.id, fav.id))

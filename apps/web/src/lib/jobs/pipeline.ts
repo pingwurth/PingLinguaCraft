@@ -804,29 +804,39 @@ const ANALYSIS_SYSTEM =
  */
 async function aiAnalysisPipeline(jobId: string, cueId: number, payload: { favoriteId: number }): Promise<void> {
   const db = getDb();
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
-    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
-  }
-  const cue = db.select().from(cuesTable).where(eq(cuesTable.id, cueId)).all()[0];
-  if (!cue) throw new Error('句段不存在');
-  updateJob(jobId, { message: `AI 解析中（${profile.name}）…`, progress: 0.3 });
+  try {
+    const profile = resolveProfile('llm');
+    if (!profile || profile.kind !== 'cloud') {
+      throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+    }
+    const cue = db.select().from(cuesTable).where(eq(cuesTable.id, cueId)).all()[0];
+    if (!cue) throw new Error('句段不存在');
+    updateJob(jobId, { message: `AI 解析中（${profile.name}）…`, progress: 0.3 });
 
-  const { content } = await enginePost<{ content: string | null }>('/llm/chat', {
-    profile: toEngineProfile(profile),
-    system: ANALYSIS_SYSTEM,
-    user: `英文原句：${cue.textEn}\n中文参考译文：${cue.textZh ?? '（无）'}`,
-  });
-  db.update(favoritesTable)
-    .set({
-      aiAnalysisMd: content ?? '',
-      aiAnalysisStatus: 'ready',
-      aiAnalysisProvider: profile.name,
-      updatedAt: new Date(),
-    })
-    .where(eq(favoritesTable.id, payload.favoriteId))
-    .run();
-  updateJob(jobId, { progress: 1, message: '解析完成' });
+    const { content } = await enginePost<{ content: string | null }>('/llm/chat', {
+      profile: toEngineProfile(profile),
+      system: ANALYSIS_SYSTEM,
+      user: `英文原句：${cue.textEn}\n中文参考译文：${cue.textZh ?? '（无）'}`,
+    });
+    db.update(favoritesTable)
+      .set({
+        aiAnalysisMd: content ?? '',
+        aiAnalysisStatus: 'ready',
+        aiAnalysisProvider: profile.name,
+        updatedAt: new Date(),
+      })
+      .where(eq(favoritesTable.id, payload.favoriteId))
+      .run();
+    updateJob(jobId, { progress: 1, message: '解析完成' });
+  } catch (err) {
+    // 失败必须落 'failed'：收藏页按 status 轮询，停在 pending 会无限轮询
+    // （此前全链路无人写 failed，解析失败后收藏永久卡 pending）
+    db.update(favoritesTable)
+      .set({ aiAnalysisStatus: 'failed', updatedAt: new Date() })
+      .where(eq(favoritesTable.id, payload.favoriteId))
+      .run();
+    throw err;
+  }
 }
 
 /** 单词 AI 笔记系统提示 */
