@@ -25,9 +25,13 @@ export function materialDir(collectionId: number, materialId: number): string {
 /**
  * 绝对路径 → 相对 MEDIA_ROOT 的库内路径（media_path 字段存储形态）
  * @param absPath 绝对路径
+ * @returns 越界（符号链接/调用方拼错目录）返回 null——'../..' 形态的路径写进
+ *          DB 只会产生死材料（/api/media 的收窄检查会拒发），调用方应失败而非落库
  */
-export function relMediaPath(absPath: string): string {
-  return relative(resolve(MEDIA_ROOT), resolve(absPath));
+export function relMediaPath(absPath: string): string | null {
+  const rel = relative(resolve(MEDIA_ROOT), resolve(absPath));
+  if (rel.startsWith('..') || rel === '') return null;
+  return rel;
 }
 
 /**

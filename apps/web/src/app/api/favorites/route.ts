@@ -63,17 +63,29 @@ export async function POST(request: Request) {
     .all()[0];
   if (dup) return NextResponse.json({ id: dup.id, duplicate: true });
   const now = new Date();
-  const r = db
-    .insert(favorites)
-    .values({
-      userId: 1,
-      cueId: body.cueId,
-      categoryId: body.categoryId ?? null,
-      noteMd: body.noteMd ?? null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({ id: favorites.id })
-    .all();
+  // 先查后插在并发双击下会撞 uq_favorites_cue：UNIQUE 冲突按重复收藏收敛而非 500
+  let r: { id: number }[];
+  try {
+    r = db
+      .insert(favorites)
+      .values({
+        userId: 1,
+        cueId: body.cueId,
+        categoryId: body.categoryId ?? null,
+        noteMd: body.noteMd ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: favorites.id })
+      .all();
+  } catch (err) {
+    if (!String(err).includes('UNIQUE')) throw err;
+    const again = db
+      .select({ id: favorites.id })
+      .from(favorites)
+      .where(and(eq(favorites.userId, 1), eq(favorites.cueId, body.cueId)))
+      .all()[0];
+    return NextResponse.json({ id: again?.id, duplicate: true });
+  }
   return NextResponse.json({ id: r[0]!.id }, { status: 201 });
 }

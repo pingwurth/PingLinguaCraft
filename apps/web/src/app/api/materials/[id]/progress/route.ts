@@ -41,25 +41,48 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     .from(cues)
     .where(eq(cues.materialId, materialId))
     .all().length;
-  let listenedThrough = Boolean(body.listenedThrough);
-  if (maskBuf && total > 0) {
-    // 位图置位数 ≥ 句段数才算「听过一遍」；只统计前 total 位（@pinglc/core
-    // 单一口径，双端共享）。旧内联公式 (b&0x55)+((b>>1)&0x55) 不是 popcount——
-    // 高位按位权放大，听 5 句能算出 26，闯关解锁复核形同虚设
-    listenedThrough = countListenedBits(maskBuf, total) >= total;
-  }
-
   const now = new Date();
   const existing = db
-    .select({ id: learningProgress.id, firstDone: learningProgress.firstListenCompletedAt })
+    .select({
+      id: learningProgress.id,
+      firstDone: learningProgress.firstListenCompletedAt,
+      listenedMask: learningProgress.listenedMask,
+      listenedThrough: learningProgress.listenedThrough,
+    })
     .from(learningProgress)
     .where(eq(learningProgress.materialId, materialId))
     .all()[0];
 
+  // 位图合并：进度是累积语义——本次上报与库中旧位图按位或后再复核
+  //（旧实现恒写 maskBuf：未带 mask 的上报会把已有位图覆盖成 NULL，进度丢失）
+  let mask: Buffer | null = maskBuf;
+  const oldMask = existing?.listenedMask;
+  if (oldMask instanceof Buffer && oldMask.length > 0) {
+    if (!mask) {
+      mask = Buffer.from(oldMask);
+    } else {
+      const merged = Buffer.alloc(Math.max(mask.length, oldMask.length));
+      for (let i = 0; i < merged.length; i++) {
+        merged[i] = (mask[i] ?? 0) | (oldMask[i] ?? 0);
+      }
+      mask = merged;
+    }
+  }
+  let listenedThrough: boolean;
+  if (mask && total > 0) {
+    // 位图置位数 ≥ 句段数才算「听过一遍」；只统计前 total 位（@pinglc/core
+    // 单一口径，双端共享）。旧内联公式 (b&0x55)+((b>>1)&0x55) 不是 popcount——
+    // 高位按位权放大，听 5 句能算出 26，闯关解锁复核形同虚设
+    listenedThrough = countListenedBits(mask, total) >= total;
+  } else {
+    // 无位图可复核：保留库中既有判定（单调不回退），不采信客户端单方面声明
+    listenedThrough = existing?.listenedThrough ?? false;
+  }
+
   const values = {
     lastPositionMs: Math.max(0, Math.round(body.lastPositionMs ?? 0)),
     maxCueIndex: Math.max(0, Math.round(body.maxCueIndex ?? 0)),
-    listenedMask: maskBuf,
+    listenedMask: mask,
     listenedThrough,
     ...(listenedThrough && !existing?.firstDone ? { firstListenCompletedAt: now } : {}),
     updatedAt: now,

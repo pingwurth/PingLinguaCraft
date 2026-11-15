@@ -45,6 +45,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       direction,
     });
     const translated = translations[0] ?? '';
+    // 引擎侧对齐失败可能回空串：空结果不得写回（会静默清空既有译文且标 isEdited）
+    if (!translated.trim()) {
+      return NextResponse.json({ error: '翻译结果为空，未写回（请重试或检查翻译档案）' }, { status: 502 });
+    }
     const now = new Date();
     if (direction === 'en2zh') {
       db.update(cues)

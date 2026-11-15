@@ -4,7 +4,7 @@
 
 import { parseIdParam } from '@/lib/server/params';
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { favoriteCategories, favorites } from '@/lib/db/schema';
 
@@ -56,10 +56,15 @@ export async function DELETE(request: Request) {
   const cid = parseIdParam(id);
   if (cid === null) return NextResponse.json({ error: '缺少或非法 id' }, { status: 400 });
   const db = getDb();
+  // userId 收窄与 GET/POST 同款（此前 DELETE 是全库操作——预留列约定下越权路径）
   db.update(favorites)
     .set({ categoryId: null, updatedAt: new Date() })
-    .where(eq(favorites.categoryId, cid))
+    .where(and(eq(favorites.categoryId, cid), eq(favorites.userId, 1)))
     .run();
-  db.delete(favoriteCategories).where(eq(favoriteCategories.id, cid)).run();
+  const del = db
+    .delete(favoriteCategories)
+    .where(and(eq(favoriteCategories.id, cid), eq(favoriteCategories.userId, 1)))
+    .run();
+  if (del.changes === 0) return NextResponse.json({ error: '分类不存在' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

@@ -47,10 +47,11 @@ export function resolveProfile(
   profileId?: number
 ): ResolvedProfile | null {
   const db = getDb();
+  // userId 收窄与 formKeyOrStored 同款（模块内租户口径一致；预留列约定）
   const rows = db
     .select()
     .from(providerProfiles)
-    .where(eq(providerProfiles.capability, capability))
+    .where(and(eq(providerProfiles.capability, capability), eq(providerProfiles.userId, 1)))
     .all();
 
   const row =

@@ -4,7 +4,7 @@
  * POST /api/cues/[id]/recordings?durationMs=… —— 上传录音（body = webm 音频字节）
  */
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
@@ -79,6 +79,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const fileName = `${cueId}-${Date.now()}.${ext}`;
   const abs = join(recDir, fileName);
   writeFileSync(abs, buf);
+  // 越界路径不落库（死材料）：清理刚写的文件并报错
+  const rel = relMediaPath(abs);
+  if (rel === null) {
+    unlinkSync(abs);
+    return NextResponse.json({ error: '录音路径越界，未入库' }, { status: 500 });
+  }
 
   const r = db
     .insert(recordings)
@@ -86,7 +92,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       userId: 1,
       materialId: cue.materialId,
       cueId,
-      filePath: relMediaPath(abs),
+      filePath: rel,
       durationMs: durationMs || null,
       createdAt: new Date(),
     })

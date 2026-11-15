@@ -79,8 +79,13 @@ export async function POST(request: Request) {
     subtitleText = await subtitle.text();
   }
 
+  // 越界路径不落库（死材料：/api_media 收窄检查会拒发）
+  const rel = relMediaPath(mediaAbs);
+  if (rel === null) {
+    return NextResponse.json({ error: '媒体路径越界' }, { status: 500 });
+  }
   db.update(materials)
-    .set({ mediaPath: relMediaPath(mediaAbs), updatedAt: now })
+    .set({ mediaPath: rel, updatedAt: now })
     .where(eq(materials.id, materialId))
     .run();
 

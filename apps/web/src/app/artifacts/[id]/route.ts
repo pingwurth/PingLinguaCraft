@@ -6,7 +6,7 @@
  * （resolve 归一化防 .. 穿越，前缀比对用「目录 + 分隔符」防兄弟目录撞前缀）。
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { getDb, PINGLC_HOME } from '@/lib/db';
@@ -30,13 +30,24 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .all()[0];
   if (!row?.artifactPath) return new Response('产物不存在', { status: 404 });
 
-  // 路径归一化 + 目录收窄：resolve 展开 .. / 符号链接前先比对字面路径，
-  // 必须严格位于 ARTIFACTS_DIR 之内（兄弟目录如 ~/.pinglc-backup 会被拒）
+  // 路径归一化 + 目录收窄：resolve 只做词法归一（不展开符号链接）——先比对
+  // 字面路径，再用 realpathSync 展开符号链接后二次收窄（目录内 symlink 指向
+  // 库外文件的两段式逃逸），兄弟目录如 ~/.pinglc-backup 也会被拒
   const abs = resolve(row.artifactPath);
   if (abs !== ARTIFACTS_DIR && !abs.startsWith(ARTIFACTS_DIR + sep)) {
     return new Response('产物路径非法', { status: 403 });
   }
   if (!existsSync(abs)) return new Response('产物文件缺失', { status: 404 });
+  let real: string;
+  try {
+    real = realpathSync(abs);
+  } catch {
+    return new Response('产物文件缺失', { status: 404 });
+  }
+  const realRoot = realpathSync(ARTIFACTS_DIR);
+  if (real !== realRoot && !real.startsWith(realRoot + sep)) {
+    return new Response('产物路径非法', { status: 403 });
+  }
 
   const html = readFileSync(abs, 'utf-8');
   return new Response(html, {

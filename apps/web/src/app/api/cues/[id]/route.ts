@@ -31,10 +31,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   const edited: string[] = [];
   if (body.startMs !== undefined) {
+    // 有限数守卫：Math.round(非数值)=NaN 会以 NULL 绑定撞 NOT NULL 约束变 500
+    if (!Number.isFinite(body.startMs)) {
+      return NextResponse.json({ error: 'startMs 非法' }, { status: 400 });
+    }
     patch.startMs = Math.max(0, Math.round(body.startMs));
     edited.push('时间');
   }
   if (body.endMs !== undefined) {
+    if (!Number.isFinite(body.endMs)) {
+      return NextResponse.json({ error: 'endMs 非法' }, { status: 400 });
+    }
     patch.endMs = Math.max(0, Math.round(body.endMs));
     edited.push('时间');
   }

@@ -23,8 +23,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const pid = parseIdParam(id);
   if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const url = new URL(request.url);
-  const format = url.searchParams.get('format') ?? 'srt';
-  const mode = (url.searchParams.get('mode') ?? 'bilingual') as 'en' | 'zh' | 'bilingual';
+  // 白名单校验：format 直接拼进 Content-Disposition 文件名（注入面），mode
+  // 决定双语序列化——非法值 400 而非产出错误扩展名的文件
+  const formatRaw = url.searchParams.get('format') ?? 'srt';
+  const modeRaw = url.searchParams.get('mode') ?? 'bilingual';
+  if (!['srt', 'vtt'].includes(formatRaw) || !['en', 'zh', 'bilingual'].includes(modeRaw)) {
+    return NextResponse.json({ error: '非法的 format/mode' }, { status: 400 });
+  }
+  const format = formatRaw as 'srt' | 'vtt';
+  const mode = modeRaw as 'en' | 'zh' | 'bilingual';
 
   const db = getDb();
   const rows = db
@@ -46,7 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return new Response(text, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Content-Disposition': `attachment; filename="material-${id}.${format}"`,
+      'Content-Disposition': `attachment; filename="material-${pid}.${format}"`,
     },
   });
 }

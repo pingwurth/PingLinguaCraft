@@ -6,7 +6,8 @@
  * 会话与消息持久化到 ai_threads / ai_messages；历史随请求拼多轮上下文。
  */
 
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
+import { parseIdParam } from '@/lib/server/params';
 import { getDb } from '@/lib/db';
 import { aiMessages, aiThreads } from '@/lib/db/schema';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
@@ -42,10 +43,15 @@ export async function POST(request: Request) {
   const db = getDb();
   const now = new Date();
 
-  // 线程：复用或新建
+  // 线程：复用或新建（threadId 来自请求体——须整数合法且属于当前用户，
+  // 否则视为无效回落新建：不得读写他人线程；userId 过滤与全库预留列约定一致）
   let threadId = body.threadId ?? null;
-  if (threadId) {
-    const exist = db.select({ id: aiThreads.id }).from(aiThreads).where(eq(aiThreads.id, threadId)).all()[0];
+  if (threadId != null) {
+    const tid = parseIdParam(String(threadId));
+    const exist = tid
+      ? db.select({ id: aiThreads.id }).from(aiThreads)
+          .where(and(eq(aiThreads.id, tid), eq(aiThreads.userId, 1))).all()[0]
+      : undefined;
     if (!exist) threadId = null;
   }
   if (!threadId) {
@@ -149,9 +155,14 @@ export async function POST(request: Request) {
             }
           }
         }
-        // 助手消息落库
+        // 助手消息落库；[DONE] 单独兜底——客户端在最后一个 delta 后断开时
+        // enqueue 会抛错，若冒泡到外层 catch 会再次 persist（同一消息双写）
         persist();
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        try {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        } catch {
+          /* 客户端已断开：内容已落档，无需再发 */
+        }
       } catch (err) {
         // 客户端断开（AbortError）：已收到的部分内容照常落档，不再向死流发事件
         persist();

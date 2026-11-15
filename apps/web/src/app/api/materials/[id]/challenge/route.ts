@@ -88,15 +88,38 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     return NextResponse.json({ ok: true, best: Math.max(score, existing.score) });
   }
-  db.insert(challengeRecords)
-    .values({
-      userId: 1,
-      materialId,
-      mode,
-      score,
-      detailJson: body.detail ? JSON.stringify(body.detail) : null,
-      createdAt: new Date(),
-    })
-    .run();
-  return NextResponse.json({ ok: true, best: score });
+  // 先查后插在并发首建（双击/重放）下会撞 uq_challenge_mode：UNIQUE 冲突按
+  // 「已存在」路径收敛（保最高分），而非 500
+  try {
+    db.insert(challengeRecords)
+      .values({
+        userId: 1,
+        materialId,
+        mode,
+        score,
+        detailJson: body.detail ? JSON.stringify(body.detail) : null,
+        createdAt: new Date(),
+      })
+      .run();
+    return NextResponse.json({ ok: true, best: score });
+  } catch (err) {
+    if (!String(err).includes('UNIQUE')) throw err;
+    const again = db
+      .select({ id: challengeRecords.id, score: challengeRecords.score })
+      .from(challengeRecords)
+      .where(and(eq(challengeRecords.materialId, materialId), eq(challengeRecords.mode, mode)))
+      .all()[0];
+    const best = Math.max(score, again?.score ?? 0);
+    if (again && score > again.score) {
+      db.update(challengeRecords)
+        .set({
+          score,
+          detailJson: body.detail ? JSON.stringify(body.detail) : null,
+          createdAt: new Date(),
+        })
+        .where(eq(challengeRecords.id, again.id))
+        .run();
+    }
+    return NextResponse.json({ ok: true, best });
+  }
 }
