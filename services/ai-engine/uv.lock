@@ -1343,6 +1343,7 @@ dependencies = [
     { name = "httpx", extra = ["socks"] },
     { name = "orjson" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
     { name = "yt-dlp" },
 ]
 
@@ -1381,6 +1382,7 @@ requires-dist = [
     { name = "nvidia-cudnn-cu12", marker = "extra == 'stt'", specifier = ">=9" },
     { name = "orjson", specifier = ">=3.10" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
+    { name = "websockets", specifier = ">=12" },
     { name = "whisperx", marker = "extra == 'align'", specifier = ">=3.4" },
     { name = "yt-dlp", specifier = ">=2025.6.9" },
 ]

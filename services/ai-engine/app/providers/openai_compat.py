@@ -13,7 +13,7 @@ GLM、DeepSeek、GPT、Qwen、MIMO、本地 hy-MT2 等 OpenAI 兼容端点
 
 import json
 import re
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import httpx
 
@@ -25,7 +25,7 @@ class OpenAICompatError(RuntimeError):
     """云端透传失败（网络/鉴权/响应格式），携带可直接展示给用户的消息"""
 
 
-def _make_client(endpoint_url: str) -> httpx.AsyncClient:
+def make_client(endpoint_url: str) -> httpx.AsyncClient:
     """按端点构造客户端：本机回环地址直连（绕过系统 SOCKS/HTTP 代理），
     远端端点尊重代理环境变量（国内访问 OpenAI 等常需代理）"""
     from urllib.parse import urlparse  # noqa: PLC0415
@@ -35,7 +35,7 @@ def _make_client(endpoint_url: str) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=TIMEOUT, trust_env=not is_local)
 
 
-def _headers(api_key: str | None) -> dict[str, str]:
+def auth_headers(api_key: str | None) -> dict[str, str]:
     """构造请求头：有 Key 走 Bearer，无 Key 也放行（本地 vLLM/Ollama 常免鉴权）"""
     h = {"Content-Type": "application/json"}
     if api_key:
@@ -43,7 +43,7 @@ def _headers(api_key: str | None) -> dict[str, str]:
     return h
 
 
-def _base(endpoint_url: str) -> str:
+def base_url(endpoint_url: str) -> str:
     """规整端点：去尾部斜杠；容错用户填了完整 chat 路径的情况"""
     base = endpoint_url.rstrip("/")
     # 用户直接粘贴了 .../chat/completions —— 剥掉，路径由本模块统一拼接
@@ -81,10 +81,10 @@ async def chat(
         body["temperature"] = temperature
     if max_tokens is not None:
         body["max_tokens"] = max_tokens
-    url = f"{_base(endpoint_url)}/chat/completions"
-    async with _make_client(endpoint_url) as client:
+    url = f"{base_url(endpoint_url)}/chat/completions"
+    async with make_client(endpoint_url) as client:
         try:
-            r = await client.post(url, json=body, headers=_headers(api_key))
+            r = await client.post(url, json=body, headers=auth_headers(api_key))
         except httpx.HTTPError as exc:
             raise OpenAICompatError(f"连接云端失败（{endpoint_url}）：{exc}") from exc
     if r.status_code != 200:
@@ -93,6 +93,47 @@ async def chat(
         return r.json()["choices"][0]["message"]["content"]
     except (KeyError, IndexError, ValueError) as exc:
         raise OpenAICompatError(f"云端响应结构异常：{r.text[:300]}") from exc
+
+
+async def chat_json_with_retry(
+    chat_fn: Callable[..., Awaitable[str]],
+    messages: list[dict],
+    *,
+    temperature: float | None = None,
+) -> Any:
+    """「对话 → 宽松 JSON 解析 → 修复重试一次」共用流程
+
+    openai_compat.chat_json（OpenAI 兼容路径）与 llm_formats.chat_json
+    （anthropic/gemini/responses 路径）此前各持一份逐行相同的实现，重试
+    契约（修复提示词、次数、失败文案）在此单一来源。
+
+    Args:
+        chat_fn:     单次对话可调用 (messages, *, temperature) → assistant 文本
+        messages:    原始消息数组（重试时在其后追加错误回喂两条）
+        temperature: 采样温度
+    Returns:
+        解析后的 JSON 对象（dict/list 等）
+    Raises:
+        OpenAICompatError: 两次输出都无法解析为 JSON
+    """
+    text = await chat_fn(messages, temperature=temperature)
+    try:
+        return loads_lenient(text)
+    except ValueError:
+        pass
+    # 修复重试：把原始输出与错误回喂，要求「只输出合法 JSON」
+    retry_messages = messages + [
+        {"role": "assistant", "content": text},
+        {
+            "role": "user",
+            "content": "上面的输出不是合法 JSON。请只输出合法 JSON（不要任何解释、不要代码围栏）。",
+        },
+    ]
+    text2 = await chat_fn(retry_messages, temperature=temperature)
+    try:
+        return loads_lenient(text2)
+    except ValueError as exc:
+        raise OpenAICompatError(f"模型两次都未返回合法 JSON：{text2[:200]}") from exc
 
 
 async def chat_json(
@@ -108,30 +149,54 @@ async def chat_json(
     Returns:
         解析后的 JSON 对象（dict/list 等）
     """
-    url = _base(endpoint_url)
-    text = await chat(
-        url, api_key, model, messages, temperature=temperature
-    )
+
+    async def call(msgs: list[dict], *, temperature: float | None = None) -> str:
+        """绑定端点/密钥/模型的单次对话（供 chat_json_with_retry 回调）"""
+        return await chat(endpoint_url, api_key, model, msgs, temperature=temperature)
+
+    return await chat_json_with_retry(call, messages, temperature=temperature)
+
+
+async def list_models(endpoint_url: str, api_key: str | None) -> list[str]:
+    """拉取云端模型清单（GET /models）：设置页「获取模型」按钮的数据源
+
+    兼容两种返回形态（字段名不同、结构同类）：
+    - OpenAI 标准：{data: [{id: "gpt-5"}, …]}（DeepSeek / vLLM / LM Studio 等）
+    - Z.ai 变体：  {models: [{slug: "glm-5.3"}, …]}（智谱新入口）
+
+    Args:
+        endpoint_url: OpenAI 兼容端点（……/v1 形式即可）
+        api_key:      Bearer 令牌（可空，本地端点常免鉴权）
+    Returns:
+        模型名列表（保持端点返回顺序）
+    Raises:
+        OpenAICompatError: 网络/HTTP/响应结构异常
+    """
+    url = f"{base_url(endpoint_url)}/models"
+    async with make_client(endpoint_url) as client:
+        try:
+            r = await client.get(url, headers=auth_headers(api_key))
+        except httpx.HTTPError as exc:
+            raise OpenAICompatError(f"连接云端失败（{endpoint_url}）：{exc}") from exc
+    if r.status_code != 200:
+        raise OpenAICompatError(f"云端返回 {r.status_code}：{r.text[:300]}")
     try:
-        return _loads_lenient(text)
-    except ValueError:
-        pass
-    # 修复重试：把原始输出与错误回喂，要求「只输出合法 JSON」
-    retry_messages = messages + [
-        {"role": "assistant", "content": text},
-        {
-            "role": "user",
-            "content": "上面的输出不是合法 JSON。请只输出合法 JSON（不要任何解释、不要代码围栏）。",
-        },
-    ]
-    text2 = await chat(url, api_key, model, retry_messages, temperature=temperature)
-    try:
-        return _loads_lenient(text2)
+        data = r.json()
     except ValueError as exc:
-        raise OpenAICompatError(f"模型两次都未返回合法 JSON：{text2[:200]}") from exc
+        raise OpenAICompatError(f"云端响应不是 JSON：{r.text[:200]}") from exc
+    items = data.get("data") or data.get("models") or []
+    models = [
+        m
+        for m in (
+            (it.get("id") or it.get("slug")) if isinstance(it, dict) else None
+            for it in items
+        )
+        if m
+    ]
+    return models
 
 
-def _loads_lenient(text: str) -> Any:
+def loads_lenient(text: str) -> Any:
     """宽松 JSON 解析：直接解析 → 剥围栏解析 → 抓取首个 {...}/[...] 平衡块"""
     try:
         return json.loads(text)
@@ -183,8 +248,8 @@ async def transcribe(
     说明：OpenAI 兼容转写接口不保证词级时间戳，云端 STT 档案仅作兜底；
     精听场景的词级时间戳以本地 faster-whisper 为准。
     """
-    url = f"{_base(endpoint_url)}/audio/transcriptions"
-    async with _make_client(endpoint_url) as client:
+    url = f"{base_url(endpoint_url)}/audio/transcriptions"
+    async with make_client(endpoint_url) as client:
         try:
             with open(audio_path, "rb") as f:
                 files = {"file": (audio_path.rsplit("/", 1)[-1], f)}
@@ -192,7 +257,7 @@ async def transcribe(
                 if language:
                     data["language"] = language
                 r = await client.post(
-                    url, files=files, data=data, headers=_headers(api_key)
+                    url, files=files, data=data, headers=auth_headers(api_key)
                 )
         except httpx.HTTPError as exc:
             raise OpenAICompatError(f"上传云端转写失败：{exc}") from exc
@@ -224,10 +289,10 @@ async def chat_stream(
     }
     if temperature is not None:
         body["temperature"] = temperature
-    url = f"{_base(endpoint_url)}/chat/completions"
-    client = _make_client(endpoint_url)
+    url = f"{base_url(endpoint_url)}/chat/completions"
+    client = make_client(endpoint_url)
     try:
-        async with client.stream("POST", url, json=body, headers=_headers(api_key)) as resp:
+        async with client.stream("POST", url, json=body, headers=auth_headers(api_key)) as resp:
             if resp.status_code != 200:
                 text = (await resp.aread()).decode("utf-8", "replace")
                 raise OpenAICompatError(f"云端返回 {resp.status_code}：{text[:300]}")

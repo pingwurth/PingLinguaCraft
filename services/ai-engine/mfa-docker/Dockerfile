@@ -4,8 +4,10 @@
 # 设计要点：
 # - 版本锁死：MFA=3.4.3（conda-forge）、基镜像固定 tag；conda 依赖闭包的
 #   解析结果存 /opt/mfa-env.lock 供复现与排障（严格复现需 conda lock 文件，
-#   暂未引入）；声学模型/词典为「构建期最新」（MFA CLI 不支持锁模型版本）
-# - 离线就绪：构建期预下载英语声学模型与发音词典进镜像层，运行期无需联网
+#   暂未引入）；声学模型/词典版本由 engine-setup.sh 内 URL 锁定
+# - 离线就绪：模型由 engine-setup.sh 宿主侧预下载到 mfa-docker/models/
+#   （不入 git），构建期 COPY 进镜像层，运行期无需联网——不在容器内下载
+#   （GitHub 资产在国内网络下即使走代理也易长传断流，宿主 curl 可重试续传）
 # - 纯 CPU 任务：MFA 对齐不占 GPU，与 STT 推理无显存争用
 # - 调用契约（未来 align_mfa handler）：
 #     docker run --rm --user $(id -u):$(id -g) \
@@ -41,12 +43,13 @@ ENV ENV_NAME=mfa \
     MFA_ROOT_DIR=/opt/mfa \
     PATH=/opt/conda/envs/mfa/bin:$PATH
 
-# 预下载两套英语声学模型+发音词典（构建期完成，运行期离线）：
+# 烘焙两套英语声学模型+发音词典（宿主侧预下载，见文件头）：
 #   english_us_arpa —— 经典 GMM 声学模型，体量小、行为稳
 #   english_mfa     —— MFA 官方现代默认，精度更好（跟读评分首选）
-# 版本为构建期最新（CLI 不支持锁版本）；chmod 保证任意 uid 可读
-RUN mfa model download acoustic english_us_arpa \
- && mfa model download dictionary english_us_arpa \
- && mfa model download acoustic english_mfa \
- && mfa model download dictionary english_mfa \
- && chmod -R a+rX /opt/mfa
+# 目录层级对齐 MFA 惯例（abc.py: pretrained_directory）：
+#   $MFA_ROOT_DIR/pretrained_models/{acoustic,dictionary}/…
+# a+rwX 说明：MFA 每次调用都会往 $MFA_ROOT_DIR 写 global_config.yaml 与
+# command_history.yaml（config.py: get_temporary_directory 即根目录），
+# 任意 --user 运行需对根可写；写入落在容器可写层，随 --rm 丢弃不影响镜像
+COPY models/ /opt/mfa/pretrained_models/
+RUN chmod -R a+rwX /opt/mfa

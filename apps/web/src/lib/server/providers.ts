@@ -6,10 +6,12 @@
  * 云端档案的 api_key 只在服务端流转，任何 API 响应都不回传。
  */
 
+import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { AICapability } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { providerProfiles } from '@/lib/db/schema';
+import { parseParamsJson, ttsEngineFromParams } from '@/lib/providers';
 
 /** 解析后的可执行档案（发给引擎的形态） */
 export interface ResolvedProfile {
@@ -61,14 +63,8 @@ export function resolveProfile(
     return BUILTIN_DEFAULTS[capability] ?? null;
   }
 
-  let params: Record<string, unknown> = {};
-  if (row.paramsJson) {
-    try {
-      params = JSON.parse(row.paramsJson) as Record<string, unknown>;
-    } catch {
-      /* 参数损坏按空处理 */
-    }
-  }
+  // paramsJson 安全解析共用 lib/providers 的单一实现（与设置页展示口径一致）
+  const params = parseParamsJson(row.paramsJson);
   return {
     kind: row.kind as 'local' | 'cloud',
     endpoint_url: row.endpointUrl ?? undefined,
@@ -101,4 +97,35 @@ export function toEngineProfile(p: ResolvedProfile): Record<string, unknown> {
 export function maskProfile<T extends { apiKey: string | null }>(row: T): Omit<T, 'apiKey'> & { hasKey: boolean } {
   const { apiKey, ...rest } = row;
   return { ...rest, hasKey: Boolean(apiKey) };
+}
+
+/**
+ * 表单 apiKey 或按 profileId 回库取已存 Key（编辑模式 Key 不回显；
+ * 连通性测试与「获取模型」两个入口共用的兜底规则）
+ * @param apiKey 表单现值（空白视同未填）
+ * @param profileId 编辑中的档案 id（新增表单为 undefined）
+ */
+export function formKeyOrStored(apiKey: string | undefined, profileId: number | undefined): string {
+  const form = apiKey?.trim() ?? '';
+  if (form || !profileId) return form;
+  const row = getDb()
+    .select({ apiKey: providerProfiles.apiKey })
+    .from(providerProfiles)
+    .where(eq(providerProfiles.id, profileId))
+    .all()[0];
+  return row?.apiKey ?? '';
+}
+
+/**
+ * 当前 TTS 档案的缓存指纹（引擎 + 音色 → 短哈希）
+ *
+ * 版本化音频 URL 的 v 参数数据源：切换 TTS 档案（换引擎或音色）指纹即变，
+ * 客户端按新 URL 取音频，不会命中旧音色的不可变缓存。
+ */
+export function ttsProfileFingerprint(): string {
+  const p = resolveProfile('tts');
+  return createHash('sha1')
+    .update(`${ttsEngineFromParams(p?.params)}|${p?.model ?? ''}`)
+    .digest('hex')
+    .slice(0, 10);
 }

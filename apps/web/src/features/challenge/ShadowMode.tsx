@@ -3,21 +3,32 @@
 /**
  * 跟读评分 / 影子跟读玩法（需求 17 玩法三、四，共用组件）
  *
- * - shadow_score（跟读评分）：先听原句 → 录音 → AI 评分（录音 STT 与原句词级相似度）
+ * - shadow_score（跟读评分）：先听原句 → 录音 → AI 评分
  * - shadowing（影子跟读）：原句播放与录音同时开始（同步跟读），句尾自动停，同法评分
+ * 评分双路径（/api/cues/:id/shadow-score 自动路由）：配置口语评测档案时走云端
+ * SOE（三维分 + 词级着色）；否则本地 STT 近似评分（词级 diff）。
  */
 
 import { useState } from 'react';
+import type { ShadowScoreDTO, SpeechEvalWord } from '@pinglc/core';
 import type { CueDTO } from '@/lib/api';
 import { useRecorder } from '@/features/practice/useRecorder';
 import { playSentenceOnce, stopPlayback } from '@/features/practice/playUtils';
 import { ChallengeShell, useChallengeRun } from './ChallengeShell';
 
-/** 评分响应 */
-interface ScoreResp {
-  score: number;
-  heard: string;
-  note?: string;
+/** 评分响应（契约见 @pinglc/core ShadowScoreDTO） */
+type ScoreResp = ShadowScoreDTO;
+
+/**
+ * 词级徽标着色：按评测 matchTag 与词准确度
+ * matchTag 语义（腾讯 SOE）：0 匹配 / 1 增读 / 2 漏读 / 3 错读 / 4 未录入
+ * @param w 词级评分
+ */
+function wordChipClass(w: SpeechEvalWord): string {
+  if (w.matchTag === 2) return 'text-muted-foreground line-through'; // 漏读：该读没读
+  if (w.matchTag === 1 || w.matchTag === 3) return 'text-destructive'; // 增读/错读
+  if (w.matchTag === 4) return 'text-muted-foreground'; // 未录入：评测词典无此词，中性灰
+  return w.accuracy >= 80 ? 'text-secondary' : 'text-ochre'; // 匹配词：按准确度分色
 }
 
 /**
@@ -153,6 +164,32 @@ export function ShadowMode({
               {result.note && <p className="mt-1">{result.note}</p>}
             </div>
           </div>
+          {/* 云端口语评测：三维分 + 词级着色（绿=好 黄=待改进 红=增读/错读 灰删除=漏读 灰=未收录） */}
+          {result.engine === 'soe' && result.detail && (
+            <>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+                {/* 准确度（0~100） */}
+                <span>准确 <b className="text-foreground">{Math.round(result.detail.accuracy)}</b></span>
+                {/* 流利度（0~100） */}
+                <span>流利 <b className="text-foreground">{Math.round(result.detail.fluency)}</b></span>
+                {/* 完成度（0~1，展示为百分比） */}
+                <span>完整 <b className="text-foreground">{Math.round(result.detail.completion * 100)}%</b></span>
+              </div>
+              {result.detail.words.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 font-serif text-base leading-relaxed">
+                  {/* 逐词徽标：着色规则见 wordChipClass */}
+                  {result.detail.words.map((w, i) => (
+                    <span key={`${w.word}-${i}`} className={wordChipClass(w)} title={`准确度 ${Math.round(w.accuracy)}`}>
+                      {w.word}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="mt-2 text-[10px] text-border">
+                灰删除线=漏读 · 红=增读/错读 · 灰=未收录词 · 黄=待改进 · 绿=良好
+              </p>
+            </>
+          )}
           <button onClick={() => next(result.score)} className="mt-3 w-full rounded-md bg-primary py-2.5 text-sm text-primary-foreground">
             下一句
           </button>

@@ -10,8 +10,9 @@
  *
  * 类型纪律：不依赖 DOM lib / @types/node 的全局声明（core 的 tsconfig 仅
  * ES2022，此前 Headers/FormData 能过检靠的是 vitest 传递引入的 @types/node
- * 全局——依赖链一变即断）——一律结构化最小类型 + globalThis 取构造器，
- * 浏览器 / RN / Node≥18 运行时均内置这些构造器。
+ * 全局——依赖链一变即断）——一律结构化最小类型 + globalThis 取构造器。
+ * 运行时前提：Headers/FormData 构造器必须存在（浏览器 / RN / Node≥18 均内置；
+ * 此前为不存在 Headers 的假想运行时维护的降级分支从未被执行过，已删）。
  */
 
 /** API 错误（服务端 error 字段或网络异常文本，携带 HTTP 状态码） */
@@ -31,8 +32,6 @@ export interface HeadersLike {
   get(name: string): string | null;
   set(name: string, value: string): void;
   has(name: string): boolean;
-  /** 遍历条目（无 Headers 全局的降级路径用；真 Headers 实例都有） */
-  forEach?(callback: (value: string, key: string) => void): void;
 }
 
 /**
@@ -41,54 +40,27 @@ export interface HeadersLike {
  */
 export type HeadersInput = HeadersLike | Array<[string, string]> | Record<string, string>;
 
-/** globalThis 上可能存在的 Headers 构造器（双端运行时均有；类型上不依赖全局声明） */
+/** globalThis 上的 Headers 构造器（双端运行时均内置；类型上不依赖全局声明） */
 type HeadersCtor = new (init?: HeadersInput) => HeadersLike;
-const HeadersCtor = (globalThis as { Headers?: HeadersCtor }).Headers;
+const HeadersCtor = (globalThis as { Headers: HeadersCtor }).Headers;
 
-/** globalThis 上可能存在的 FormData 构造器（仅用于体类型判定） */
+/** globalThis 上的 FormData 构造器（仅用于体类型判定） */
 type FormDataCtor = new () => unknown;
-const FormDataCtor = (globalThis as { FormData?: FormDataCtor }).FormData;
+const FormDataCtor = (globalThis as { FormData: FormDataCtor }).FormData;
 
 /**
  * 合并请求头：默认补 Content-Type: application/json；FormData 体不设
  * （multipart boundary 由 fetch 生成，覆盖会破坏上传）；调用方头优先
  * （Headers 实例 / 普通对象 / 元组数组均接受——对象展开合并不认识 Headers，
- * 会把调用方头静默丢弃）。
- * Headers 构造器不存在时降级为普通对象（条目经 forEach/元组/对象枚举取得；
- * 不保证 Headers 的大小写不敏感语义——现实双端运行时都走 Headers 分支）。
+ * 会把调用方头静默丢弃）。要求运行时提供 Headers 构造器（保持大小写不敏感语义）。
  * @param body    请求体（判断是否 FormData，可空）
  * @param headers 调用方头（可空）
  */
 export function jsonHeaders(body: unknown, headers?: HeadersInput): HeadersLike {
   const isForm = FormDataCtor != null && body instanceof FormDataCtor;
-  const applyDefault = (h: HeadersLike) => {
-    if (!isForm && !h.has('Content-Type')) h.set('Content-Type', 'application/json');
-    return h;
-  };
-  if (HeadersCtor) {
-    return applyDefault(new HeadersCtor(headers));
-  }
-  // 降级：普通对象实现 HeadersLike（大小写敏感，仅极旧运行时会走到）
-  const flat: Record<string, string> = {};
-  if (Array.isArray(headers)) {
-    for (const [k, v] of headers) flat[k] = v;
-  } else if (headers && typeof (headers as HeadersLike).forEach === 'function') {
-    (headers as HeadersLike).forEach!((v, k) => {
-      flat[k] = v;
-    });
-  } else if (headers) {
-    Object.assign(flat, headers as Record<string, string>);
-  }
-  return applyDefault({
-    get: (n) => flat[n] ?? null,
-    set: (n, v) => {
-      flat[n] = v;
-    },
-    has: (n) => flat[n] !== undefined,
-    forEach: (cb) => {
-      for (const [k, v] of Object.entries(flat)) cb(v, k);
-    },
-  });
+  const h = new HeadersCtor(headers);
+  if (!isForm && !h.has('Content-Type')) h.set('Content-Type', 'application/json');
+  return h;
 }
 
 /** parseApiResponse 需要的最小 Response 形态（结构化类型：不绑定 DOM lib，双端可用） */

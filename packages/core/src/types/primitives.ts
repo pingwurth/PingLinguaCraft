@@ -39,9 +39,9 @@ export type MaterialSourceType = 'audio' | 'video' | 'text' | 'link';
 export type SubtitleStatus = 'none' | 'processing' | 'ready' | 'failed';
 
 /**
- * AI 能力类别：STT 转写 / TTS 合成 / 音素对齐 / 翻译 / 大语言模型
+ * AI 能力类别：STT 转写 / TTS 合成 / 音素对齐 / 翻译 / 大语言模型 / 口语评测
  */
-export type AICapability = 'stt' | 'tts' | 'align' | 'translate' | 'llm';
+export type AICapability = 'stt' | 'tts' | 'align' | 'translate' | 'llm' | 'speech_eval';
 
 /**
  * 任务状态

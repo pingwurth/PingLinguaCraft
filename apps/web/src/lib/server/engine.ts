@@ -7,6 +7,7 @@
  * - 长任务（stt / tts_batch / yt_download）：submitJob 拿 id → awaitJob 轮询到终态
  */
 
+import { NextResponse } from 'next/server';
 import type { EngineCapabilities } from '@pinglc/core';
 
 /** 引擎基础地址 */
@@ -86,6 +87,25 @@ export async function enginePost<T>(path: string, body: unknown): Promise<T> {
   return r.json();
 }
 
+/**
+ * 同步 GET 调用（透传类端点，如 /tts/voices 音色清单）
+ * @param path 路径（含查询串）
+ */
+export async function engineGet<T>(path: string): Promise<T> {
+  const r = await engineFetch(path);
+  return r.json();
+}
+
+/**
+ * 引擎代理路由的统一错误出口：EngineError 带引擎 detail（可读），
+ * 其它异常用回退文案。此前各路由手写 instanceof 三元，措辞已开始漂移。
+ * @param err 捕获的异常
+ * @param fallback 非引擎错误的回退文案
+ */
+export function engineErrorResponse(err: unknown, fallback: string): NextResponse {
+  const msg = err instanceof EngineError ? err.message : fallback;
+  return NextResponse.json({ error: msg }, { status: 502 });
+}
 
 /** 引擎任务快照（/jobs/{id} 返回结构） */
 export interface EngineJobSnapshot {

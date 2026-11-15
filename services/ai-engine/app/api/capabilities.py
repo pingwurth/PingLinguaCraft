@@ -1,12 +1,15 @@
 """
-能力执行路由：STT / TTS / 翻译 / LLM 的同步端点与任务处理器
+能力执行路由：STT / TTS / 翻译 / 口语评测 / LLM 的同步端点与任务处理器
 
 profile 形态（web 端 provider_profiles 解析后随请求传入）：
-  {kind: "local"|"cloud", engine?: "whisper"|"edge"|"kokoro"…,
-   endpoint_url?, api_key?, model?, params?: {…}}
+  {kind: "local"|"cloud", endpoint_url?, api_key?, model?, params?: {…}}
+TTS 的本地双引擎（edge 联网 / kokoro 离线）由 params.engine 路由（缺省=edge）；
+口语评测（/soe）无本地实现，仅支持云端档案（腾讯云 SOE）。
 """
 
 import asyncio
+import math
+from pathlib import Path
 from typing import Any
 
 import orjson
@@ -14,9 +17,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import settings
-from ..engines import stt_whisper, tts_edge
+from ..engines import soe_tencent, stt_whisper, tts_edge, tts_kokoro
 from ..jobs.runner import Job
-from ..providers import openai_compat
+from ..providers import aliyun_native, llm_formats, openai_compat
 
 router = APIRouter()
 
@@ -25,6 +28,19 @@ _gpu_semaphore = asyncio.Semaphore(1)
 
 # 各能力可覆盖的默认模型
 _DEFAULTS = {"stt_model": settings.load_config().get("default_stt_model", "large-v3")}
+
+
+def _cloud_api_path(profile: dict) -> str | None:
+    """云端档案的专属端点路径（params.apiPath）：非空 → 阿里云原生 API，否则 OpenAI 兼容体系
+
+    路径归一：实测正确路由带 /api/v1 前缀（…/api/v1/services/aigc/multimodal-generation/
+    generation）；用户填 /services/… 短形式时自动补全，两种写法等效。
+    """
+    path = (profile.get("params") or {}).get("apiPath")
+    if not isinstance(path, str) or not path.strip():
+        return None
+    path = "/" + path.strip().lstrip("/")
+    return path if path.startswith("/api/v1") else f"/api/v1{path}"
 
 
 class CloudProfile(BaseModel):
@@ -66,10 +82,22 @@ async def stt(req: STTRequest) -> dict:
     audio = _require_pinglc_path(req.audio_path)
     profile = req.profile or {}
     if profile.get("kind") == "cloud":
-        text = await openai_compat.transcribe(
-            profile["endpoint_url"], profile.get("api_key"),
-            profile.get("model", "whisper-1"), audio, language=req.language,
-        )
+        # apiPath 配置 → 阿里云原生（多模态生成，带词级时间戳）；否则 OpenAI 兼容（audio/transcriptions）
+        api_path = _cloud_api_path(profile)
+        try:
+            if api_path:
+                result = await aliyun_native.transcribe(
+                    profile["endpoint_url"], profile.get("api_key"),
+                    profile.get("model") or aliyun_native.DEFAULT_STT_MODEL, audio, api_path=api_path,
+                )
+                return {"language": req.language or "", "duration": 0.0,
+                        "words": result["words"], "text": result["text"]}
+            text = await openai_compat.transcribe(
+                profile["endpoint_url"], profile.get("api_key"),
+                profile.get("model", "whisper-1"), audio, language=req.language,
+            )
+        except openai_compat.OpenAICompatError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         return {"language": req.language or "", "duration": 0.0, "words": [], "text": text}
     # 本地 faster-whisper（放线程池跑阻塞推理；GPU 串行）
     async with _gpu_semaphore:
@@ -88,11 +116,62 @@ async def stt(req: STTRequest) -> dict:
     }
 
 
+async def _aliyun_stt_chunked(audio: str, profile: dict, api_path: str, job: Job) -> dict:
+    """阿里云原生 STT 长音频：≤8MB 一次直发，超限切 60s wav 分片逐片转写拼接
+
+    每片带词级时间戳（相对分片起点），拼接时按分片起点平移 → 整段词级时间轴。
+    分片临时文件用后即删。
+    """
+    model = profile.get("model") or aliyun_native.DEFAULT_STT_MODEL
+    size = Path(audio).stat().st_size
+    if size <= aliyun_native.MAX_AUDIO_BYTES:
+        job.progress = 0.5
+        return await aliyun_native.transcribe(
+            profile["endpoint_url"], profile.get("api_key"), model, audio, api_path=api_path
+        )
+
+    from ..media import ffmpeg  # noqa: PLC0415
+
+    duration_ms = int((await asyncio.to_thread(ffmpeg.probe, audio)).get("duration_ms") or 0)
+    if duration_ms <= 0:
+        raise openai_compat.OpenAICompatError("无法探测音频时长，分片转写中止")
+    chunk_ms = 60_000  # 16kHz mono wav ≈ 1.9MB/段，稳在 base64 上限内
+    total = math.ceil(duration_ms / chunk_ms)
+    work = Path(audio).parent / ".stt-chunks"
+    work.mkdir(parents=True, exist_ok=True)
+    texts: list[str] = []
+    words: list[dict] = []
+    for i in range(total):
+        start, end = i * chunk_ms, min((i + 1) * chunk_ms, duration_ms)
+        chunk = str(work / f"{i:04d}.wav")
+        await asyncio.to_thread(ffmpeg.slice_audio, audio, start, end, chunk)
+        try:
+            piece = await aliyun_native.transcribe(
+                profile["endpoint_url"], profile.get("api_key"), model, chunk, api_path=api_path
+            )
+        finally:
+            Path(chunk).unlink(missing_ok=True)
+        if piece["text"]:
+            texts.append(piece["text"])
+        # 分片内词时间戳（相对分片）平移到整段时间轴
+        for w in piece["words"]:
+            words.append({"w": w["w"], "s": w["s"] + start / 1000, "e": w["e"] + start / 1000})
+        job.progress = 0.05 + 0.9 * (i + 1) / total
+        job.message = f"云端分片转写 {i + 1}/{total}"
+    return {"text": " ".join(texts), "words": words}
+
+
 async def stt_job_handler(params: dict, job: Job) -> dict:
     """STT 任务处理器（长音频）：逐段上报进度"""
     audio = _require_pinglc_path(params["audio_path"])
     profile = params.get("profile") or {}
     if profile.get("kind") == "cloud":
+        api_path = _cloud_api_path(profile)
+        if api_path:
+            job.message = "云端转写中（阿里云原生 API，超限自动分片）…"
+            result = await _aliyun_stt_chunked(audio, profile, api_path, job)
+            return {"language": params.get("language") or "", "duration": 0.0,
+                    "words": result["words"], "text": result["text"]}
         job.message = "云端转写中（无词级时间戳，仅兜底）"
         text = await openai_compat.transcribe(
             profile["endpoint_url"], profile.get("api_key"),
@@ -125,7 +204,25 @@ async def stt_job_handler(params: dict, job: Job) -> dict:
     }
 
 
-# ---------------- TTS ----------------
+# ---------------- TTS（edge-tts 联网 / kokoro 本地离线，按档案 params.engine 路由） ----------------
+
+
+def _tts_engine(profile: dict) -> str:
+    """从档案解析 TTS 引擎名：params.engine == "kokoro" 走本地离线，其余（含缺省）走 edge"""
+    engine = (profile.get("params") or {}).get("engine")
+    return "kokoro" if engine == "kokoro" else "edge"
+
+
+def _resolve_tts(profile: dict, req_voice: str | None) -> tuple[str, str]:
+    """解析 TTS 引擎与音色（/tts、/tts/batch、tts_batch 任务处理器共用）
+
+    引擎由档案 params.engine 路由；音色优先级：请求显式指定 > 档案 model > 引擎默认。
+    Returns:
+        (engine, voice) 二元组
+    """
+    engine = _tts_engine(profile)
+    default = tts_kokoro.DEFAULT_VOICE if engine == "kokoro" else tts_edge.DEFAULT_VOICE
+    return engine, req_voice or profile.get("model") or default
 
 
 class TTSRequest(BaseModel):
@@ -137,19 +234,87 @@ class TTSRequest(BaseModel):
     rate: str = "+0%"
 
 
+def _cloud_tts_voice(profile: dict, req_voice: str | None) -> str:
+    """云端 TTS（阿里云原生）音色解析：请求显式指定 > 档案 params.voice > 默认音色
+
+    注意档案 model 字段在云端 TTS 是模型名（cosyvoice-v2），不作音色用。
+    """
+    return req_voice or (profile.get("params") or {}).get("voice") or aliyun_native.DEFAULT_TTS_VOICE
+
+
 @router.post("/tts")
 async def tts(req: TTSRequest) -> dict:
-    """单次合成：返回 mp3 的本地缓存路径（web 代理读取并加缓存头）"""
+    """单次合成：返回音频的本地缓存路径（web 代理读取并加缓存头）
+
+    kokoro 返回 wav 缓存路径（扩展名 .wav，web 按扩展名给 Content-Type）；
+    模型未下载时同步返回 503 + 指引（不静默触发 336MB 大下载）。
+    云端档案走阿里云 WebSocket 实时合成（由端点 URL 推 WS 地址，无需 apiPath），
+    逐次合成都落内容哈希缓存。
+    """
     profile = req.profile or {}
     if profile.get("kind") == "cloud":
-        raise HTTPException(status_code=501, detail="云端 TTS 透传在需要时再接入")
-    voice = req.voice or profile.get("model") or tts_edge.DEFAULT_VOICE
+        voice = _cloud_tts_voice(profile, req.voice)
+        try:
+            data = await aliyun_native.synthesize(
+                profile["endpoint_url"], profile.get("api_key"), profile.get("model"),
+                req.text, voice=voice,
+            )
+        except openai_compat.OpenAICompatError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        path = aliyun_native.cache_path(req.text, profile.get("model") or aliyun_native.DEFAULT_TTS_MODEL, voice)
+        return {"path": str(path), "size": len(data)}
+    engine, voice = _resolve_tts(profile, req.voice)
+    if engine == "kokoro":
+        speed = tts_kokoro.parse_rate(req.rate)
+        try:
+            # ensure_synthesized：缓存命中时不把音频读回引擎（web 代理是唯一读取方）
+            path = await asyncio.to_thread(
+                tts_kokoro.ensure_synthesized, req.text, voice=voice, speed=speed
+            )
+        except tts_kokoro.TTSEngineError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {"path": str(path), "size": path.stat().st_size}
     data = await tts_edge.synthesize(req.text, voice=voice, rate=req.rate)
     # 写到缓存目录并把路径回给 web（web 直接 fs 读取同一路径）
-    from ..engines.tts_edge import _cache_path  # noqa: PLC0415
-
-    path = _cache_path(req.text, voice, req.rate)
+    path = tts_edge.cache_path(req.text, voice, req.rate)
     return {"path": str(path), "size": len(data)}
+
+
+@router.get("/tts/voices")
+async def tts_voices() -> dict:
+    """两套 TTS 引擎的音色清单（web 设置页档案表单下拉用；纯静态数据，不依赖模型在位）"""
+    return {"edge": tts_edge.VOICE_OPTIONS, "kokoro": tts_kokoro.VOICE_OPTIONS}
+
+
+async def _cloud_tts_batch(
+    sentences: list[str],
+    out_path: str,
+    profile: dict,
+    voice: str,
+    on_progress=None,
+) -> list[dict]:
+    """云端 TTS（阿里云 WebSocket）批量合成：逐句合成 mp3 分片（内容哈希缓存）
+    → ffprobe 测长 → 静音间隔拼接（与 edge 路径同一拼装语义）"""
+    from ..engines.tts_common import assemble_timeline  # noqa: PLC0415
+
+    out_dir = Path(out_path).parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+    work = out_dir / ".tts-parts"
+    work.mkdir(exist_ok=True)
+
+    parts: list[str] = []
+    for i, text in enumerate(sentences):
+        data = await aliyun_native.synthesize(
+            profile["endpoint_url"], profile.get("api_key"), profile.get("model"),
+            text, voice=voice,
+        )
+        part = work / f"{i:05d}.mp3"
+        part.write_bytes(data)
+        parts.append(str(part))
+        if on_progress:
+            on_progress((i + 1) / (len(sentences) + 1))
+
+    return assemble_timeline(parts, out_path, on_progress=on_progress)
 
 
 class TTSBatchRequest(BaseModel):
@@ -164,27 +329,106 @@ class TTSBatchRequest(BaseModel):
 
 @router.post("/tts/batch")
 async def tts_batch_sync(req: TTSBatchRequest) -> dict:
-    """同步批量合成（句子数适中时直接等；大批量走 /jobs type=tts_batch）"""
+    """同步批量合成（句子数适中时直接等；大批量走 /jobs type=tts_batch）
+
+    kokoro 同步路径要求模型已在位（首装请走任务路径或设置页下载，避免请求
+    挂在分钟级下载上）。
+    """
     out = _require_pinglc_path(req.out_path)
-    voice = req.voice or (req.profile or {}).get("model") or tts_edge.DEFAULT_VOICE
+    profile = req.profile or {}
+    # 云端档案（阿里云 WebSocket，由端点 URL 推 WS 地址）：逐句合成后共享拼装
+    if profile.get("kind") == "cloud":
+        try:
+            timeline = await _cloud_tts_batch(req.sentences, out, profile, _cloud_tts_voice(profile, req.voice))
+        except openai_compat.OpenAICompatError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {"path": out, "timeline": timeline}
+    engine, voice = _resolve_tts(profile, req.voice)
+    if engine == "kokoro":
+        try:
+            timeline = await asyncio.to_thread(
+                tts_kokoro.synthesize_batch, req.sentences, out,
+                voice=voice, speed=tts_kokoro.parse_rate(req.rate),
+            )
+        except tts_kokoro.TTSEngineError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {"path": out, "timeline": timeline}
     timeline = await tts_edge.synthesize_batch(req.sentences, out, voice=voice, rate=req.rate)
     return {"path": out, "timeline": timeline}
 
 
 async def tts_batch_job_handler(params: dict, job: Job) -> dict:
-    """批量 TTS 任务处理器（文本导入主路径）"""
+    """批量 TTS 任务处理器（文本导入主路径）
 
-    def report(p: float):
-        job.progress = p
-        job.message = f"语音合成 {p * 100:.0f}%"
-
+    kokoro 首次使用在此自动补模型（0~25% 进度带文案），已就绪则直接合成；
+    edge 路径与原逻辑一致。
+    """
     out = _require_pinglc_path(params["out_path"])
-    voice = params.get("voice") or (params.get("profile") or {}).get("model") or tts_edge.DEFAULT_VOICE
+    profile = params.get("profile") or {}
+    # 云端档案（阿里云 WebSocket）：逐句合成 + 进度上报
+    if profile.get("kind") == "cloud":
+        def report_cloud(p: float, _job=job):
+            _job.progress = p
+            _job.message = f"云端语音合成 {p * 100:.0f}%"
+
+        timeline = await _cloud_tts_batch(
+            params["sentences"], out, profile, _cloud_tts_voice(profile, params.get("voice")),
+            on_progress=report_cloud,
+        )
+        return {"path": out, "timeline": timeline}
+    engine, voice = _resolve_tts(profile, params.get("voice"))
+
+    if engine == "kokoro":
+        speed = tts_kokoro.parse_rate(params.get("rate", "+0%"))
+        if not tts_kokoro.models_ready():
+            # 联网补缺模型：先查本地，缺哪个补哪个（进度占前 1/4）
+            def report_dl(p: float, msg: str, _job=job):
+                _job.progress = p * 0.25
+                _job.message = msg
+
+            await asyncio.to_thread(tts_kokoro.ensure_models, report_dl)
+
+        def report(p: float, _job=job):
+            _job.progress = 0.25 + p * 0.75
+            _job.message = f"语音合成 {p * 100:.0f}%"
+
+        timeline = await asyncio.to_thread(
+            tts_kokoro.synthesize_batch, params["sentences"], out,
+            voice=voice, speed=speed, on_progress=report,
+        )
+        return {"path": out, "timeline": timeline}
+
+    def report(p: float, _job=job):
+        _job.progress = p
+        _job.message = f"语音合成 {p * 100:.0f}%"
+
     timeline = await tts_edge.synthesize_batch(
         params["sentences"], out, voice=voice,
         rate=params.get("rate", "+0%"), on_progress=report,
     )
     return {"path": out, "timeline": timeline}
+
+
+# ---------------- 本地引擎模型下载任务 ----------------
+
+
+async def model_download_job_handler(params: dict, job: Job) -> dict:
+    """模型下载任务处理器（设置页「下载 kokoro 模型」按钮）
+
+    本地优先：ensure_models 先查 ~/.pinglc/models/kokoro/，在位的文件
+    直接复用（支持手工放置做离线迁移），只下载缺失部分。
+    """
+    target = params.get("engine", "kokoro")
+    if target != "kokoro":
+        raise ValueError(f"不支持的下载目标: {target}（当前仅 kokoro）")
+
+    def report(p: float, msg: str, _job=job):
+        _job.progress = p
+        _job.message = msg
+
+    downloaded = await asyncio.to_thread(tts_kokoro.ensure_models, report)
+    job.message = "模型已就绪" if not downloaded else "下载完成"
+    return {"engine": "kokoro", "downloaded": downloaded, "dir": str(tts_kokoro.KOKORO_DIR)}
 
 
 # ---------------- 翻译 ----------------
@@ -252,6 +496,57 @@ def _as_str_list(result: Any, expected: int) -> list[str]:
     return out[:expected]
 
 
+# ---------------- 口语评测（腾讯云 SOE 录音文件模式；仅云端档案） ----------------
+
+
+class SOERequest(BaseModel):
+    """口语评测请求：录音文件 + 参考文本 + speech_eval 云端档案"""
+
+    audio_path: str
+    ref_text: str
+    profile: dict = {}
+    language: str = "en"
+
+
+@router.post("/soe")
+async def soe(req: SOERequest) -> dict:
+    """录音文件口语评测（同步，音频上限 60s）：词级 + 音素级评分
+
+    凭据从 speech_eval 档案读取：endpoint_url=服务地址、api_key=SecretKey、
+    params={provider, appId, secretId, scoreCoeff?}；本地无口语评测引擎，档案
+    必须为云端（未配置时 web 端走本地 STT 近似评分兜底，不会请求本端点）。
+    """
+    audio = _require_pinglc_path(req.audio_path)
+    profile = req.profile or {}
+    if profile.get("kind") != "cloud":
+        raise HTTPException(status_code=400, detail="口语评测档案必须为云端（设置页 → 口语评测）")
+    params = profile.get("params") or {}
+    provider = params.get("provider", "tencent")
+    if provider != "tencent":
+        raise HTTPException(status_code=400, detail=f"暂不支持的口语评测服务商：{provider}")
+    app_id = params.get("appId")
+    secret_id = params.get("secretId")
+    secret_key = profile.get("api_key")
+    if not (app_id and secret_id and secret_key):
+        raise HTTPException(
+            status_code=400,
+            detail="口语评测档案缺少 AppId / SecretId / SecretKey（设置页补全后重试）",
+        )
+    try:
+        return await soe_tencent.evaluate(
+            audio,
+            req.ref_text,
+            endpoint=profile.get("endpoint_url") or soe_tencent.DEFAULT_ENDPOINT,
+            app_id=str(app_id),
+            secret_id=str(secret_id),
+            secret_key=str(secret_key),
+            score_coeff=params.get("scoreCoeff"),
+            language=req.language,
+        )
+    except soe_tencent.SoeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 # ---------------- LLM ----------------
 
 
@@ -278,25 +573,45 @@ async def llm_chat(req: LLMRequest) -> dict:
     """LLM 单轮调用（多轮由 web 拼好 messages 传 user/system —— M3 再扩展多轮参数）"""
     profile = req.profile
     if profile.get("kind") != "cloud":
-        raise HTTPException(status_code=400, detail="LLM 档案必须提供云端 OpenAI 兼容端点")
+        raise HTTPException(status_code=400, detail="LLM 档案必须提供云端端点")
+    # API 格式按档案 params.apiFormat 分发（缺省/未知回落 OpenAI 兼容）
+    api_format = (profile.get("params") or {}).get("apiFormat")
     messages: list[dict] = []
     if req.system:
         messages.append({"role": "system", "content": req.system})
     messages.append({"role": "user", "content": req.user})
     try:
         if req.want_json:
-            content = await openai_compat.chat_json(
-                profile["endpoint_url"], profile.get("api_key"), profile["model"],
+            content = await llm_formats.chat_json(
+                api_format, profile["endpoint_url"], profile.get("api_key"), profile["model"],
                 messages, temperature=req.temperature,
             )
             return {"content": None, "json": content}
-        text = await openai_compat.chat(
-            profile["endpoint_url"], profile.get("api_key"), profile["model"],
+        text = await llm_formats.chat(
+            api_format, profile["endpoint_url"], profile.get("api_key"), profile["model"],
             messages, temperature=req.temperature,
         )
         return {"content": text, "json": None}
     except openai_compat.OpenAICompatError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+class LLMModelsRequest(BaseModel):
+    """云端模型清单请求（设置页「获取模型」按钮，供模型下拉填充）"""
+
+    endpoint_url: str
+    api_key: str | None = None
+    api_format: str | None = None
+
+
+@router.post("/llm/models")
+async def llm_models(req: LLMModelsRequest) -> dict:
+    """拉取云端模型清单（按档案 API 格式分发：OpenAI 方言 / Anthropic / Gemini）"""
+    try:
+        models = await llm_formats.list_models(req.api_format, req.endpoint_url, req.api_key)
+    except openai_compat.OpenAICompatError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"models": models}
 
 
 # ---------------- 媒体 ----------------
@@ -419,12 +734,14 @@ async def llm_chat_stream(req: LLMStreamRequest):
 
     profile = req.profile
     if profile.get("kind") != "cloud":
-        raise HTTPException(status_code=400, detail="LLM 档案必须提供云端 OpenAI 兼容端点")
+        raise HTTPException(status_code=400, detail="LLM 档案必须提供云端端点")
+    # API 格式按档案 params.apiFormat 分发（缺省/未知回落 OpenAI 兼容）
+    api_format = (profile.get("params") or {}).get("apiFormat")
 
     async def gen():
         try:
-            async for piece in openai_compat.chat_stream(
-                profile["endpoint_url"], profile.get("api_key"), profile["model"],
+            async for piece in llm_formats.chat_stream(
+                api_format, profile["endpoint_url"], profile.get("api_key"), profile["model"],
                 req.messages, temperature=req.temperature,
             ):
                 # SSE 数据行（增量 JSON，避免裸文本里的换行破坏协议）

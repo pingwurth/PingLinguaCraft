@@ -16,6 +16,8 @@ dependencies = [
     "httpx[socks]>=0.28",
     "orjson>=3.10",
     "yt-dlp>=2025.6.9",
+    # 口语评测（腾讯云 SOE）的 WebSocket 客户端（显式声明；此前仅随 uvicorn[standard] 间接安装）
+    "websockets>=12",
 ]
 
 [project.optional-dependencies]

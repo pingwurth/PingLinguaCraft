@@ -2,7 +2,7 @@
 PingLinguaCraft 本地 AI 引擎入口（FastAPI）
 
 职责：
-- 承载五能力（stt / tts / align / translate / llm）的本地引擎与云端透传（M1 起接入）
+- 承载六能力（stt / tts / align / translate / speech_eval / llm）的本地引擎与云端透传（M1 起接入）
 - 通用任务 API（长任务排队与进度查询）
 - ~/.pinglc/ 目录与 config.json 管理
 - 仅监听 127.0.0.1:8765 —— web（Next.js）是唯一调用方，不直接暴露局域网
@@ -35,11 +35,12 @@ async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化目录、注册任务、启动 worker；关闭时停止"""
     settings.ensure_dirs()
     runner = JobRunner()
-    # 联调任务 + M1 真实任务（stt / tts_batch / yt_download）
+    # 联调任务 + M1 真实任务（stt / tts_batch / yt_download / model_download）
     runner.register("echo", echo_handler)
     runner.register("stt", caps_api.stt_job_handler)
     runner.register("tts_batch", caps_api.tts_batch_job_handler)
     runner.register("yt_download", caps_api.yt_download_job_handler)
+    runner.register("model_download", caps_api.model_download_job_handler)
     await runner.start()
     state.runner = runner
     # 预读一次配置，确保 config.json 存在
@@ -58,7 +59,7 @@ app = FastAPI(
 
 # 能力与系统路由（/health /system/*）
 app.include_router(system_api.router)
-# 能力执行路由（/stt /tts /translate /llm /media/*）
+# 能力执行路由（/stt /tts /translate /soe /llm /media/*）
 app.include_router(caps_api.router)
 # 任务路由（/jobs CRUD）
 app.include_router(jobs_api.router)

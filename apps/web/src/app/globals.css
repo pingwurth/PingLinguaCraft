@@ -148,6 +148,28 @@
     outline-offset: 2px;
   }
 
+  /* 按钮统一交互反馈（全应用）：
+   * - cursor:pointer：浏览器默认 button 光标是 default，悬停无手型加剧「没反应」感
+   * - 按压态：墨迹下沉（轻缩放 + 减淡）——触屏无 hover 且 tap 高亮已禁用，
+   *   active 态是点击瞬间的唯一视觉反馈
+   * - 朱砂主按钮按压时换「印泥按压后的深朱」（--primary-hover token 的设计本意） */
+  button:not(:disabled) {
+    cursor: pointer;
+    transition:
+      transform 80ms ease,
+      opacity 80ms ease,
+      background-color 80ms ease;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.97);
+    opacity: 0.85;
+  }
+
+  button.bg-primary:not(:disabled):active {
+    background-color: var(--primary-hover);
+  }
+
   /* 图标基类：span.material-symbols-outlined 内容写图标名（ligature），如 menu_book。
    * 放在 base 层（Tailwind 分层最低优先级）：leading-* / font-bold 等工具类可覆盖
    * line-height / 字重；需要实心图标处用工具类或内联设 'FILL' 1。

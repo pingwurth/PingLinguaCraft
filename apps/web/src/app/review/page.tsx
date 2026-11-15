@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { seededPick, seededShuffle, type SRating } from '@pinglc/core';
 import { api } from '@/lib/api';
+import { ttsAudioUrl } from '@/lib/ttsUrl';
 
 /** 队列项（与 /api/review/queue 响应契约一致） */
 interface QueueItem {
@@ -250,8 +251,10 @@ export default function ReviewPage() {
               {/* TTS 播放按钮 */}
               <button
                 onClick={() => {
-                  const a = new Audio(`/api/media/tts?text=${encodeURIComponent(item.displayForm)}`);
-                  void a.play().catch(() => undefined);
+                  /* 版本化 URL：TTS 档案切换后不命中旧音色缓存 */
+                  void ttsAudioUrl(item.displayForm).then((u) => {
+                    new Audio(u).play().catch(() => undefined);
+                  });
                 }}
                 className="flex size-16 items-center justify-center rounded-full bg-primary text-primary-foreground"
                 aria-label="播放单词读音"

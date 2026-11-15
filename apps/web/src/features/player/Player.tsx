@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './store';
 import { useMediaClock } from './useMediaClock';
 import type { CueDTO, MaterialDetail } from '@/lib/api';
+import { ttsAudioUrl } from '@/lib/ttsUrl';
 
 /** 倍速档位 */
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -254,13 +255,12 @@ export function Player({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  /* ---------- 点词朗读消费 ---------- */
+  /* ---------- 点词朗读消费（版本化 URL：档案切换后不命中旧音色缓存） ---------- */
   useEffect(() => {
     if (!pendingSpeak) return;
-    const audio = new Audio(
-      `/api/media/tts?text=${encodeURIComponent(pendingSpeak.text)}`
-    );
-    void audio.play().catch(() => undefined);
+    void ttsAudioUrl(pendingSpeak.text).then((u) => {
+      new Audio(u).play().catch(() => undefined);
+    });
     usePlayer.getState().clearPendingSpeak();
   }, [pendingSpeak]);
 

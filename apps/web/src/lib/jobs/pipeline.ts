@@ -10,6 +10,7 @@
  *   retranslate_cue 同步实现（不经管线）
  *   ai_analysis   句子 AI 解析（收藏）
  *   ai_note       单词 AI 笔记
+ *   model_download 本地引擎模型下载（设置页「下载模型」，payload.engine）
  *
  * 可恢复性：管线幂等（cues 已存在则跳过 STT、译文存在则跳过），进程重启后
  * 由 GET /api/jobs 触发 recovery 重跑未终态任务；引擎任务重新提交即可。
@@ -42,6 +43,7 @@ import {
 } from '@/lib/server/engine';
 import { materialDir } from '@/lib/server/media';
 import { resolveProfile, toEngineProfile, type ResolvedProfile } from '@/lib/server/providers';
+import { ttsEngineFromParams } from '@/lib/providers';
 import { QUIZ_SYSTEM, buildQuizPrompt, QuizSchema, repairPrompt } from '@/lib/quiz';
 import { DEEP_SYSTEM, buildDeepPrompt, DeepCardSchema } from '@/lib/deepCard';
 
@@ -407,6 +409,24 @@ async function probeMaterial(mediaAbsPath: string, materialId: number): Promise<
   }
 }
 
+/**
+ * 本地引擎模型下载管线（设置页「下载模型」；payload.engine 当前仅 kokoro）
+ *
+ * 走引擎任务队列执行（web 编排、引擎计算）；引擎侧下载幂等（本地优先：
+ * 在位文件直接复用，缺啥补啥），web/引擎任一重启后 recovery 重跑即续传，
+ * 不产生孤儿任务——此前专用代理路由自提交自轮询，绕开了本管线约定。
+ */
+async function modelDownloadPipeline(jobId: string, payload: { engine?: string }): Promise<void> {
+  const target = payload.engine ?? 'kokoro';
+  updateJob(jobId, { progress: 0, message: `准备下载 ${target} 模型…` });
+  const engineJob = await engineSubmitJob('model_download', { engine: target });
+  updateJob(jobId, { engineJobId: engineJob.id });
+  await engineAwaitJob(engineJob.id, {
+    onProgress: (s) => updateJob(jobId, { progress: s.progress, message: s.message ?? '下载中…' }),
+  });
+  updateJob(jobId, { status: 'succeeded', progress: 1, message: '模型已就绪', finishedAt: new Date() });
+}
+
 /* ---------------------------------------------------------------------------
  * 管线主体
  * ------------------------------------------------------------------------- */
@@ -448,6 +468,9 @@ async function runPipeline(jobId: string): Promise<void> {
         break;
       case 'deep_card':
         await deepCardPipeline(jobId, JSON.parse(job.payloadJson ?? '{}'));
+        break;
+      case 'model_download':
+        await modelDownloadPipeline(jobId, JSON.parse(job.payloadJson ?? '{}'));
         break;
       default:
         throw new Error(`未知管线类型：${job.type}`);
@@ -570,13 +593,19 @@ async function importPipeline(jobId: string, materialId: number, payload: Import
     const needsAudio = cueRows.length > 0 && !material.mediaPath;
     if (needsAudio) {
       const profile = resolveProfile('tts', payload.ttsProfileId);
-      const voice = (profile?.model as string) || 'en-GB-RyanNeural';
-      updateJob(jobId, { message: `语音合成中（${voice}）…`, progress: 0.05 });
+      // 档案决定引擎路由（params.engine：edge 联网 / kokoro 本地离线；判别与
+      // 引擎侧/缓存指纹同一实现）；音色缺省交给引擎按引擎默认（edge=Ryan / kokoro=George）
+      const engineKind = ttsEngineFromParams(profile?.params);
+      updateJob(jobId, {
+        message: `语音合成中（${engineKind} · ${profile?.model ?? '默认音色'}）…`,
+        progress: 0.05,
+      });
       const outPath = `${dir}/tts.mp3`;
       const job = await engineSubmitJob('tts_batch', {
         sentences: cueRows.map((c) => c.textEn),
         out_path: outPath,
-        voice,
+        voice: (profile?.model as string) || undefined,
+        profile: profile ? toEngineProfile(profile) : {},
       });
       updateJob(jobId, { engineJobId: job.id });
       const result = (await engineAwaitJob(job.id, {

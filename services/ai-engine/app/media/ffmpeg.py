@@ -105,7 +105,8 @@ def slice_audio(source: str, start_ms: int, end_ms: str | int, out_path: str) ->
 
 
 def make_silence(seconds: float, out_path: str) -> str:
-    """生成指定时长的静音 mp3（24kHz 单声道，与 edge-tts 输出参数一致）"""
+    """生成指定时长的静音（24kHz 单声道；容器/编码按 out_path 扩展名推断——
+    edge 拼排用 .mp3 与其分片一致，kokoro 拼排用 .wav（pcm_s16le）与其分片一致）"""
     _run(
         [
             "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",

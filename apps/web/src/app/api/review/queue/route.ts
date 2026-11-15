@@ -53,45 +53,9 @@ export async function GET(request: Request) {
   const db = getDb();
   const now = Date.now();
 
-  // 统计（与队列同口径——按 lemma 代表行计数，杜绝「同词多本」虚增）：
-  // 先按 lemma 分组得到代表行（有卡？最早到期？），再聚合三数。
-  //   totalWords = 词条（lemma）总数
-  //   dueCount   = 有卡且最早到期卡已到期的 lemma 数（= 到期支会出的题数）
-  //   newCount   = 无任何卡的 lemma 数（= 新词支会出的题数上限）
-  // ⚠ 代表行准则在此与下方 dueDedupe/lemmaNoCardAnywhere/freshDedupe 各持
-  // 一份实现（手写 SQL vs 反连接）：改任何一侧（tie-break 列/suspended 卡
-  // 过滤等）必须同步另一侧，否则 stats 与队列实际条数会悄悄分叉
-  const statsRow = db.all<{ total_words: number; due_count: number; new_count: number }>(sql`
-    select
-      count(*) as total_words,
-      count(*) filter (where has_card and min_due_ms <= ${now}) as due_count,
-      count(*) filter (where not has_card) as new_count
-    from (
-      select
-        min(${srsCards.dueMs}) as min_due_ms,
-        count(${srsCards.id}) > 0 as has_card
-      from ${words}
-      left join ${srsCards}
-        on ${srsCards.itemType} = 'word' and ${srsCards.itemId} = ${words.id}
-      where ${words.userId} = 1
-      group by ${words.lemma}
-    )
-  `)[0]!;
-  const stats: QueueStats = {
-    totalWords: statsRow.total_words,
-    dueCount: statsRow.due_count,
-    newCount: statsRow.new_count,
-  };
-
-  // 演练场入口等只要统计：短路返回（不建队、不取干扰池）
-  if (params.get('statsOnly') === '1') {
-    return NextResponse.json({ stats });
-  }
-
-  const limit = parseLimit(params.get('limit'));
-
-  // 同 lemma 去重（反连接）：一词收多本词本只出一题。代表行准则与上方
-  // stats 子查询互为镜像——改这里须同步 stats（见上方 ⚠ 注释）。
+  // 同 lemma 去重谓词（反连接）：一词收多本词本只出一题。统计与建队共用
+  // 这同一套谓词（统计 = 同谓词的 count），口径永远一致——此前统计是手写
+  // 分组 SQL 的镜像实现，改一侧漏一侧即「角标 12 题、队列发 9 题」。
   // - 到期支：让位规则 = 存在「同 lemma 已建卡且到期更早（同日则 id 更小）」
   //   的兄弟行时排除本行——同 lemma 的到期卡由最早到期者代表，真正到期的
   //   复习不会被「先收录但未到期」的兄弟遮蔽
@@ -130,7 +94,39 @@ export async function GET(request: Request) {
       .where(and(eq(w2.userId, words.userId), eq(w2.lemma, words.lemma), sql`${w2.id} < ${words.id}`))
   );
 
-  // 到期卡（连词取词与原句），按到期先后
+  // 统计（与队列完全同谓词的 count，杜绝「同词多本」虚增）：
+  //   totalWords = 词条（lemma）总数
+  //   dueCount   = 到期支谓词命中的行数（= 到期支会出的题数）
+  //   newCount   = 新词支谓词命中的行数（= 新词支会出的题数上限）
+  const totalWords =
+    db
+      .select({ n: sql<number>`count(distinct ${words.lemma})` })
+      .from(words)
+      .where(eq(words.userId, 1))
+      .all()[0]!.n;
+  const dueCount =
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(srsCards)
+      .innerJoin(words, eq(srsCards.itemId, words.id))
+      .where(and(eq(srsCards.itemType, 'word'), lte(srsCards.dueMs, new Date(now)), dueDedupe))
+      .all()[0]!.n;
+  const newCount =
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(words)
+      .where(and(eq(words.userId, 1), lemmaNoCardAnywhere, freshDedupe))
+      .all()[0]!.n;
+  const stats: QueueStats = { totalWords, dueCount, newCount };
+
+  // 演练场入口等只要统计：短路返回（不建队、不取干扰池）
+  if (params.get('statsOnly') === '1') {
+    return NextResponse.json({ stats });
+  }
+
+  const limit = parseLimit(params.get('limit'));
+
+  // 到期卡（连词取词与原句），按到期先后（谓词见上方统计段的共用反连接）
   const due: QueueItem[] = db
     .select({
       wordId: words.id,
@@ -170,22 +166,31 @@ export async function GET(request: Request) {
           .map((r) => ({ ...r, reps: 0, isNew: true }))
       : [];
 
-  // 干扰词池（选择题选项用；DISTINCT 按 lemma 去重，同词多本不重复出现）。
-  // 随机抽样而非字母序截断——词量超过 200 后固定取「字母序最前」会让干扰项
-  // 集中在 a-c 区间、正确答案一眼可辨；同轮次的确定性由前端 seededPick 保证。
-  // 注意：SQLite 限制 DISTINCT 查询的 ORDER BY 项必须出现在结果列里，
-  // RANDOM() 必须作用于去重后的外层（子查询 DISTINCT，外层随机+截断）
-  const distinctLemmas = db
-    .selectDistinct({ lemma: words.lemma })
-    .from(words)
-    .where(eq(words.userId, 1))
-    .as('dl');
+  // 干扰词池（选择题选项用；按 lemma 去重，同词多本不重复出现）。
+  // 均匀取样而非 ORDER BY RANDOM()：后者每次请求都物化并洗牌全部词元
+  // （成本随词库增长，而客户端每轮只快照一次）；DISTINCT 内部本就按
+  // lemma 有序，ROW_NUMBER 复用该序做取样，覆盖整个字母区间（不像字母序
+  // 截断那样集中在 a-c 让正确答案一眼可辨），随机相位/窗口保证每次取样的
+  // 集合不同；同轮次的确定性由前端 seededPick 保证。
+  // - 词库 ≥ 2×池容：步长取样（rn % step = phase），候选 ≥ 池容、全区间均匀
+  // - 词库略超池容：步长退化为 1，改随机窗口（OFFSET 抖动起点）
+  const poolTotal =
+    db
+      .select({ n: sql<number>`count(distinct ${words.lemma})` })
+      .from(words)
+      .where(eq(words.userId, 1))
+      .all()[0]!.n;
+  const POOL_SIZE = 200;
+  const step = Math.max(1, Math.floor(poolTotal / POOL_SIZE));
+  const phase = Math.floor(Math.random() * step);
+  const offset = step === 1 ? Math.max(0, Math.floor(Math.random() * (poolTotal - POOL_SIZE))) : 0;
   const pool = db
-    .select({ lemma: distinctLemmas.lemma })
-    .from(distinctLemmas)
-    .orderBy(sql`RANDOM()`)
-    .limit(200)
-    .all()
+    .all<{ lemma: string }>(sql`
+      select lemma from (
+        select lemma, row_number() over (order by lemma) as rn
+        from (select distinct ${words.lemma} as lemma from ${words} where ${words.userId} = 1)
+      ) where rn % ${step} = ${phase} order by lemma limit ${POOL_SIZE} offset ${offset}
+    `)
     .map((x) => x.lemma);
 
   return NextResponse.json({ queue: [...due, ...fresh], pool, stats });

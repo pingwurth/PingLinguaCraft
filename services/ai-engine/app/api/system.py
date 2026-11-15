@@ -20,6 +20,7 @@ from functools import lru_cache
 from fastapi import APIRouter
 
 from .. import settings
+from ..engines import tts_kokoro
 
 router = APIRouter()
 
@@ -108,9 +109,13 @@ def capabilities() -> dict:
             "whisperx": _probe_module("whisperx"),
         },
         # TTS：edge-tts（联网）与 kokoro（本地离线）
+        # kokoro_models：模型/音色文件是否已在 ~/.pinglc/models/kokoro/ 在位
+        #（模块已装而文件未下载时 UI 据此显示「下载模型」按钮，不缓存——
+        #  下载恰是可在线修复的状态）
         "tts": {
             "edge_tts": _probe_module("edge_tts"),
             "kokoro": _probe_module("kokoro_onnx"),
+            "kokoro_models": tts_kokoro.models_ready(),
         },
         # 音素对齐：whisperx（上）与 MFA（Docker 镜像存在性）
         "align": {

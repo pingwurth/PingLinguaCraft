@@ -12,7 +12,7 @@ import { maskProfile } from '@/lib/server/providers';
 export const runtime = 'nodejs';
 
 /** 能力白名单 */
-const CAPABILITIES = new Set(['stt', 'tts', 'align', 'translate', 'llm']);
+const CAPABILITIES = new Set(['stt', 'tts', 'align', 'translate', 'llm', 'speech_eval']);
 
 /**
  * GET /api/providers —— 全部档案（按能力分组由前端处理；api_key 掩码为 hasKey）
@@ -50,8 +50,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `能力必须为 ${[...CAPABILITIES].join('/')}` }, { status: 400 });
   }
   if (!name) return NextResponse.json({ error: '档案名不能为空' }, { status: 400 });
+  if (kind !== 'local' && kind !== 'cloud') {
+    return NextResponse.json({ error: '类型必须为 local/cloud' }, { status: 400 });
+  }
   if (kind === 'cloud' && !body.endpointUrl?.trim()) {
     return NextResponse.json({ error: '云端档案必须填写端点 URL' }, { status: 400 });
+  }
+  // 口语评测档案：url→endpointUrl、secretKey→apiKey、provider/appId/secretId→params
+  // （url/appId/secretId 必填，SecretKey 可后补）
+  if (capability === 'speech_eval') {
+    const params = (body.params ?? {}) as Record<string, unknown>;
+    if (!body.endpointUrl?.trim() || !params.appId || !params.secretId) {
+      return NextResponse.json({ error: '口语评测档案必须填写服务地址、appId 与 secretId' }, { status: 400 });
+    }
   }
 
   const db = getDb();

@@ -49,7 +49,7 @@ pnpm monorepo，四个工作区：
 - **Web 为编排者，engine 为无状态执行器**：DB 写入只发生在 web；engine 只做计算并回传结果。web 是 engine 的唯一调用方。
 - **一切用户数据在 `~/.pinglc/`**：pinglc.db / media/ / models/ / caches/ / config.json；所有表预留 `user_id`（默认 1），便于未来迁移多用户。
 - **长任务管线**：web 侧 `jobs` 表持久化任务并轮询 engine 的 `/jobs` API；引擎重启后由 web 回查并标记可重试。engine 的 JobRunner 按任务名注册 handler（M0 仅 echo，M1 起接 stt/tts_batch/translate 等真实任务）。
-- **AI 能力路由**：五能力（stt/tts/align/translate/llm）× {local 引擎 | cloud OpenAI 兼容档案}；`provider_profiles` 表支持同能力多档案切换。API Key 仅服务端读取，接口永不回传。
+- **AI 能力路由**：六能力（stt/tts/align/translate/llm/speech_eval）× {local 引擎 | cloud 档案}；speech_eval（口语评测，跟读评分）仅云端（腾讯云 SOE，WS 录音文件模式），未配置时自动降级本地 STT 近似评分。`provider_profiles` 表支持同能力多档案切换。API Key 仅服务端读取，接口永不回传。
 - **媒体流**：`/api/media/[materialId]` 必须保持 HTTP Range/206 语义（视频拖动依赖）；此类验证一律走 `next start`，不信 dev 代理。
 - **播放器时钟**：rAF 读 currentTime（不用 timeupdate）；循环回跳在 rAF tick 内完成。
 - **@pinglc/core 纪律**：不引 react/node 专属依赖，Expo 也要能直接消费。
