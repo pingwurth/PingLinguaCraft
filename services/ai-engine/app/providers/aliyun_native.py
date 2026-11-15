@@ -199,8 +199,10 @@ async def transcribe_long(
         # 仍稳在 MAX_AUDIO_BYTES 内；上限若调整，按 32KB/s 重新核算）
         chunk_ms = 60_000
         total = math.ceil(duration_ms / chunk_ms)
-        work = Path(audio_path).parent / ".stt-chunks"
-        work.mkdir(parents=True, exist_ok=True)
+        # 唯一分片目录：同步 /stt 与 stt 任务可能并发落在同一目录，固定名
+        # .stt-chunks 会互相覆盖分片、finally 的 rmtree 会删掉对方在途文件
+        work = Path(audio_path).parent / f".stt-chunks-{uuid.uuid4().hex[:12]}"
+        work.mkdir(parents=True, exist_ok=False)
         for i in range(total):
             start, end = i * chunk_ms, min((i + 1) * chunk_ms, duration_ms)
             chunk = str(work / f"{i:04d}.wav")

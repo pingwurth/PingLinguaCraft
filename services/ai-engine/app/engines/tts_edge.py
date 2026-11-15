@@ -10,7 +10,7 @@ Edge-TTS 引擎（联网微软语音，免费、有标准英音声部）
 import asyncio
 from pathlib import Path
 
-from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, tts_cache_path, write_atomic
+from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, new_batch_workdir, tts_cache_path, write_atomic
 
 # 默认英音声部（需求 8：点词朗读默认英音）
 # 注意：en-GB-GeorgeNeural 已被微软下架（NoAudioReceived），现行英音男声为 Ryan
@@ -106,8 +106,9 @@ async def synthesize_batch(
 
     out_dir = Path(out_path).parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    work = out_dir / ".tts-parts"
-    work.mkdir(exist_ok=True)
+    # 唯一分片目录：同步 /tts/batch 与 tts_batch 任务可能并发落在同一 out_dir，
+    # 固定名 .tts-parts 会互踩（详见 tts_common.new_batch_workdir）
+    work = new_batch_workdir(out_path)
 
     # 逐句合成（并发度 4：edge-tts 服务端限流友好）
     sem = asyncio.Semaphore(4)

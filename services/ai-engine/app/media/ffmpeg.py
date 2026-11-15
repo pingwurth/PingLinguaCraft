@@ -6,6 +6,7 @@ ffmpeg/ffprobe 媒体工具：探测、音频抽取、静音生成、拼接、�
 
 import json
 import subprocess
+import uuid
 from pathlib import Path
 
 
@@ -120,8 +121,10 @@ def concat_audio(parts: list[str], out_path: str) -> str:
     """拼接音频片段列表 → 单文件（统一重编码 mp3 24kHz 单声道，确定性输出）"""
     if not parts:
         raise MediaError("拼接列表为空")
-    # concat 拼接器需要 list 文件；路径简单转义单引号
-    list_path = Path(out_path).parent / ".concat-list.txt"
+    # concat 拼接器需要 list 文件；路径简单转义单引号。文件名带 uuid——本模块的
+    # 调用方在线程池中并发执行，固定名会读到别的调用刚写的列表（拼错输入文件）
+    # 并被其 finally 提前删除
+    list_path = Path(out_path).parent / f".concat-list-{uuid.uuid4().hex[:8]}.txt"
     list_path.write_text(
         "\n".join(f"file '{p}'" for p in parts), encoding="utf-8"
     )

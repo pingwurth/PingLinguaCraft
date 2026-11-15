@@ -49,3 +49,38 @@ def test_failed_job_error_includes_exception_type():
     snap = asyncio.run(scenario())
     assert snap["status"] == FAILED
     assert snap["error"] == "RuntimeError"
+
+
+def test_worker_survives_unregistered_type_after_submit():
+    """纵深防御：提交后处理器缺失（注册表异常变动）→ 该任务 FAILED，worker 循环存活继续消费"""
+
+    async def ok(params: dict, job) -> dict:  # noqa: ARG001
+        """必定成功的任务处理器"""
+        return {"done": True}
+
+    async def wait_terminal(job) -> None:
+        """轮询等待任务终态（与既有测试同款节奏）"""
+        for _ in range(200):
+            if job.status in ("succeeded", "failed", "cancelled"):
+                return
+            await asyncio.sleep(0.01)
+
+    async def scenario() -> dict:
+        """提交后移除处理器 → 验证坏任务 FAILED、worker 未死、后续任务正常执行"""
+        runner = JobRunner()
+        runner.register("ok", ok)
+        job_bad = runner.submit("ok", {})
+        runner._handlers.pop("ok", None)  # 模拟提交后注册表异常变动（正常代码不会）
+        await runner.start()
+        await wait_terminal(job_bad)
+        # worker 仍活着：重新注册后再提交能被正常消费
+        runner.register("ok", ok)
+        job_good = runner.submit("ok", {})
+        await wait_terminal(job_good)
+        await runner.stop()
+        return {"bad": runner.snapshot(job_bad), "good": runner.snapshot(job_good)}
+
+    result = asyncio.run(scenario())
+    assert result["bad"]["status"] == FAILED
+    assert "未注册" in result["bad"]["error"]
+    assert result["good"]["status"] == "succeeded"

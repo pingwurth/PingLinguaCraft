@@ -82,3 +82,21 @@ def test_returned_config_is_deep_copy(isolated):
     config = settings.load_config()
     config["last_profiles"]["x"] = "y"
     assert settings.DEFAULT_CONFIG["last_profiles"] == {}
+
+
+def test_unreadable_file_backed_up_not_silently_replaced(isolated):
+    """读失败（权限故障）≠ 不存在：先挪 .corrupt 备份再回退默认，随后的写入不再无痕覆盖"""
+    settings.ensure_dirs()
+    settings.CONFIG_PATH.write_text(
+        '{"device": "cpu", "last_profiles": {"stt": "我的档案"}}', encoding="utf-8"
+    )
+    # 模拟读权限故障：PermissionError 属 OSError 但非 FileNotFoundError
+    settings.CONFIG_PATH.chmod(0o000)
+    config = settings.load_config()
+    assert config["device"] == "auto"  # 回退默认值
+    # 原文件被挪到 .corrupt 保底（os.replace 只需目录写权限，读不到也能挪）
+    corrupt = isolated / "config.json.corrupt"
+    corrupt.chmod(0o644)
+    assert json.loads(corrupt.read_text(encoding="utf-8"))["last_profiles"] == {"stt": "我的档案"}
+    # 主文件自愈为默认配置（下次读取不再走故障分支）
+    assert json.loads(settings.CONFIG_PATH.read_text(encoding="utf-8"))["device"] == "auto"

@@ -6,6 +6,8 @@ TTS 三路合成（edge 联网 / kokoro 离线 / 阿里云原生 WebSocket）共
   同键并发写互不截断）；
 - tts_cache_path：内容哈希缓存路径的单一构造器（三路合成的键都经此处
   落位 ~/.pinglc/caches/tts/，strip/建目录纪律只存一份）；
+- new_batch_workdir：批量合成的唯一分片工作目录（固定名 .tts-parts 在并发
+  批量下互踩——串音/互删在途分片/截断硬链接连缓存 inode 一起损坏）；
 - assemble_timeline：批量合成的拼装主路径（逐句测长 → 静音间隔 → ffmpeg 拼接
   → 清理分片），edge 与 kokoro 的 synthesize_batch 在此共享同一实现，
   句边界语义永远一致（此前两份逐字拷贝，调一处漏一处）。
@@ -13,6 +15,7 @@ TTS 三路合成（edge 联网 / kokoro 离线 / 阿里云原生 WebSocket）共
 
 import hashlib
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Callable
@@ -56,6 +59,20 @@ def tts_cache_path(key: str, ext: str) -> Path:
     return cache_dir / f"{digest}.{ext}"
 
 
+def new_batch_workdir(out_path: str | Path) -> Path:
+    """为一次批量合成创建唯一分片工作目录（输出文件同目录下 .tts-parts-<uuid12>）
+
+    固定名 .tts-parts 的旧实现：同一 out_dir 下的两个并发批量（同步 /tts/batch
+    与 tts_batch 任务重叠、或任务重试）会写/删同一组分片——互相覆盖、在途分片
+    被 assemble 清理环节删除；kokoro 的硬链接残留被截断时还会连带损坏合成缓存
+    的 inode。唯一目录让每次批量独占工作区，assemble_timeline 结束时的整目录
+    清理也因此只清自己。
+    """
+    work = Path(out_path).parent / f".tts-parts-{uuid.uuid4().hex[:12]}"
+    work.mkdir(parents=True, exist_ok=False)
+    return work
+
+
 def assemble_timeline(
     parts: list[str],
     out_path: str,
@@ -67,7 +84,8 @@ def assemble_timeline(
     """拼装整卷音频与每句时间轴（edge / kokoro 批量合成共用）
 
     Args:
-        parts:             分片文件路径（按句序，全部同容器同编码）
+        parts:             分片文件路径（按句序，全部同容器同编码；须位于
+                           new_batch_workdir 创建的独占目录——结束时整目录删除）
         out_path:          整卷输出路径（concat 统一重编码 mp3）
         gap_sec:           句间静音秒数
         part_durations_ms: 每片时长（毫秒）；提供时省去逐片 ffprobe 子进程
@@ -76,31 +94,36 @@ def assemble_timeline(
     Returns:
         每句时间轴 [{startMs, endMs}, ...]（含句间静音间隔）
     Raises:
-        ffmpeg.MediaError: 静音生成 / 时长探测 / 拼接失败
+        ffmpeg.MediaError: 分片列表为空 / 静音生成 / 时长探测 / 拼接失败
     """
+    # 空分片直接领域错误（云端批量路径的请求模型未拦空列表时，旧实现此处
+    # IndexError → 500；边界校验归 TTSBatchRequest，此处是引擎侧兜底）
+    if not parts:
+        raise ffmpeg.MediaError("分片列表为空，无法拼装时间轴")
     gap_ms = round(gap_sec * 1000)
     # 静音片段与分片同容器（concat demuxer 要求全片段同参数；扩展名推断编码）
     work = Path(parts[0]).parent
     silence = str(work / f"silence{Path(parts[0]).suffix}")
-    ffmpeg.make_silence(gap_sec, silence)
+    try:
+        ffmpeg.make_silence(gap_sec, silence)
 
-    timeline: list[dict] = []
-    cursor = 0
-    concat_items: list[str] = []
-    for idx, part in enumerate(parts):
-        dur_ms = part_durations_ms[idx] if part_durations_ms else ffmpeg.audio_duration_ms(part)
-        timeline.append({"startMs": cursor, "endMs": cursor + dur_ms})
-        concat_items.append(part)
-        cursor += dur_ms
-        if idx < len(parts) - 1:
-            concat_items.append(silence)
-            cursor += gap_ms
+        timeline: list[dict] = []
+        cursor = 0
+        concat_items: list[str] = []
+        for idx, part in enumerate(parts):
+            dur_ms = part_durations_ms[idx] if part_durations_ms else ffmpeg.audio_duration_ms(part)
+            timeline.append({"startMs": cursor, "endMs": cursor + dur_ms})
+            concat_items.append(part)
+            cursor += dur_ms
+            if idx < len(parts) - 1:
+                concat_items.append(silence)
+                cursor += gap_ms
 
-    ffmpeg.concat_audio(concat_items, out_path)
-    # 清理分片目录（含静音片段）
-    for f in work.iterdir():
-        f.unlink(missing_ok=True)
-    work.rmdir()
+        ffmpeg.concat_audio(concat_items, out_path)
+    finally:
+        # 整目录清理（含静音片段）：成功失败都不留残骸——唯一名目录不会被后续
+        # 批量覆盖，必须显式删；ignore_errors 容忍「拼装失败时部分文件缺失」
+        shutil.rmtree(work, ignore_errors=True)
     if on_progress:
         on_progress(1.0)
     return timeline

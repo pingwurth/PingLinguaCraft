@@ -91,9 +91,15 @@ async def chat(
     if r.status_code != 200:
         raise OpenAICompatError(f"云端返回 {r.status_code}：{r.text[:300]}")
     try:
-        return r.json()["choices"][0]["message"]["content"]
+        content = r.json()["choices"][0]["message"]["content"]
     except (KeyError, IndexError, ValueError) as exc:
         raise OpenAICompatError(f"云端响应结构异常：{r.text[:300]}") from exc
+    # content 合法可为 null（tool-call-only / 被截断的响应）：直接返回会让下游
+    # json.loads(None) 抛 TypeError、逃过 chat_json_with_retry 的修复重试——
+    # 在此转为领域错误
+    if not isinstance(content, str):
+        raise OpenAICompatError(f"云端响应无文本内容（tool-call-only 或被截断？）：{r.text[:300]}")
+    return content
 
 
 async def chat_json_with_retry(
@@ -120,7 +126,9 @@ async def chat_json_with_retry(
     text = await chat_fn(messages, temperature=temperature)
     try:
         return loads_lenient(text)
-    except ValueError:
+    # TypeError 一并接住：chat_fn 返回 None（tool-call-only 响应）时 json.loads(None)
+    # 抛 TypeError 而非 ValueError，不接住会逃过修复重试直接裸异常到调用方
+    except (ValueError, TypeError):
         pass
     # 修复重试：把原始输出与错误回喂，要求「只输出合法 JSON」
     retry_messages = messages + [
@@ -133,8 +141,9 @@ async def chat_json_with_retry(
     text2 = await chat_fn(retry_messages, temperature=temperature)
     try:
         return loads_lenient(text2)
-    except ValueError as exc:
-        raise OpenAICompatError(f"模型两次都未返回合法 JSON：{text2[:200]}") from exc
+    except (ValueError, TypeError) as exc:
+        # text2 可能为 None（tool-call-only 响应），错误消息构造须 None 安全
+        raise OpenAICompatError(f"模型两次都未返回合法 JSON：{(text2 or '')[:200]}") from exc
 
 
 async def chat_json(

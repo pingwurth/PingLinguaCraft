@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 import orjson
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import settings
 from ..engines import soe_tencent, stt_whisper, tts_edge, tts_kokoro
@@ -317,12 +317,12 @@ async def _cloud_tts_batch(
 
     并发度 4（信号量限流，与 tts_edge.synthesize_batch 同款）：逐句串行时
     500 句要付 500 次网络往返，每句还各开一条 WS 连接。"""
-    from ..engines.tts_common import assemble_timeline  # noqa: PLC0415
+    from ..engines.tts_common import assemble_timeline, new_batch_workdir  # noqa: PLC0415
 
     out_dir = Path(out_path).parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    work = out_dir / ".tts-parts"
-    work.mkdir(exist_ok=True)
+    # 唯一分片目录：与 edge/kokoro 批量同款（固定名在并发批量下互踩，见 tts_common）
+    work = new_batch_workdir(out_path)
 
     sem = asyncio.Semaphore(4)
     done = 0
@@ -357,7 +357,8 @@ async def _cloud_tts_batch(
 class TTSBatchRequest(BaseModel):
     """批量 TTS 请求（文本导入）：逐句合成 + 静音间隔 + 拼接"""
 
-    sentences: list[str]
+    # 空列表在 API 边界即 422（引擎侧 assemble_timeline 亦有 MediaError 兜底）
+    sentences: list[str] = Field(min_length=1)
     out_path: str
     profile: dict = {}
     voice: str | None = None

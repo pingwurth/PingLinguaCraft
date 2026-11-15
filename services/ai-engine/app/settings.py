@@ -63,8 +63,9 @@ def _backup_corrupt() -> None:
 def _read_raw() -> dict:
     """读取 config.json 原始内容（不触发默认写入）；缺失返回空 dict
 
-    损坏（非法 JSON / 非字典 / 无法解码的二进制内容）时先把原文件挪到
-    .corrupt 备份再返回空 dict，避免随后的默认值落盘无痕覆盖用户数据。
+    损坏（非法 JSON / 非字典 / 无法解码的二进制内容）与读失败（权限/IO 故障）
+    都先把原文件挪到 .corrupt 备份再返回空 dict，避免随后的默认值落盘无痕
+    覆盖用户数据——原子替换只需目录写权限，读不到的原文件照样会被覆盖。
     """
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -72,7 +73,11 @@ def _read_raw() -> dict:
         # 解码失败（撕裂/二进制文件）与语法失败同属「文件损坏」：备份后回退默认
         _backup_corrupt()
         return {}
+    except FileNotFoundError:
+        return {}
     except OSError:
+        # 读失败（权限/IO 故障）≠ 不存在：同样先备份再回退，不能静默返回默认值
+        _backup_corrupt()
         return {}
     if not isinstance(data, dict):
         _backup_corrupt()

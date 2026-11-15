@@ -118,7 +118,15 @@ class JobRunner:
             job = await self._queue.get()
             if job.status == CANCELLED:
                 continue
-            handler = self._handlers[job.type]
+            # submit() 已在提交时校验类型注册，此处的 .get 是纵深防御：直接 [type]
+            # 索引的 KeyError 会逃出消费循环杀死 worker 协程（fire-and-forget 无人
+            # await，start() 也无从重启），此后所有任务永久滞留 QUEUED
+            handler = self._handlers.get(job.type)
+            if handler is None:
+                job.status = FAILED
+                job.error = f"未注册的任务类型: {job.type}"
+                job.finished_at = _now_ms()
+                continue
             job.status = RUNNING
             job.started_at = _now_ms()
             try:

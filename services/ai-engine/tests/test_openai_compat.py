@@ -107,3 +107,28 @@ def test_chat_json_with_retry_fails_after_two_bad_outputs():
 
     with pytest.raises(openai_compat.OpenAICompatError, match="两次都未返回合法 JSON"):
         asyncio.run(openai_compat.chat_json_with_retry(chat_fn, [{"role": "user", "content": "给 JSON"}]))
+
+
+def test_chat_null_content_raises_domain_error(monkeypatch):
+    """content 为 null（tool-call-only/截断响应）：转 OpenAICompatError，而非让下游 json.loads(None) 裸 TypeError"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """回 tool-call-only 形态：content 为 null"""
+        return httpx.Response(200, json={"choices": [{"message": {"content": None}}]})
+
+    _patch_client(monkeypatch, handler)
+    with pytest.raises(openai_compat.OpenAICompatError, match="无文本内容"):
+        asyncio.run(
+            openai_compat.chat("https://x/v1", "k", "m", [{"role": "user", "content": "hi"}])
+        )
+
+
+def test_chat_json_with_retry_survives_none_output():
+    """chat_fn 返回 None：TypeError 被修复重试接住，两次失败转领域错误（不再逃逸成裸异常）"""
+
+    async def none_chat(messages, *, temperature=None):  # noqa: ARG001
+        """始终返回 None 的对话替身（tool-call-only 病态路径）"""
+        return None
+
+    with pytest.raises(openai_compat.OpenAICompatError, match="未返回合法 JSON"):
+        asyncio.run(openai_compat.chat_json_with_retry(none_chat, [{"role": "user", "content": "x"}]))

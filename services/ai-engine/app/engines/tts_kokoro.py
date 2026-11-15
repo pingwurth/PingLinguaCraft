@@ -30,7 +30,7 @@ from typing import Callable
 
 from .. import settings
 from ..media.wav import wav_duration_ms
-from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, tts_cache_path, write_atomic
+from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, new_batch_workdir, tts_cache_path, write_atomic
 
 # kokoro 全部文件的存放目录（模型/音色/配置，一律不散落到别处）
 KOKORO_DIR = Path(settings.MODELS_DIR) / "kokoro"
@@ -435,8 +435,9 @@ def synthesize_batch(
     _require_models()
     out_dir = Path(out_path).parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    work = out_dir / ".tts-parts"
-    work.mkdir(exist_ok=True)
+    # 唯一分片目录：并发批量不互踩；亦无残留分片被 os.link 路径复用——旧实现的
+    # 固定名残留被 fallback write_bytes 截断时会连带损坏缓存 inode（tts_common）
+    work = new_batch_workdir(out_path)
 
     # 逐句合成（kokoro 推理本身串行，此处顺序执行；缓存命中时近零成本——
     # 命中态不读回字节，时长由 WAV 头部算得）。分片硬链接到缓存文件（同盘
