@@ -9,6 +9,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { aiArtifacts, materials, quizAttempts } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +18,8 @@ export const runtime = 'nodejs';
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const row = db
     .select()
@@ -49,7 +51,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const material = db
     .select({ status: materials.subtitleStatus })

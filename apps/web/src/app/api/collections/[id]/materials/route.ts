@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { materials } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +19,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const url = new URL(request.url);
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') ?? '20')));
@@ -25,7 +28,7 @@ export async function GET(
 
   const db = getDb();
   const where = and(
-    eq(materials.collectionId, Number(id)),
+    eq(materials.collectionId, pid),
     isNull(materials.deletedAt),
     status ? eq(materials.subtitleStatus, status) : undefined
   );

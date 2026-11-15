@@ -9,6 +9,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { aiArtifacts, cues } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +18,8 @@ export const runtime = 'nodejs';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const cueId = Number(id);
+  const cueId = parseIdParam(id);
+  if (cueId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json().catch(() => ({}))) as { force?: boolean };
   const db = getDb();
 
@@ -45,11 +47,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const row = db
     .select({ id: aiArtifacts.id, createdAt: aiArtifacts.createdAt })
     .from(aiArtifacts)
-    .where(and(eq(aiArtifacts.kind, 'level_page'), eq(aiArtifacts.subjectType, 'cue'), eq(aiArtifacts.subjectId, Number(id))))
+    .where(and(eq(aiArtifacts.kind, 'level_page'), eq(aiArtifacts.subjectType, 'cue'), eq(aiArtifacts.subjectId, pid)))
     .orderBy(desc(aiArtifacts.createdAt))
     .limit(1)
     .all()[0];

@@ -21,6 +21,7 @@ import { eq } from 'drizzle-orm';
 import { parseRange } from '@pinglc/core';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import { materials } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 /** 强制 Node 运行时（默认即 Node，显式声明防止意外边缘化） */
 export const runtime = 'nodejs';
@@ -57,10 +58,9 @@ export async function GET(
   { params }: { params: Promise<{ materialId: string }> }
 ) {
   const { materialId } = await params;
-  const id = Number(materialId);
-  if (!Number.isInteger(id) || id <= 0) {
-    return new Response('非法材料 id', { status: 400 });
-  }
+  const id = parseIdParam(materialId);
+  // 流式路由用原生 Response（守卫与 parseIdParam 的整数/正数语义等价）
+  if (id === null) return new Response('非法材料 id', { status: 400 });
 
   // 查询材料的媒体文件相对路径
   const db = getDb();

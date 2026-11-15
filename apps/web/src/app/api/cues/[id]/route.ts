@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +17,8 @@ export const runtime = 'nodejs';
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json()) as {
     startMs?: number;
     endMs?: number;
@@ -51,7 +54,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.noteMd !== undefined) patch.noteMd = body.noteMd;
   // 有人工内容修改时置 isEdited（工坊显示「已纠错」标记）
   if (edited.length > 0) patch.isEdited = true;
-  db.update(cues).set(patch).where(eq(cues.id, Number(id))).run();
+  db.update(cues).set(patch).where(eq(cues.id, pid)).run();
   return NextResponse.json({ ok: true, edited });
 }
 
@@ -61,7 +64,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const cueId = Number(id);
+  const cueId = parseIdParam(id);
+  if (cueId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const target = db.select().from(cues).where(eq(cues.id, cueId)).all()[0];
   if (!target) return NextResponse.json({ error: '句段不存在' }, { status: 404 });
   const rows = db

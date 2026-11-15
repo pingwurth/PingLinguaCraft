@@ -7,6 +7,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { aiArtifacts, quizAttempts } from '@/lib/db/schema';
 import { gradeAnswer, QuizSchema, type QuizQuestion } from '@/lib/quiz';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -18,7 +19,8 @@ export const runtime = 'nodejs';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json()) as { artifactId?: number; answers?: Array<number | string | null> };
   const answers = body.answers ?? [];
 
@@ -77,11 +79,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const rows = db
     .select()
     .from(quizAttempts)
-    .where(and(eq(quizAttempts.materialId, Number(id)), eq(quizAttempts.isCorrect, false)))
+    .where(and(eq(quizAttempts.materialId, pid), eq(quizAttempts.isCorrect, false)))
     .orderBy(desc(quizAttempts.createdAt))
     .limit(50)
     .all();

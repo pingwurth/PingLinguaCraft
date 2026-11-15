@@ -11,6 +11,7 @@ import { getDb } from '@/lib/db';
 import { cues as cuesTable, materials } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
 import { uniqueWordCount } from '@pinglc/core';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -19,6 +20,8 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const url = new URL(request.url);
   const format = url.searchParams.get('format') ?? 'srt';
   const mode = (url.searchParams.get('mode') ?? 'bilingual') as 'en' | 'zh' | 'bilingual';
@@ -27,7 +30,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const rows = db
     .select()
     .from(cuesTable)
-    .where(eq(cuesTable.materialId, Number(id)))
+    .where(eq(cuesTable.materialId, pid))
     .all()
     .sort((a, b) => a.index - b.index);
   if (rows.length === 0) return NextResponse.json({ error: '该材料暂无字幕' }, { status: 404 });
@@ -59,7 +62,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!content) return NextResponse.json({ error: '字幕内容为空' }, { status: 400 });
 
   const db = getDb();
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const material = db.select().from(materials).where(eq(materials.id, materialId)).all()[0];
   if (!material) return NextResponse.json({ error: '材料不存在' }, { status: 404 });
 

@@ -9,6 +9,7 @@ import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
 import { enginePost, EngineError } from '@/lib/server/engine';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,13 +18,15 @@ export const runtime = 'nodejs';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json().catch(() => ({}))) as {
     direction?: 'en2zh' | 'zh2en';
     profileId?: number;
   };
   const direction = body.direction ?? 'en2zh';
   const db = getDb();
-  const cue = db.select().from(cues).where(eq(cues.id, Number(id))).all()[0];
+  const cue = db.select().from(cues).where(eq(cues.id, pid)).all()[0];
   if (!cue) return NextResponse.json({ error: '句段不存在' }, { status: 404 });
 
   const sourceText = direction === 'en2zh' ? cue.textEn : (cue.textZh ?? '');

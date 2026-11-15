@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { wordBooks, words } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -14,12 +15,14 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const q = new URL(request.url).searchParams.get('q')?.toLowerCase() ?? '';
   const db = getDb();
   const rows = db
     .select()
     .from(words)
-    .where(eq(words.wordBookId, Number(id)))
+    .where(eq(words.wordBookId, pid))
     .all()
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .filter((w) => !q || w.lemma.includes(q) || w.displayForm.toLowerCase().includes(q));
@@ -31,6 +34,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json()) as { name?: string; description?: string };
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (body.name !== undefined) patch.name = body.name.trim();
@@ -38,7 +43,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const db = getDb();
   db.update(wordBooks)
     .set(patch)
-    .where(and(eq(wordBooks.id, Number(id)), eq(wordBooks.userId, 1)))
+    .where(and(eq(wordBooks.id, pid), eq(wordBooks.userId, 1)))
     .run();
   return NextResponse.json({ ok: true });
 }
@@ -48,9 +53,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   db.delete(wordBooks)
-    .where(and(eq(wordBooks.id, Number(id)), eq(wordBooks.userId, 1)))
+    .where(and(eq(wordBooks.id, pid), eq(wordBooks.userId, 1)))
     .run();
   return NextResponse.json({ ok: true });
 }

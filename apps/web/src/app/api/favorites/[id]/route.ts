@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { favorites } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -15,12 +16,14 @@ export const runtime = 'nodejs';
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json()) as { categoryId?: number | null; noteMd?: string | null };
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (body.categoryId !== undefined) patch.categoryId = body.categoryId;
   if (body.noteMd !== undefined) patch.noteMd = body.noteMd;
   const db = getDb();
-  db.update(favorites).set(patch).where(eq(favorites.id, Number(id))).run();
+  db.update(favorites).set(patch).where(eq(favorites.id, pid)).run();
   return NextResponse.json({ ok: true });
 }
 
@@ -29,12 +32,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const action = new URL(request.url).searchParams.get('action');
   if (action !== 'reanalyze') {
     return NextResponse.json({ error: '未知操作（支持 action=reanalyze）' }, { status: 400 });
   }
   const db = getDb();
-  const fav = db.select().from(favorites).where(eq(favorites.id, Number(id))).all()[0];
+  const fav = db.select().from(favorites).where(eq(favorites.id, pid)).all()[0];
   if (!fav) return NextResponse.json({ error: '收藏不存在' }, { status: 404 });
   db.update(favorites)
     .set({ aiAnalysisStatus: 'pending', updatedAt: new Date() })
@@ -50,7 +55,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
-  db.delete(favorites).where(eq(favorites.id, Number(id))).run();
+  db.delete(favorites).where(eq(favorites.id, pid)).run();
   return NextResponse.json({ ok: true });
 }

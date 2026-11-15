@@ -5,8 +5,10 @@
 
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
+import { countListenedBits } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { cues, learningProgress } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -21,7 +23,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     listenedMask?: string; // base64 位图
     listenedThrough?: boolean;
   };
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
 
   // 服务端复核「听过一遍」：位图置位数 ≥ 句段数（不信任客户端单方面声明）
@@ -40,11 +43,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     .all().length;
   let listenedThrough = Boolean(body.listenedThrough);
   if (maskBuf && total > 0) {
-    let bits = 0;
-    for (const byte of maskBuf) {
-      bits += (byte & 0x55) + ((byte >> 1) & 0x55); // 8 位全数
-    }
-    listenedThrough = bits >= total;
+    // 位图置位数 ≥ 句段数才算「听过一遍」；只统计前 total 位（@pinglc/core
+    // 单一口径，双端共享）。旧内联公式 (b&0x55)+((b>>1)&0x55) 不是 popcount——
+    // 高位按位权放大，听 5 句能算出 26，闯关解锁复核形同虚设
+    listenedThrough = countListenedBits(maskBuf, total) >= total;
   }
 
   const now = new Date();

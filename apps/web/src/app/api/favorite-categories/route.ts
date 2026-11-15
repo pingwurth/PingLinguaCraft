@@ -2,6 +2,7 @@
  * 收藏分类 API：GET / POST / DELETE（需求 13：收藏可选择分类，支持自定义分类）
  */
 
+import { parseIdParam } from '@/lib/server/params';
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -52,12 +53,13 @@ export async function POST(request: Request) {
  */
 export async function DELETE(request: Request) {
   const id = new URL(request.url).searchParams.get('id');
-  if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
+  const cid = parseIdParam(id);
+  if (cid === null) return NextResponse.json({ error: '缺少或非法 id' }, { status: 400 });
   const db = getDb();
   db.update(favorites)
     .set({ categoryId: null, updatedAt: new Date() })
-    .where(eq(favorites.categoryId, Number(id)))
+    .where(eq(favorites.categoryId, cid))
     .run();
-  db.delete(favoriteCategories).where(eq(favoriteCategories.id, Number(id))).run();
+  db.delete(favoriteCategories).where(eq(favoriteCategories.id, cid)).run();
   return NextResponse.json({ ok: true });
 }

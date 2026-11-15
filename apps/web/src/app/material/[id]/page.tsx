@@ -9,7 +9,7 @@
  */
 
 import Link from 'next/link';
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Player } from '@/features/player/Player';
 import { CurrentSentenceTab } from '@/features/reading/CurrentSentenceTab';
@@ -53,13 +53,24 @@ export default function MaterialPage({ params }: { params: Promise<{ id: string 
     queryKey: ['jobs', materialId, 'processing'],
     queryFn: () => api<{ jobs: JobDTO[] }>(`/api/jobs?materialId=${materialId}`),
     enabled: detail.data?.material.subtitleStatus === 'processing',
-    refetchInterval: (q) =>
-      q.state.data?.jobs.some((j) => j.status === 'queued' || j.status === 'running') ? 1500 : false,
+    // 只要材料还处于 processing 就持续轮询：任务入队有时延，首次轮询列表为空
+    // 不能停（旧逻辑按「列表无活跃任务」停轮询，队还没排上就永久冻结在 0%）
+    refetchInterval: () => (detail.data?.material.subtitleStatus === 'processing' ? 1500 : false),
   });
-  // 任务到终态后刷新材料状态（processing → ready/failed）
+  // 活跃任务「有 → 无」跃迁 = 到终态：succeeded 不在 /api/jobs?materialId= 的
+  // 过滤结果里（只回 queued/running/failed），成功路径只能靠跃迁检测触发详情
+  // 刷新（旧逻辑等 succeeded 出现，永远等不到，页面冻结全靠窗口聚焦意外 refetch）
+  const hasActiveJob = jobs.data?.jobs.some((j) => j.status === 'queued' || j.status === 'running') ?? false;
+  const hadActiveJobRef = useRef(false);
   useEffect(() => {
-    const list = jobs.data?.jobs;
-    if (list && list.some((j) => j.status === 'succeeded' || j.status === 'failed')) {
+    if (hadActiveJobRef.current && !hasActiveJob && jobs.isSuccess) {
+      void detail.refetch();
+    }
+    hadActiveJobRef.current = hasActiveJob;
+  }, [hasActiveJob, jobs.isSuccess, detail]);
+  // 失败任务仍在列表中（failed 不过滤）：直接可见，立即刷新详情展示失败态
+  useEffect(() => {
+    if (jobs.data?.jobs.some((j) => j.status === 'failed')) {
       void detail.refetch();
     }
   }, [jobs.data, detail]);

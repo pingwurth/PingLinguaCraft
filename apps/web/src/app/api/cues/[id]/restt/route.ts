@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +18,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     sttProfileId?: number;
     extendMs?: number;
   };
-  const cueId = Number(id);
+  const cueId = parseIdParam(id);
+  if (cueId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const jobId = createJob({
     type: 'restt_cue',
     cueId,

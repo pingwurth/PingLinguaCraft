@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -12,7 +13,8 @@ export const runtime = 'nodejs';
  */
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const wordId = Number(id);
+  const wordId = parseIdParam(id);
+  if (wordId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const jobId = createJob({ type: 'ai_note', payload: { wordId } });
   startPipeline(jobId);
   return NextResponse.json({ jobId }, { status: 202 });

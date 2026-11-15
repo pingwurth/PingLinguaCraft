@@ -9,6 +9,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { aiArtifacts, words } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +18,8 @@ export const runtime = 'nodejs';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const wordId = Number(id);
+  const wordId = parseIdParam(id);
+  if (wordId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json().catch(() => ({}))) as { force?: boolean };
   const db = getDb();
   const word = db.select({ id: words.id }).from(words).where(eq(words.id, wordId)).all()[0];
@@ -46,16 +48,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const w = db
     .select({ etymologyJson: words.etymologyJson })
     .from(words)
-    .where(eq(words.id, Number(id)))
+    .where(eq(words.id, pid))
     .all()[0];
   const frames = db
     .select({ contentMd: aiArtifacts.contentMd, createdAt: aiArtifacts.createdAt })
     .from(aiArtifacts)
-    .where(and(eq(aiArtifacts.kind, 'imitation'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, Number(id))))
+    .where(and(eq(aiArtifacts.kind, 'imitation'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, pid)))
     .orderBy(desc(aiArtifacts.createdAt))
     .limit(1)
     .all()[0];

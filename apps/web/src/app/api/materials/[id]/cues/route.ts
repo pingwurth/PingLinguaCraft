@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -15,11 +16,13 @@ export const runtime = 'nodejs';
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const rows = db
     .select()
     .from(cues)
-    .where(eq(cues.materialId, Number(id)))
+    .where(eq(cues.materialId, pid))
     .all()
     .sort((a, b) => a.index - b.index);
   return NextResponse.json({
@@ -45,7 +48,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     textZh?: string;
   };
   const db = getDb();
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const rows = db
     .select()
     .from(cues)

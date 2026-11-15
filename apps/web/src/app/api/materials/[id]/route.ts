@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { learningProgress, materials } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -14,8 +15,10 @@ export const runtime = 'nodejs';
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
-  const row = db.select().from(materials).where(eq(materials.id, Number(id))).all()[0];
+  const row = db.select().from(materials).where(eq(materials.id, pid)).all()[0];
   if (!row || row.deletedAt) return NextResponse.json({ error: '材料不存在' }, { status: 404 });
   const progress = db
     .select()
@@ -30,6 +33,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json()) as Record<string, unknown>;
   const db = getDb();
   const patch: Record<string, unknown> = { updatedAt: new Date() };
@@ -37,7 +42,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (body[key] !== undefined) patch[key] = body[key];
   }
   if (body.collectionId !== undefined) patch.collectionId = Number(body.collectionId);
-  db.update(materials).set(patch).where(eq(materials.id, Number(id))).run();
+  db.update(materials).set(patch).where(eq(materials.id, pid)).run();
   return NextResponse.json({ ok: true });
 }
 
@@ -46,10 +51,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   db.update(materials)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
-    .where(eq(materials.id, Number(id)))
+    .where(eq(materials.id, pid))
     .run();
   return NextResponse.json({ ok: true });
 }

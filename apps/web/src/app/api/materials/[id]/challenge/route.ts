@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { challengeRecords, cues, learningProgress, materials } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +20,8 @@ const MODES = ['grid', 'dictation', 'shadow_score', 'shadowing', 'recite', 'scen
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
 
   const progress = db
@@ -45,7 +47,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const materialId = Number(id);
+  const materialId = parseIdParam(id);
+  if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const body = (await request.json()) as { mode?: string; score?: number; detail?: unknown };
   const mode = body.mode ?? '';
   if (!(MODES as readonly string[]).includes(mode)) {

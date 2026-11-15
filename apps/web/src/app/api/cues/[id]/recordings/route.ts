@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import { cues, materials, recordings } from '@/lib/db/schema';
 import { relMediaPath } from '@/lib/server/media';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +23,8 @@ const MAX_BYTES = 30 * 1024 * 1024;
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const rows = db
     .select({
@@ -31,7 +34,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       filePath: recordings.filePath,
     })
     .from(recordings)
-    .where(eq(recordings.cueId, Number(id)))
+    .where(eq(recordings.cueId, pid))
     .all()
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return NextResponse.json({ recordings: rows });
@@ -42,7 +45,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const cueId = Number(id);
+  const cueId = parseIdParam(id);
+  if (cueId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const url = new URL(request.url);
   const durationMs = Math.max(0, Number(url.searchParams.get('durationMs') ?? '0'));
   // 客户端声明的真实 MIME（webm/opus 或 Safari 的 mp4）；空 body 的 Content-Type 兜底

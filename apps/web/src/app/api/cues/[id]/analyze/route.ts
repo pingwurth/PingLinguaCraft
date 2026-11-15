@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues, favorites } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +18,8 @@ export const runtime = 'nodejs';
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = (await request.json().catch(() => ({}))) as { categoryId?: number | null };
-  const cueId = Number(id);
+  const cueId = parseIdParam(id);
+  if (cueId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
 
   const cue = db.select().from(cues).where(eq(cues.id, cueId)).all()[0];

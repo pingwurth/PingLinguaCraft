@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { asc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { aiMessages, aiThreads } from '@/lib/db/schema';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -14,11 +15,13 @@ export const runtime = 'nodejs';
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const thread = db
     .select()
     .from(aiThreads)
-    .where(eq(aiThreads.id, Number(id)))
+    .where(eq(aiThreads.id, pid))
     .all()[0];
   if (!thread) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
   const messages = db
@@ -35,7 +38,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
-  db.delete(aiThreads).where(eq(aiThreads.id, Number(id))).run();
+  db.delete(aiThreads).where(eq(aiThreads.id, pid)).run();
   return NextResponse.json({ ok: true });
 }
