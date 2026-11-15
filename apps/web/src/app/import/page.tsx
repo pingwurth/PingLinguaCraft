@@ -8,15 +8,79 @@
  * - 链接：YouTube/Bilibili/TED/RSS（yt-dlp 下载，顺带抓官方英文字幕）
  * - 文本：粘贴英文文本 → 自动分句 → TTS 生成音频
  * 公共：选择目标材料集（或快速新建）
+ * 工作流程指引弹窗：首访自动展示三场景流程图与在线 TTS/STT 服务推荐，
+ * 页头帮助键可随时重看（localStorage 记忆已读）
  */
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Collection, type JobDTO } from '@/lib/api';
 
 /** 导入路径 tab */
 type ImportKind = 'file' | 'link' | 'text';
+
+/** 指引弹窗已读记忆键（localStorage：关闭过一次即不再自动弹出） */
+const GUIDE_SEEN_KEY = 'pinglc.import.guideSeen';
+
+/** 场景序号中文数字（弹窗渲染用） */
+const CN_NUMS = ['一', '二', '三'] as const;
+
+/**
+ * 工作流程场景数据：steps 首=手头素材、末=导入结果（中间为动作步骤）；
+ * hint 为站内/站外做法提示；tab / tabLabel 为对应导入路径页签（弹窗内可一键跳转）
+ */
+const GUIDE_SCENARIOS: Array<{
+  /** 场景图标（Material Symbols 名） */
+  icon: string;
+  /** 场景名（描述手头素材） */
+  title: string;
+  /** 流程步骤链（首=素材，末=结果） */
+  steps: string[];
+  /** 站内/站外做法提示 */
+  hint: string;
+  /** 对应导入路径 tab */
+  tab: ImportKind;
+  /** tab 显示名 */
+  tabLabel: string;
+}> = [
+  {
+    icon: 'text_snippet',
+    title: '只有文本',
+    steps: ['文本', 'TTS 语音生成', 'STT 语音转写', '导入：音/视频 + 字幕'],
+    hint: '「文本转音频」页签粘贴即自动合成并分句（免转写）；也可先在下方 TTS 网站生成音频，再按场景二转写。',
+    tab: 'text',
+    tabLabel: '文本转音频',
+  },
+  {
+    icon: 'graphic_eq',
+    title: '只有音/视频文件',
+    steps: ['音/视频', 'STT 语音转写', '导入：音/视频 + 字幕'],
+    hint: '上传后本站自动转写（本地 Whisper 或云端档案）；也可先用下方网站转写导出 SRT，随文件上传免转写。',
+    tab: 'file',
+    tabLabel: '本地文件',
+  },
+  {
+    icon: 'task_alt',
+    title: '已有音/视频 + 配套字幕',
+    steps: ['音/视频 + 字幕', '直接导入'],
+    hint: '同时选择媒体与 .srt / .vtt 字幕文件，跳过转写直接入库。',
+    tab: 'file',
+    tabLabel: '本地文件',
+  },
+];
+
+/** 在线语音生成（TTS）服务推荐：[站点名, 链接] */
+const TTS_SITES: ReadonlyArray<readonly [string, string]> = [
+  ['Read Aloud', 'https://app.readaloud.net/'],
+  ['豆包', 'https://www.doubao.com/chat/'],
+];
+
+/** 在线语音转写（STT）服务推荐：[站点名, 链接] */
+const STT_SITES: ReadonlyArray<readonly [string, string]> = [
+  ['阿里云听悟', 'https://tingwu.aliyun.com/home'],
+  ['飞书妙记', 'https://zrc5yn8rnt.feishu.cn/minutes/home'],
+];
 
 /**
  * 导入页（Suspense 包装 useSearchParams）
@@ -45,6 +109,31 @@ function ImportWizard() {
   const [file, setFile] = useState<File | null>(null);
   const [subtitleFile, setSubtitleFile] = useState<File | null>(null);
   const [result, setResult] = useState<{ materialId: number; jobId: string } | null>(null);
+
+  /* 工作流程指引弹窗：首次进页自动展示（localStorage 记忆已读），页头帮助键可重看 */
+  const [guideOpen, setGuideOpen] = useState(false);
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(GUIDE_SEEN_KEY)) setGuideOpen(true);
+    } catch {
+      /* 无 localStorage（隐私模式等）：不记忆，每次进页都展示 */
+      setGuideOpen(true);
+    }
+  }, []);
+  /** 关闭指引弹窗并记忆已读（此后不再自动弹出，仅页头手动重看） */
+  const closeGuide = () => {
+    setGuideOpen(false);
+    try {
+      localStorage.setItem(GUIDE_SEEN_KEY, '1');
+    } catch {
+      /* 记忆失败不影响关闭 */
+    }
+  };
+  /** 从指引弹窗跳到指定导入路径页签（顺带关闭并记忆已读） */
+  const goGuide = (k: ImportKind) => {
+    setKind(k);
+    closeGuide();
+  };
 
   /* 材料集列表 */
   const collections = useQuery({
@@ -130,10 +219,20 @@ function ImportWizard() {
   return (
     /* 向导容器 */
     <div className="mx-auto w-full max-w-2xl px-5 py-6 md:py-10">
-      {/* 页头 */}
-      <header className="mb-6">
-        <h2 className="font-serif text-2xl">纳新入卷</h2>
-        <p className="mt-1 text-sm text-ochre">导入后自动生成字幕与译文，即可开始精读</p>
+      {/* 页头：标题 + 工作流程指引重看入口 */}
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-serif text-2xl">纳新入卷</h2>
+          <p className="mt-1 text-sm text-ochre">导入后自动生成字幕与译文，即可开始精读</p>
+        </div>
+        {/* 帮助键：随时重看工作流程指引 */}
+        <button
+          onClick={() => setGuideOpen(true)}
+          aria-label="工作流程指引"
+          className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-primary"
+        >
+          <span className="material-symbols-outlined">help</span>
+        </button>
       </header>
 
       {/* 路径 tab */}
@@ -296,6 +395,180 @@ function ImportWizard() {
           )}
         </div>
       )}
+
+      {/* 工作流程指引弹窗（首次进页自动展示；Esc / 点遮罩 / 关闭键均等效关闭） */}
+      {guideOpen && <FlowGuide onClose={closeGuide} onGo={goGuide} />}
+    </div>
+  );
+}
+
+/**
+ * 流程步骤条：首节点（手头素材）赭褐虚线框、中间节点（动作步骤）压印底、
+ * 末节点（导入结果）朱砂实底；节点间箭头衔接，窄屏自动换行
+ * @param steps 步骤名数组（≥2 项：首=素材，末=结果）
+ */
+function FlowChain({ steps }: { steps: string[] }) {
+  return (
+    /* 步骤链容器：flex 换行适配窄屏 */
+    <div className="flex flex-wrap items-center gap-1">
+      {steps.map((step, i) => (
+        /* 单步骤节点与其后箭头打包（末节点不带箭头） */
+        <span key={step} className="flex items-center gap-1">
+          {/* 步骤节点：按首（素材）/ 中（动作）/ 末（结果）三段着色 */}
+          <span
+            className={`rounded px-2 py-1 text-xs ${
+              i === 0
+                ? 'border border-dashed border-ochre text-ochre'
+                : i === steps.length - 1
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-foreground'
+            }`}
+          >
+            {step}
+          </span>
+          {/* 衔接箭头（末节点后不渲染） */}
+          {i < steps.length - 1 && (
+            <span className="material-symbols-outlined text-sm text-ochre" aria-hidden="true">
+              arrow_forward
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 工作流程指引弹窗：三场景流程图 + 在线 TTS/STT 服务推荐
+ *
+ * 展示「素材 → 动作 → 导入结果」的全链路，帮用户按手头素材对号入座；
+ * 场景卡「去××」按钮关闭弹窗并切到对应导入路径页签。
+ * @param onClose 关闭回调（记忆已读由调用方处理）
+ * @param onGo 关闭并跳转到指定导入路径 tab
+ */
+function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: ImportKind) => void }) {
+  /* Esc 键关闭（与点遮罩、关闭键等效） */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    /* 遮罩层：半透明墨色，点空白处关闭 */
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      {/* 弹窗卡片：纸卡底 + 书边线；内容超屏时卡片内滚动（移动端友好） */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="导入工作流程指引"
+        className="deckle max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-md border bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 弹窗头：标题 + 一句话导语 + 关闭键 */}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-serif text-xl">导入工作流程</h3>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              精听材料的完整形态是「音/视频 + 带时间戳的字幕」。按手头素材对号入座：
+            </p>
+          </div>
+          {/* 关闭键 */}
+          <button
+            onClick={onClose}
+            aria-label="关闭指引"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <span className="material-symbols-outlined text-lg">close</span>
+          </button>
+        </div>
+
+        {/* 三场景卡：流程链 + 提示 + 页签跳转 */}
+        <div className="mt-4 flex flex-col gap-3">
+          {GUIDE_SCENARIOS.map((s, i) => (
+            <section key={s.title} className="rounded-md border border-border bg-background p-3">
+              {/* 场景标题行：图标 + 序号 + 名称 */}
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-lg text-primary">{s.icon}</span>
+                <h4 className="text-sm font-medium">
+                  场景{CN_NUMS[i]} · {s.title}
+                </h4>
+              </div>
+              {/* 流程步骤链 */}
+              <div className="mt-2.5">
+                <FlowChain steps={s.steps} />
+              </div>
+              {/* 做法提示 + 对应页签一键跳转 */}
+              <div className="mt-2 flex items-end justify-between gap-2">
+                <p className="text-xs leading-relaxed text-muted-foreground">{s.hint}</p>
+                <button
+                  onClick={() => onGo(s.tab)}
+                  className="shrink-0 rounded border border-primary/40 px-2 py-1 text-xs text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                >
+                  去「{s.tabLabel}」
+                </button>
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {/* 在线服务推荐小节 */}
+        <div className="mt-4 border-t border-border pt-3">
+          {/* 小节标题 */}
+          <h4 className="flex items-center gap-1.5 text-sm font-medium">
+            <span className="material-symbols-outlined text-lg text-ochre">public</span>
+            在线服务推荐
+          </h4>
+          {/* 语音生成（TTS）组 */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">语音生成</span>
+            {TTS_SITES.map(([name, url]) => (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 rounded border border-input bg-background px-2.5 py-1 text-xs transition-colors hover:bg-accent hover:text-primary"
+              >
+                {name}
+                <span className="material-symbols-outlined text-xs text-ochre" aria-hidden="true">
+                  open_in_new
+                </span>
+              </a>
+            ))}
+          </div>
+          {/* 语音转写（STT）组 */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">语音转写</span>
+            {STT_SITES.map(([name, url]) => (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 rounded border border-input bg-background px-2.5 py-1 text-xs transition-colors hover:bg-accent hover:text-primary"
+              >
+                {name}
+                <span className="material-symbols-outlined text-xs text-ochre" aria-hidden="true">
+                  open_in_new
+                </span>
+              </a>
+            ))}
+          </div>
+          {/* 兼容格式与站内能力提示 */}
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            转写请导出 SRT / VTT 字幕，与本站导入直接兼容；本站亦内置本地合成与转写，设置页可配云端档案。
+          </p>
+        </div>
+
+        {/* 底部确认按钮 */}
+        <button
+          onClick={onClose}
+          className="mt-4 w-full rounded-md bg-primary py-2.5 text-sm text-primary-foreground transition-colors hover:bg-primary-hover"
+        >
+          知道了，开始导入
+        </button>
+      </div>
     </div>
   );
 }
