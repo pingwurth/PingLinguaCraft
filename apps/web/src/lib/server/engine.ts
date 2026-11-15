@@ -7,6 +7,8 @@
  * - 长任务（stt / tts_batch / yt_download）：submitJob 拿 id → awaitJob 轮询到终态
  */
 
+import type { EngineCapabilities } from '@pinglc/core';
+
 /** 引擎基础地址 */
 const ENGINE_URL = process.env.PINGLC_ENGINE_URL ?? 'http://127.0.0.1:8765';
 
@@ -74,16 +76,6 @@ export async function engineCapabilities(): Promise<EngineCapabilities> {
   return r.json();
 }
 
-/** 能力探测结果结构（与 engine /system/capabilities 对应） */
-export interface EngineCapabilities {
-  stt: { faster_whisper: boolean; whisperx: boolean };
-  tts: { edge_tts: boolean; kokoro: boolean };
-  align: { whisperx: boolean; mfa_docker: boolean };
-  cuda: boolean;
-  yt_dlp: boolean;
-  ffmpeg: boolean;
-}
-
 /**
  * 同步 POST 调用
  * @param path 路径
@@ -93,6 +85,7 @@ export async function enginePost<T>(path: string, body: unknown): Promise<T> {
   const r = await engineFetch(path, { method: 'POST', body: JSON.stringify(body) });
   return r.json();
 }
+
 
 /** 引擎任务快照（/jobs/{id} 返回结构） */
 export interface EngineJobSnapshot {

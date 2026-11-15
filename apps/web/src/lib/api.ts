@@ -7,7 +7,7 @@
  * `@/lib/api` 引用面稳定。
  */
 
-import { ApiError, parseApiResponse } from '@pinglc/core';
+import { ApiError, jsonHeaders, parseApiResponse } from '@pinglc/core';
 
 export { ApiError };
 export type {
@@ -24,14 +24,13 @@ export type {
 /**
  * 通用请求封装
  * @param path 路径（/api/…）
- * @param init fetch 参数（method/body 等）
+ * @param init fetch 参数（method/body 等；headers 经 jsonHeaders 归一化——
+ *             Headers 实例/对象/元组均可，FormData 体不覆盖 boundary）
  */
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, {
     ...init,
-    headers: init?.body instanceof FormData
-      ? init?.headers
-      : { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: jsonHeaders(init?.body, init?.headers) as RequestInit['headers'],
   });
   return parseApiResponse<T>(resp);
 }

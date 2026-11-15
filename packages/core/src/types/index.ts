@@ -5,24 +5,14 @@
  * 词级时间戳、字幕句段（cue）、材料、学习进度等。
  * 这些类型与数据库 schema（apps/web/src/lib/db/schema.ts）字段一一对应，
  * 但保持纯数据形态（无 ORM 依赖），便于双端复用。
+ * 原子类型见 ./primitives.ts（叶子模块，防类型依赖环）；
  * API 响应 DTO（双端共用的接口契约）见 ./api.ts。
  */
 
-export * from './api';
+import type { AICapability, JobStatus, WordTiming } from './primitives';
 
-/**
- * 词级时间戳：STT/对齐产出的单个单词信息
- * @property w  单词文本
- * @property s  起始时间（秒，浮点）
- * @property e  结束时间（秒，浮点）
- * @property p  识别置信度概率（0~1，可选，来自 faster-whisper）
- */
-export interface WordTiming {
-  w: string;
-  s: number;
-  e: number;
-  p?: number;
-}
+export * from './primitives';
+export * from './api';
 
 /**
  * 双语字幕句段（cue）：数据库 cues 表的纯数据形态
@@ -45,24 +35,6 @@ export interface Cue {
 }
 
 /**
- * 材料来源类型：
- * - audio  本地音频文件
- * - video  本地视频文件
- * - text   纯文本导入（TTS 生成音频）
- * - link   链接导入（yt-dlp 下载，YouTube/Bilibili/TED 等）
- */
-export type MaterialSourceType = 'audio' | 'video' | 'text' | 'link';
-
-/**
- * 字幕就绪状态：
- * - none       无字幕（刚导入）
- * - processing 字幕生成中（STT/翻译进行中）
- * - ready      字幕就绪可学习
- * - failed     生成失败（可重试）
- */
-export type SubtitleStatus = 'none' | 'processing' | 'ready' | 'failed';
-
-/**
  * 字幕显示模式（播放器内切换）：
  * - en       仅英文
  * - zh       仅中文
@@ -79,11 +51,6 @@ export type SubtitleMode = 'en' | 'zh' | 'bilingual' | 'off';
  * - episode  单集循环
  */
 export type LoopMode = 'none' | 'sentence' | 'ab' | 'episode';
-
-/**
- * AI 能力类别：STT 转写 / TTS 合成 / 音素对齐 / 翻译 / 大语言模型
- */
-export type AICapability = 'stt' | 'tts' | 'align' | 'translate' | 'llm';
 
 /**
  * AI 服务配置档案（provider_profiles 表的纯数据形态）
@@ -122,11 +89,6 @@ export type JobType =
   | 'level_page'
   | 'etymology'
   | 'shadow_score';
-
-/**
- * 任务状态
- */
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 /**
  * 任务行的纯数据形态（前端轮询用）

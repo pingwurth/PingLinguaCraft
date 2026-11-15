@@ -268,7 +268,9 @@ export default function App() {
         <Pressable onPress={togglePlay} style={styles.playBtn}>
           <Text style={styles.playIcon}>{playing ? '❚❚' : '▶'}</Text>
         </Pressable>
-        <Text style={styles.playerHint}>第 {activeCue + 1} / {cues.length} 句</Text>
+        {/* 播放进度：尚未命中任何句（前奏/未开始）显示占位符，不出现「第 0 句」；
+            句间空隙保留上一句高亮（见播放订阅 effect） */}
+        <Text style={styles.playerHint}>{activeCue < 0 ? '—' : `第 ${activeCue + 1}`} / {cues.length} 句</Text>
       </View>
       {/* 句段列表（点句跳播） */}
       <FlatList

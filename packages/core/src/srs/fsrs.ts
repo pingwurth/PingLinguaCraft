@@ -187,22 +187,19 @@ export function stabilityToInterval(stability: number, requestRetention: number,
 
 /**
  * 四档间隔施加单调链（对齐参考 calculateScheduleDays）：
- * 后一档 ≥ 前一档 + 1 天（前档为 0 天时保持 ≥0——本实现基础间隔恒 ≥1，
- * 0 分支仅为与参考逐位同构而保留），全部封顶 maxInterval（参考默认 36500，
- * 恰与 S_MAX 同值）。输入不修改。
- * @param bases       各档基础间隔 [again, hard, good, easy]
- * @param maxInterval 间隔上限（天）
+ * 后一档 ≥ 前一档 + 1 天，全部封顶 S_MAX（36500，与参考 maximum_interval
+ * 默认值同值）。参考实现还含「前档为 0 天则保持 ≥0」的分支——本实现的
+ * 基础间隔恒 ≥1（stabilityToInterval 内部 Math.max(…,1)），该分支不可达，
+ * 故不实现，在此路径上与参考等价。输入不修改。
+ * @param bases 各档基础间隔 [again, hard, good, easy]
  */
 function chainIntervals(
-  bases: readonly [number, number, number, number],
-  maxInterval: number = S_MAX
+  bases: readonly [number, number, number, number]
 ): [number, number, number, number] {
-  // 输入恒 ≥1（stabilityToInterval 内部 Math.max(…,1)），参考实现里
-  // 「前档为 0 天则保持 ≥0」的分支在此不可达，直接取前档+1
-  const first = Math.min(bases[0]!, maxInterval);
-  const second = Math.min(Math.max(bases[1]!, first + 1), maxInterval);
-  const third = Math.min(Math.max(bases[2]!, second + 1), maxInterval);
-  return [first, second, third, Math.min(Math.max(bases[3]!, third + 1), maxInterval)];
+  const first = Math.min(bases[0]!, S_MAX);
+  const second = Math.min(Math.max(bases[1]!, first + 1), S_MAX);
+  const third = Math.min(Math.max(bases[2]!, second + 1), S_MAX);
+  return [first, second, third, Math.min(Math.max(bases[3]!, third + 1), S_MAX)];
 }
 
 /**
@@ -236,17 +233,24 @@ export function fsrsSchedule(
 
   if (prev === null || prev.reps === 0) {
     // 新卡（参考 Learning 首答）：四档初始稳定性 → 基础间隔 → 四档全链；
-    // 首答不计 lapse（参考 newState 不加 lapse；保留历史 lapses 不抹零）
+    // 首答不计 lapse（参考 newState 不加 lapse；保留历史 lapses 不抹零）。
+    // 稳定性数组只算一遍，间隔链与落库 state 复用同值（防两处不同步）
+    const initStabilities: readonly [number, number, number, number] = [
+      initStability(1, w),
+      initStability(2, w),
+      initStability(3, w),
+      initStability(4, w),
+    ];
     const chained = chainIntervals([
-      stabilityToInterval(initStability(1, w), retention, w),
-      stabilityToInterval(initStability(2, w), retention, w),
-      stabilityToInterval(initStability(3, w), retention, w),
-      stabilityToInterval(initStability(4, w), retention, w),
+      stabilityToInterval(initStabilities[0]!, retention, w),
+      stabilityToInterval(initStabilities[1]!, retention, w),
+      stabilityToInterval(initStabilities[2]!, retention, w),
+      stabilityToInterval(initStabilities[3]!, retention, w),
     ]);
     const scheduledDays = chained[rating - 1]!;
     return {
       state: {
-        stability: initStability(rating, w),
+        stability: initStabilities[rating - 1]!,
         difficulty: initDifficulty(rating, w),
         lastReviewMs: nowMs,
         reps: 1,

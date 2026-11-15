@@ -1,8 +1,9 @@
 /**
- * 种子洗牌（Fisher-Yates + 可复现伪随机）
+ * 种子洗牌与种子采样（Fisher-Yates + 可复现伪随机）
  *
  * 用途：听写「选词拼句」的词块乱序必须可复现 —— 同一 (种子, 句子) 在重试/刷新后
- * 呈现同一排列（计划验证要求：dictation determinism, seeded shuffle）。
+ * 呈现同一排列（计划验证要求：dictation determinism, seeded shuffle）；
+ * seededPick 供复习页干扰项采样（大池只取少数项，不做整池洗牌）。
  * 采用 mulberry32：体积极小、分布足够均匀、跨平台结果一致（JS number 语义稳定）。
  */
 
@@ -57,14 +58,18 @@ export function seededShuffle<T>(items: readonly T[], seed: number | string): T[
  * 只做 k 次随机交换（部分 Fisher-Yates），不做全量洗牌——大池子只取少数
  * 几项（如复习页从 200 词干扰池取 3 项）时避免整池洗牌的开销。
  * @param items 待采样数组
- * @param k     采样数量（超出数组长度时取全部）
+ * @param k     采样数量（NaN 归 0；±Infinity/超出数组长度取全部；小数向下取整；
+ *              负数归 0）
  * @param seed  种子（数字或字符串）
  * @returns 采样结果（保持确定性）
  */
 export function seededPick<T>(items: readonly T[], k: number, seed: number | string): T[] {
   const rand = typeof seed === 'number' ? mulberry32(seed) : mulberry32(hashSeed(seed));
   const out = [...items];
-  const n = Math.min(k, out.length);
+  // k 归一化：NaN 归 0（防 slice 负索引语义），小数取整（防交换次数与返回数
+  // 不一致），Infinity 经 floor 后由上界钳到数组长度（取全部，与 doc 一致）
+  const kf = Number.isNaN(k) ? 0 : Math.floor(k);
+  const n = Math.max(0, Math.min(kf, out.length));
   for (let i = 0; i < n; i++) {
     const j = i + Math.floor(rand() * (out.length - i));
     const tmp = out[i]!;

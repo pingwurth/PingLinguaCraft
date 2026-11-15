@@ -74,18 +74,19 @@ export default function ReviewPage() {
     gcTime: 0,
   });
   // 本轮快照：session 为空且不在「重启中」时才播种——中途任何 refetch
-  // （断线重连等）都不换题；「再来一轮」置重启旗标防旧缓存回灌，待 refetch
-  // 返回的新数据显式播种
-  const [session, setSession] = useState<QueueItem[] | null>(null);
+  // （断线重连等）都不换题也不换干扰池（pool 随机抽样后若中途 refetch 换池，
+  // 当前题的选项会被整组换掉、与已选 picked 错位）；「再来一轮」置重启旗标
+  // 防旧缓存回灌，待 refetch 返回的新数据显式播种
+  const [session, setSession] = useState<{ items: QueueItem[]; pool: string[] } | null>(null);
   const restarting = useRef(false);
   useEffect(() => {
     if (!restarting.current && session === null && queueQuery.data) {
-      setSession(queueQuery.data.queue);
+      setSession({ items: queueQuery.data.queue, pool: queueQuery.data.pool });
     }
   }, [session, queueQuery.data]);
-  const items = relearnItems ?? session ?? [];
-  // 池引用稳定化（每次渲染 ?? [] 产生新数组，会抖动 useMemo 依赖）
-  const pool = useMemo(() => queueQuery.data?.pool ?? [], [queueQuery.data]);
+  const items = relearnItems ?? session?.items ?? [];
+  // 池引用稳定化（快照后不变；?? [] 的空数组需 memo，防抖动 drill 依赖）
+  const pool = useMemo(() => session?.pool ?? [], [session]);
   const item = items[index];
 
   /** 本词题型（种子确定）：优先级 cloze > listen > meaning，按词与轮次散列 */
@@ -151,8 +152,9 @@ export default function ReviewPage() {
       {queueQuery.isLoading ? (
         /* 首次装载中 */
         <p className="py-16 text-center text-sm text-muted-foreground">装载中…</p>
-      ) : queueQuery.isError ? (
-        /* 队列拉取失败：给出提示与重试入口（而非渲染空页） */
+      ) : queueQuery.isError && session === null ? (
+        /* 队列拉取失败且无快照可用：给出提示与重试入口（而非渲染空页）；
+           已有本轮快照时后台 refetch 的瞬时失败不打断答题 */
         <div className="deckle rounded-md border border-dashed bg-card/50 py-14 text-center">
           <span className="material-symbols-outlined mb-2 text-4xl text-destructive">cloud_off</span>
           <p className="font-serif text-lg">取题失败</p>
@@ -210,8 +212,8 @@ export default function ReviewPage() {
                   // v5 refetch 失败不 reject（结果带 isError），此处按结果状态判定：
                   // 失败时 fresh.data 即上一份快照——回退旧队列可再战一轮，不白屏
                   const fresh = await queueQuery.refetch();
-                  if (fresh.data) setSession(fresh.data.queue);
-                  else if (queueQuery.data) setSession(queueQuery.data.queue);
+                  if (fresh.data) setSession({ items: fresh.data.queue, pool: fresh.data.pool });
+                  else if (queueQuery.data) setSession({ items: queueQuery.data.queue, pool: queueQuery.data.pool });
                 } finally {
                   restarting.current = false;
                 }

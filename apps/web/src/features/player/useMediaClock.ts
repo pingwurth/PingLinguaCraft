@@ -13,10 +13,6 @@ import { useEffect } from 'react';
 import { findCueIndex } from '@pinglc/core';
 import { usePlayer } from './store';
 
-// findCueIndex（二分查当前句）已上移 @pinglc/core —— 与 Expo 端播放跟随共用；
-// 此处再导出保持播放器内部既有引用面稳定
-export { findCueIndex };
-
 /**
  * 启动 rAF 时钟：绑定媒体元素，驱动 store 的时间/激活句/循环回跳
  * @param mediaRef 媒体元素 ref（<video>；音频材料也用同一元素）

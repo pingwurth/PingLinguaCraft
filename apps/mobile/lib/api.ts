@@ -8,7 +8,7 @@
  * 单一来源（此处再导出，双端契约不再手工复制漂移）。
  */
 
-import { parseApiResponse } from '@pinglc/core';
+import { jsonHeaders, parseApiResponse } from '@pinglc/core';
 
 export type { Collection, MaterialListItem, CueDTO } from '@pinglc/core';
 
@@ -60,8 +60,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const resp = await fetch(`${baseUrl}${path}`, {
       ...init,
       signal: ctrl.signal,
-      // FormData（未来上传场景）不能强设 Content-Type（boundary 由 fetch 生成）
-      headers: init?.body instanceof FormData ? (init?.headers ?? {}) : { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      // 头归一化（core 的 jsonHeaders）：Headers 实例/对象/元组均可，
+      // FormData 体不设 Content-Type（boundary 由 fetch 生成）。
+      // 注意 init.headers 不再原样透传——统一经归一化后交给 fetch
+      headers: jsonHeaders(init?.body, init?.headers) as RequestInit['headers'],
     });
     return await parseApiResponse<T>(resp);
   } catch (e) {

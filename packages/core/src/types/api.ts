@@ -7,7 +7,7 @@
  * 注意：仅为类型（零运行时代码），字段语义见对应 API 路由。
  */
 
-import type { AICapability, JobStatus, MaterialSourceType, SubtitleStatus, WordTiming } from './index';
+import type { AICapability, JobStatus, MaterialSourceType, SubtitleStatus, WordTiming } from './primitives';
 
 /** 材料集（列表形态） */
 export interface Collection {
@@ -95,15 +95,20 @@ export interface ProviderDTO {
   hasKey: boolean;
 }
 
+/** 引擎能力明细（与 engine /system/capabilities 对应；web 服务端 engine.ts 亦复用此类型） */
+export interface EngineCapabilities {
+  stt: { faster_whisper: boolean; whisperx: boolean };
+  tts: { edge_tts: boolean; kokoro: boolean };
+  align: { whisperx: boolean; mfa_docker: boolean };
+  cuda: boolean;
+  yt_dlp: boolean;
+  ffmpeg: boolean;
+}
+
 /** 引擎能力（健康检查） */
 export interface EngineInfo {
   healthy: boolean;
-  capabilities: {
-    stt: { faster_whisper: boolean; whisperx: boolean };
-    tts: { edge_tts: boolean; kokoro: boolean };
-    align: { whisperx: boolean; mfa_docker: boolean };
-    cuda: boolean;
-    yt_dlp: boolean;
-    ffmpeg: boolean;
-  } | null;
+  capabilities: EngineCapabilities | null;
+  /** 能力探测失败时的错误说明（此时 healthy 仍为 true、capabilities 为 null） */
+  error?: string;
 }

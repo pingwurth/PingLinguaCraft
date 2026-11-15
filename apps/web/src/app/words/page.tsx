@@ -14,6 +14,11 @@ import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
 import { waitForJob } from '@/lib/jobs/wait';
 
+/** 错误信息提取（网络异常与服务端 { error } 统一为可展示文本） */
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : '生成失败';
+}
+
 /** 词本形态 */
 interface BookDTO {
   id: number;
@@ -72,7 +77,9 @@ export default function WordsPage() {
       const r = await api<{ jobId: string }>(`/api/words/${wordId}/ai-note`, { method: 'POST' });
       await waitForJob(r.jobId);
     },
-    onSuccess: () => void words.refetch(),
+    // onSettled 而非 onSuccess：失败/超时时任务可能仍已落库（如超时前瞬间
+    // 完成），无论成败都刷新词表，行状态反映 DB 真实落点
+    onSettled: () => void words.refetch(),
   });
 
   return (
@@ -150,8 +157,10 @@ export default function WordsPage() {
                   expanded={expanded === w.id}
                   onToggle={() => setExpanded(expanded === w.id ? null : w.id)}
                   onGenNote={() => genNote.mutate(w.id)}
-                  notePending={genNote.isPending && expanded === w.id}
-                  noteError={genNote.isError && expanded === w.id ? (genNote.error instanceof Error ? genNote.error.message : '生成失败') : null}
+                  // 以 mutation 自身的 variables（发起时的 wordId）判行，而非
+                  // 当前端开行——A 生成中收起转开 B 时，B 不会误显「生成中」
+                  notePending={genNote.isPending && genNote.variables === w.id}
+                  noteError={genNote.isError && genNote.variables === w.id ? errMsg(genNote.error) : null}
                   onSaved={() => void words.refetch()}
                 />
               ))}
@@ -187,6 +196,9 @@ function WordRow({
 }) {
   const [editNote, setEditNote] = useState(false);
   const [note, setNote] = useState(word.noteMd ?? '');
+  // 按钮文案先行计算（顺序赋值，不用嵌套三元）
+  let noteLabel = word.aiNoteStatus === 'ready' ? '重新生成' : '生成';
+  if (notePending) noteLabel = '生成中…';
 
   /* ---- 深学卡（词源拓扑 + 仿写构架，M4）---- */
   const deep = useQuery({
@@ -256,9 +268,7 @@ function WordRow({
               </button>
             </div>
             {/* 深学卡生成失败提示 */}
-            {genDeep.isError && (
-              <p className="mb-1.5 text-xs text-destructive">生成失败：{genDeep.error instanceof Error ? genDeep.error.message : '未知错误'}</p>
-            )}
+            {genDeep.isError && <p className="mb-1.5 text-xs text-destructive">生成失败：{errMsg(genDeep.error)}</p>}
             {deep.isLoading ? (
               <p className="text-xs text-muted-foreground">装载中…</p>
             ) : deep.data?.etymology ? (
@@ -352,7 +362,7 @@ function WordRow({
                 className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                {notePending ? '生成中…' : word.aiNoteStatus === 'ready' ? '重新生成' : '生成'}
+                {noteLabel}
               </button>
             </div>
             {/* AI 笔记生成失败提示 */}

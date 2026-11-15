@@ -10,12 +10,13 @@ export default [
   { ignores: ['node_modules/**', '.expo/**', 'dist/**', 'web-build/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  // React Hooks 规则（App.tsx 播放订阅 effect 的依赖检查）
+  // React Hooks 规则（App.tsx 播放订阅 effect 的依赖检查）。
+  // exhaustive-deps 必须为 error：lint 脚本无 --max-warnings 0，warn 不拦门禁
   {
     plugins: { 'react-hooks': reactHooks },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
     },
   },
   // Expo 生成的 CommonJS 配置文件（metro.config.js 等）：Node 环境 + commonjs 源
