@@ -70,7 +70,8 @@ pnpm monorepo，四个工作区：
 - 里程碑粒度提交，信息中文，说明「做了什么 + 为什么」
 - 提交前必须通过三件套门禁（typecheck / test / lint）
 - pre-commit 钩子（`.githooks/`）自动执行门禁：首次克隆后运行 `git config core.hooksPath .githooks` 启用；紧急绕过用 `git commit --no-verify`
-- AI 语义审查（alibaba/open-code-review）：`scripts/ai-review.sh` 审简洁性/架构/复用/维护/可读性 + 项目规范；规则在 `.opencodereview/rule.json`；critical/high 阻断，`SKIP_AI=1` 跳过此层；报告归档 `~/.pinglc/reviews/`
+- AI 语义审查（alibaba/open-code-review）：`scripts/ai-review.sh` 审简洁性/架构/复用/维护/可读性 + 项目规范；规则在 `.opencodereview/rule.json`；AGENTS.md 作为审查背景（`OCR_BACKGROUND` 可叠加变更意图）；critical/high 阻断，`SKIP_AI=1` 跳过此层；报告归档 `~/.pinglc/reviews/`；里程碑收尾 `--from main` 整分支复审（配 `OCR_EFFORT=high`）
+- 规则飞轮：强过阻断级或同一 medium 反复出现 → 回看 `~/.pinglc/reviews/`（skip.log + 归档报告），按「静态工具查不出 + 易忘 + 代价高」三条全中才沉淀进 `.opencodereview/rule.json`（`ocr rules check <路径>` 验证）；大里程碑收尾可 `ocr scan --path <工作区>` 存量体检（scan 无 --effort 档）
 
 ## 参考文档
 

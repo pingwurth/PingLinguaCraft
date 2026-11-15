@@ -71,7 +71,8 @@ pnpm monorepo，四个工作区：
 - 里程碑粒度提交，信息中文，说明「做了什么 + 为什么」
 - 提交前必须通过三件套门禁（typecheck / test / lint）
 - pre-commit 钩子（`.githooks/`）自动执行门禁：首次克隆后运行 `git config core.hooksPath .githooks` 启用；紧急绕过用 `git commit --no-verify`
-- AI 语义审查（alibaba/open-code-review）：三件套之后由 `scripts/ai-review.sh` 审简洁性/架构/复用/维护/可读性 + 项目规范；自定义规则在 `.opencodereview/rule.json`（按路径分层），AGENTS.md 自动作为审查背景；critical/high 阻断提交，`SKIP_AI=1` 仅跳过此层；ocr 缺失/故障自动降级放行；HTML 报告自动归档 `~/.pinglc/reviews/`（保留 50 份）
+- AI 语义审查（alibaba/open-code-review）：三件套之后由 `scripts/ai-review.sh` 审简洁性/架构/复用/维护/可读性 + 项目规范；自定义规则在 `.opencodereview/rule.json`（按路径分层），AGENTS.md 自动作为审查背景（`OCR_BACKGROUND` 可叠加本次变更意图）；critical/high 阻断提交，`SKIP_AI=1` 仅跳过此层；ocr 缺失/故障自动降级放行；HTML 报告自动归档 `~/.pinglc/reviews/`（保留 50 份）；里程碑收尾用 `--from main` 做整分支累计 diff 复审（跨 commit 涟漪只有这层能覆盖，预算自动放宽，建议配 `OCR_EFFORT=high`）
+- 规则飞轮：强过 critical/high（`SKIP_AI=1`/`--no-verify`）或同一 medium 反复出现 → 回看 `~/.pinglc/reviews/`（skip.log + 归档报告），把「静态工具查不出 + 人容易忘 + 违反代价高」三条全中的教训沉淀进 `.opencodereview/rule.json`（`ocr rules check <路径>` 验证命中，规则宁缺毋滥——每条都是常付的 token 成本）；大里程碑收尾可用 `ocr scan --path <工作区>` 做存量体检（无 --effort 档，深度由内置 plan 轮次决定），系统性发现同样进规则
 
 ## 参考文档
 

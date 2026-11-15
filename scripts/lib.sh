@@ -98,6 +98,12 @@ spawn_group() { # $1=pid文件 $2=日志文件 $3...=完整命令
     echo "[lib] 未安装 setsid（util-linux），无法以独立进程组启动——请安装后重试" >&2
     return 1
   fi
+  # 无条件删除残留 pid 文件后再 spawn：不只清「进程已死」的——旧 PID 被无关进程
+  # 复用时文件同样失效（3s 落盘检测会读到旧内容假成功、调用方误杀无关进程组）。
+  # 直接 rm -f 而非经 alive_pid 探活清理：调用方在 spawn 前已自行确认旧服务不在
+  # （端口/pid 探活），此处 rm -f 失败也不该中断脚本（alive_pid 内部的 rm 失败在
+  # set -e 下会静默中止整个调用方脚本）——新进程马上会重写该文件
+  rm -f "$pidfile" || true
   : >"$logfile" # 清空旧日志，每次启动一个新文件
   setsid bash -c 'echo $$ > "$1"; shift; exec "$@" >>"$0" 2>&1' \
     "$logfile" "$pidfile" "$@" &

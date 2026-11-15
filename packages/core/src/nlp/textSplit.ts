@@ -3,16 +3,20 @@
  *
  * 与 sentences.ts（STT 词流分句）同源的启发式，但作用于原始文本：
  * 1. 句末标点（.!?…）+ 空白 + 大写/引号/数字开头 → 断句
- * 2. 缩写词典守卫（Mr. / e.g. / U.S. …）
+ * 2. 缩写词典守卫（Mr. / e.g. / U.S. …）；多段缩写（U.S. / a.m.）另有
+ *    「下一词为单字母+句点」前瞻守卫——词典要到末段句点才命中，首段须前瞻放行
  * 3. 小数与编号守卫（3.14、列表 "1. "）
- * 4. 超长句（>600 字符）在逗号/分号处兜底切分
+ * 4. 超长句兜底切分：优先逗号/分号/冒号（半角+全角），无标点段按词边界贪心切，
+ *    病态超长单词硬切——保证输出不超过 maxChars
+ *
+ * Hermes 兼容：全程不用正则后行断言 lookbehind（Hermes/旧 Safari 上加载即 SyntaxError）
  */
 
 import { ABBREVIATIONS } from './abbreviations';
 
 /** 分句可配置参数 */
 export interface TextSplitOptions {
-  /** 单句最大字符数，超过在逗号/分号兜底切分（默认 600，TTS 单次合成友好） */
+  /** 单句最大字符数；超长时兜底切分：逗号/分号/冒号（半角+全角）→ 词边界 → 硬切（默认 600，TTS 单次合成友好） */
   maxChars?: number;
 }
 
@@ -71,12 +75,18 @@ export function splitSentences(text: string, opts: TextSplitOptions = {}): strin
         const lastWord = before.match(/[A-Za-z.]+$/)?.[0] ?? '';
         const bare = lastWord.replace(/\.$/, '').toLowerCase();
         const isAbbrev = ABBREVIATIONS.has(bare);
+        // 多段缩写前瞻守卫：词典条目（u.s / e.g / a.m）要到末段句点才命中，首段
+        // （U. / e. / a.）查不到；若标点后紧跟「单字母+句点」说明处于缩写内部，
+        // 此处放行会在首段误切（isBoundary 对大写后继恒真，"U.S. Government" 即中招）
+        let j = i + 1;
+        while (j < p.length && /\s/.test(p[j]!)) j++;
+        const abbrevInner = /^[A-Za-z]\./.test(p.slice(j));
         // 小数/编号守卫：标点两侧都是数字
         const prevChar = p[i - 1] ?? '';
         const nextNonSpace = p.slice(i + 1).match(/\S/)?.[0] ?? '';
         const decimalGuard = /\d/.test(prevChar) && /\d/.test(nextNonSpace);
 
-        if (!isAbbrev && !decimalGuard && isBoundary(p, i)) {
+        if (!isAbbrev && !abbrevInner && !decimalGuard && isBoundary(p, i)) {
           const s = buf.trim();
           if (s) sentences.push(s);
           buf = '';
@@ -96,24 +106,58 @@ export function splitSentences(text: string, opts: TextSplitOptions = {}): strin
     }
   }
 
-  // 第三步：超长句在逗号/分号处兜底切分
+  // 第三步：超长句兜底切分——优先在逗号/分号/冒号（半角+全角）处切；无标点段按
+  // 词边界贪心切；病态超长单词最后硬切。保证任何输出不超过 maxChars。
+  // 切点匹配用前瞻 (?=\s) 而非后行断言 lookbehind——后者在 Hermes（Expo）与旧 Safari
+  // 上加载即 SyntaxError（tests/hermesCompat.test.ts 有全目录机器守卫）
   const out: string[] = [];
   for (const s of sentences) {
     if (s.length <= maxChars) {
       out.push(s);
       continue;
     }
+    // 半角标点须后随空白才构成切点（12:30 这类时间/比例不切）；全角标点后随空白可省
+    const parts: string[] = [];
+    const punctRe = /[,;:](?=\s)|[，；：]/g;
+    let last = 0;
+    for (let m = punctRe.exec(s); m !== null; m = punctRe.exec(s)) {
+      let k = m.index + m[0].length; // 标点后的空白归前段（切点空白原样保留，重组不变形）
+      while (k < s.length && /\s/.test(s[k]!)) k++;
+      parts.push(s.slice(last, k));
+      last = k;
+    }
+    if (last < s.length) parts.push(s.slice(last));
+    // 贪心聚合到 maxChars 以内
     let current = '';
-    // 按逗号/分号/冒号切子串，贪心聚合到 maxChars 以内
-    for (const part of s.split(/(?<=[,;:])\s+/)) {
-      if ((current + ' ' + part).trim().length > maxChars && current) {
-        out.push(current.trim());
-        current = part;
+    const flush = () => {
+      const t = current.trim();
+      if (t) out.push(t);
+      current = '';
+    };
+    for (const piece of parts) {
+      if (piece.trim().length > maxChars) {
+        // 该段无可用标点且整段超长：按词边界贪心切
+        flush();
+        for (const w of piece.trim().split(/\s+/)) {
+          if (w.length > maxChars) {
+            // 病态超长单词（无空白可分）：硬切保上界
+            for (let st = 0; st < w.length; st += maxChars) out.push(w.slice(st, st + maxChars));
+          } else if ((current + ' ' + w).length > maxChars && current) {
+            flush();
+            current = w;
+          } else {
+            current = current ? current + ' ' + w : w;
+          }
+        }
+        flush();
+      } else if ((current + piece).trim().length > maxChars && current) {
+        flush();
+        current = piece;
       } else {
-        current = current ? current + ' ' + part : part;
+        current += piece;
       }
     }
-    if (current.trim()) out.push(current.trim());
+    flush();
   }
   return out;
 }

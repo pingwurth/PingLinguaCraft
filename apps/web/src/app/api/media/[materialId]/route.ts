@@ -5,74 +5,25 @@
  * Node 运行时 + fs.createReadStream 直读 ~/.pinglc/media 下的文件，
  * 显式设置 Accept-Ranges / Content-Range / Content-Length 头。
  *
- * Range 语义遵循 RFC 9110：
+ * Range 语义遵循 RFC 9110（解析器在 @pinglc/core 的 media/range.ts，带表驱动测试）：
  * - 语法非法 / 多区间 / 倒置区间 → 忽略 Range，回 200 全量（而非 416，浏览器视 416 为致命）
  * - 语法合法但不可满足（起点越界 / 后缀长度为 0 / 空文件）→ 416，并在 Content-Range 头告知总大小
  * - 溢出数值（超出安全整数，如 Long.MAX_VALUE 类客户端）按 RFC 钳制处理：
  *   后缀长度超限 → 整个文件；结束位超限 → 到文件尾；均返回 206 而非 416/200
- * - range 单位 bytes 大小写不敏感（RFC 9110 token 语义，主流实现一致）
- * - 可满足 → 206，分片上限 MAX_CHUNK 在唯一的出口处统一 clamp（不因区间写法绕过）
+ * - 分片上限 8MB 在解析器唯一出口统一钳制：普通区间锚定起点、后缀区间锚定文件尾
+ *   （探测 MP4 moov 的 bytes=-N 大尾部请求不会被截掉真正的尾部）
  */
 
 import { createReadStream, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { resolve, sep } from 'node:path';
 import { eq } from 'drizzle-orm';
+import { parseRange } from '@pinglc/core';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import { materials } from '@/lib/db/schema';
 
 /** 强制 Node 运行时（默认即 Node，显式声明防止意外边缘化） */
 export const runtime = 'nodejs';
-
-/** 单个 Range 分片上限：8MB（移动端网络友好；对任意区间写法统一生效） */
-const MAX_CHUNK = 8 * 1024 * 1024;
-
-/** Range 解析三态结果 */
-type RangeResult =
-  | { kind: 'ok'; start: number; end: number }
-  | { kind: 'invalid' }
-  | { kind: 'unsatisfiable' };
-
-/**
- * 解析 Range 头为字节区间（含端点），并区分「语法非法」与「不可满足」
- * @param rangeHeader 请求头 Range 值，如 "bytes=0-1023" / "bytes=1024-" / "bytes=-500"
- * @param size         文件总大小
- * @returns ok 可满足区间 / invalid 语法非法（调用方应忽略 Range 回 200）/ unsatisfiable 不可满足（416）
- */
-function parseRange(rangeHeader: string, size: number): RangeResult {
-  // 非单一区间：多区间（含逗号）、单位不符、缺连字符等 → 语法非法；
-  // 单位 bytes 按 RFC 9110 为大小写不敏感 token（加 i 标志，与 nginx 等实现一致）
-  const m = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/i);
-  if (!m) return { kind: 'invalid' };
-  const startRaw = m[1]!;
-  const endRaw = m[2]!;
-
-  // 后缀区间 "bytes=-500"：最后 500 字节
-  if (startRaw === '') {
-    if (endRaw === '') return { kind: 'invalid' };
-    const len = Number(endRaw);
-    // 后缀长度为 0（"bytes=-0"）→ 引用零字节，语法合法但不可满足（防倒置区间）；
-    // 正则限定 \d+ 无负数入参；溢出数值按 RFC 钳制为整个文件（可满足 206）
-    if (len === 0) return { kind: 'unsatisfiable' };
-    if (size === 0) return { kind: 'unsatisfiable' };
-    const clamped = Math.min(len, size);
-    return { kind: 'ok', start: size - clamped, end: size - 1 };
-  }
-
-  // 正则已限定 \d+，无负数/非数字入参；溢出的起点必然 ≥ size，按不可满足处理（416）
-  const start = Number(startRaw);
-  if (size === 0 || start >= size) return { kind: 'unsatisfiable' };
-
-  if (endRaw === '') {
-    // 开放区间 "bytes=1024-"：到文件尾（MAX_CHUNK 在出口统一 clamp）
-    return { kind: 'ok', start, end: size - 1 };
-  }
-  const end = Number(endRaw);
-  // 倒置区间（end < start）按 RFC 9110 为语法无效 → 忽略 Range 回 200；
-  // 溢出的结束位不视为非法：下方 min(size-1) 按「到文件尾」钳制，返回 206
-  if (end < start) return { kind: 'invalid' };
-  return { kind: 'ok', start, end: Math.min(end, size - 1) };
-}
 
 /**
  * 构造 200 全量流式响应（无 Range 或 Range 语法非法时）
@@ -173,9 +124,8 @@ export async function GET(
     });
   }
 
-  // 分片上限在唯一出口统一 clamp：显式闭区间与开放区间同等受限
-  const start = range.start;
-  const end = Math.min(range.end, start + MAX_CHUNK - 1);
+  // parseRange 已在唯一出口完成 8MB 分片钳制（后缀区间锚定文件尾），此处直接使用
+  const { start, end } = range;
   const stream = Readable.toWeb(createReadStream(filePath, { start, end })) as ReadableStream;
   return new Response(stream, {
     status: 206,

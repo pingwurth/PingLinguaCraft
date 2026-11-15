@@ -81,9 +81,10 @@ if [[ -n "$(port_pid 3000)" ]]; then
   exit 1
 fi
 echo "启动上游 next start（127.0.0.1:3000）..."
+# 回收逻辑先于 spawn 注册：spawn 之后任何一步失败/中断（set -e 退出、Ctrl+C）都会
+# 触发 EXIT trap——若 trap 注册太晚（spawn_group 的 3s 检测误报失败后脚本已退），
+# 已拉起的 next start 会成为孤儿进程占住 3000
 UPSTREAM_PID_FILE="$RUN_DIR/dev-https-upstream.pid"
-spawn_group "$UPSTREAM_PID_FILE" "$RUN_DIR/dev-https-upstream.log" \
-  pnpm exec next start -H 127.0.0.1 -p 3000
 cleanup() {
   local pid
   pid="$(alive_pid "$UPSTREAM_PID_FILE")"
@@ -93,6 +94,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+spawn_group "$UPSTREAM_PID_FILE" "$RUN_DIR/dev-https-upstream.log" \
+  pnpm exec next start -H 127.0.0.1 -p 3000
 
 # 等上游就绪再启动代理：next start 刚拉起尚未监听时，手机第一波请求会全部 502
 echo "等待上游就绪（最长 60s）..."

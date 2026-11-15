@@ -1,9 +1,9 @@
 {
-  "excludes": ["**/pnpm-lock.yaml", "**/dist/**", "**/.next/**", "**/node_modules/**", "**/migrations/meta/**"],
+  "excludes": ["**/pnpm-lock.yaml", "**/uv.lock", "**/dist/**", "**/.next/**", "**/node_modules/**", "**/migrations/meta/**", "**/.qwen/**", "**/.codegraph/**", "docs/**"],
   "rules": [
     {
       "path": "packages/core/**",
-      "rule": "#### @pinglc/core 纪律（强制）\n- 本包是双端共享纯逻辑包，**零运行时依赖（强制）**：禁止 import 任何第三方运行时库\n- 禁止引入 react / node 专属 API（如 fs、path、process），必须保证 Expo（React Native）也能直接消费\n- 新增类型/函数必须是纯 TypeScript，不依赖 DOM 或平台特性\n- 文件头部必须有中文注释说明文件作用，每个函数必须有完整的中文 doc",
+      "rule": "#### @pinglc/core 纪律（强制）\n- 本包是双端共享纯逻辑包，**零运行时依赖（强制）**：禁止 import 任何第三方运行时库\n- 禁止在 src 运行时代码引入 react / node 专属 API（如 fs、path、process），必须保证 Expo（React Native）也能直接消费；tests/ 仅跑在 Node（vitest），不受此限\n- 禁止正则后行断言 (?<=)/(?<!) 等 Hermes 不支持的语法——Expo 端模块加载即 SyntaxError（tests/hermesCompat.test.ts 有全目录机器守卫，引入会被测试拦下）\n- 对外导出的纯函数必须防御非法输入：数值参数显式校验（Number.isFinite / 非负 / 整数按需），查表与映射结果必须兜底——禁止 NaN/undefined 静默穿透到返回值（会落库或进 UI）\n- NLP/文本处理必须同时覆盖中文全角标点（。！？，；：），禁止只按半角标点硬编码——本项目中文语境，半角-only 在中文文本上静默失效\n- 新增类型/函数必须是纯 TypeScript，不依赖 DOM 或平台特性\n- 文件头部必须有中文注释说明文件作用，每个函数必须有完整的中文 doc",
       "merge_system_rule": true
     },
     {

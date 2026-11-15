@@ -11,9 +11,16 @@
  * - 端口参数校验（1-65535 整数）；监听错误（端口被占等）给人话提示而非栈回溯
  * - 已开始回传的响应（如 206 流式）出上游错误时只能销毁连接截断，
  *   绝不追加诊断文本——文本拼进二进制媒体流会损坏客户端收到的文件
+ * - 入站/出站两个方向的流都挂 error 监听（客户端半途断开产生的 EPIPE
+ *   不挂监听会成为未捕获异常，带崩整个代理进程）
+ * - 回传用手动泵替代 pipe：背压（客户端 TCP 窗收拢）时暂停上游读，
+ *   并在背压期间豁免空闲超时——下游慢不等于上游挂死，30s 定时器
+ *   否则会误杀健康的媒体流
  * - 客户端中断时连带断开上游 socket，避免上游写向死连接
  * - 上游空闲超时（不限制长流媒体的持续传输，只防挂死）
  * - 原始 Host/协议经 x-forwarded-* 传递，上游生成绝对 URL/重定向时不至于指向回环地址
+ * - 优雅停机有界：server.close 默认要等所有连接（含播放中的媒体流）自然结束
+ *   才回调——可能永不退出；宽限期后强制断开残余连接并兜底硬退出
  *
  * 用法：node https-proxy.mjs <监听端口> <上游URL> <TLS key 路径> <TLS cert 路径>
  */
@@ -58,6 +65,11 @@ try {
 /** 上游 socket 空闲超时：只防挂死，不限制长流媒体的持续传输 */
 const UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 
+/** 背压最长等待：下游持续不读（息屏/半开连接/零窗口不恢复）超过该墙钟即按挂死销毁
+ *  （socket 的空闲计时器只在新读写活动时重挂，彻底暂停期间 'timeout' 至多触发
+ *   一次，不能靠它做有界豁免——见回传泵处的说明） */
+const BP_MAX_WAIT_MS = 3 * UPSTREAM_IDLE_TIMEOUT_MS;
+
 /**
  * TLS 代理服务器：请求透传至上游，响应原样回传
  * @param req  入站请求（含 Range 等头，原样转发）
@@ -75,6 +87,11 @@ const server = https.createServer(
       'x-forwarded-host': String(req.headers.host ?? ''),
       'x-forwarded-for': String(req.socket.remoteAddress ?? ''),
     };
+    // 背压状态：backpressured=下游写缓冲满、正在等 drain（此时上游读已暂停）；
+    // bpDeadline=背压兜底销毁定时器（见回传泵处说明）。声明在请求处理器顶层，
+    // timeout 处理器据此豁免背压期的空闲超时
+    let backpressured = false;
+    let bpDeadline = null;
     const proxied = http.request(
       {
         hostname: upstream.hostname,
@@ -87,11 +104,53 @@ const server = https.createServer(
       (upstreamRes) => {
         // 上游状态码与响应头原样回传（Content-Range/Content-Length/Accept-Ranges 不加工）
         res.writeHead(upstreamRes.statusCode ?? 502, upstreamRes.headers);
-        upstreamRes.pipe(res);
+        // 回传泵：手动转发替代 pipe——需要感知背压以豁免空闲超时（见下方 timeout 处理）
+        upstreamRes.on('data', (chunk) => {
+          if (res.write(chunk)) return;
+          // 写缓冲满：暂停上游读，待下游排空再续——期间上游 socket 空闲属正常
+          backpressured = true;
+          upstreamRes.pause();
+          // 背压兜底：下游持续不读时靠该墙钟定时器按挂死销毁（客户端息屏/半开
+          // 连接/零窗口不恢复——永远等不到 drain，无界豁免会让「暂停的上游连接 +
+          // 已缓冲数据」常驻泄漏）；unref 保证优雅停机时不被该定时器拖住进程
+          bpDeadline ??= setTimeout(
+            () => proxied.destroy(new Error(`背压持续超过 ${BP_MAX_WAIT_MS}ms，视为下游挂死`)),
+            BP_MAX_WAIT_MS
+          );
+          bpDeadline.unref?.();
+          res.once('drain', () => {
+            backpressured = false;
+            // 真实流量恢复：清掉兜底定时器再续读
+            if (bpDeadline) {
+              clearTimeout(bpDeadline);
+              bpDeadline = null;
+            }
+            upstreamRes.resume();
+          });
+        });
+        upstreamRes.on('end', () => {
+          if (bpDeadline) {
+            clearTimeout(bpDeadline);
+            bpDeadline = null;
+          }
+          res.end();
+        });
         // 上游响应流中途出错（next start 崩溃/断开）：只能截断，不追加文本
         upstreamRes.on('error', () => res.destroy());
       }
     );
+    // 下游写出错（客户端半途断开触发 EPIPE 等）：断开上游并清掉背压兜底定时器；
+    // 挂监听本身就能避免未捕获异常带崩代理进程。必须在收到上游响应之前注册——
+    // 等待上游期间、或写 502 时客户端已断开，同样会触发 res 的 error，只在响应
+    // 回调里挂监听会留下未覆盖窗口
+    res.on('error', () => {
+      backpressured = false;
+      if (bpDeadline) {
+        clearTimeout(bpDeadline);
+        bpDeadline = null;
+      }
+      proxied.destroy();
+    });
     // 上游连接阶段出错（未就绪/已退出）：未回传时给可读的 502；已回传只能截断
     proxied.on('error', (err) => {
       if (!res.headersSent) {
@@ -101,8 +160,13 @@ const server = https.createServer(
         res.destroy();
       }
     });
-    // 空闲超时：销毁上游连接（上面的 error 处理负责收尾下游）
-    proxied.on('timeout', () => proxied.destroy(new Error(`上游空闲超时 (${UPSTREAM_IDLE_TIMEOUT_MS}ms)`)));
+    // 空闲超时：销毁上游连接（上面的 error 处理负责收尾下游）；
+    // 背压期间豁免——手机弱网收拢 TCP 窗时上游暂停读是正常背压，不是挂死；
+    // 下游彻底不读的挂死场景由回传泵里的 bpDeadline 墙钟兜底销毁
+    proxied.on('timeout', () => {
+      if (backpressured) return;
+      proxied.destroy(new Error(`上游空闲超时 (${UPSTREAM_IDLE_TIMEOUT_MS}ms)`));
+    });
     // 入站请求流出错（手机弱网中断上传，ECONNRESET）：pipe 不转发源错误，
     // 不挂监听会成为未捕获异常带走整个代理进程
     req.on('error', () => proxied.destroy());
@@ -122,7 +186,21 @@ server.listen(port, '0.0.0.0', () => {
   console.log(`HTTPS 代理已启动: https://0.0.0.0:${port} → ${upstream.href}`);
 });
 
-/* Ctrl+C / 终止信号：优雅关闭监听后退出（上游进程由 dev-https.sh 的 trap 回收） */
+/* Ctrl+C / 终止信号：优雅关闭监听，但有界退出 */
+/* server.close 要等所有连接（含播放中的媒体流）自然结束才回调，可能永不触发；
+ * 宽限期后强制断开残余连接（close 回调随之触发），另有终极兜底硬退出。
+ * 上游 next start 进程由 dev-https.sh 的 trap 回收，本代理只负责自己有界退出。 */
+const SHUTDOWN_GRACE_MS = 3000;
+let shuttingDown = false;
 for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.on(sig, () => server.close(() => process.exit(0)));
+  process.on(sig, () => {
+    // 第二次信号视为「不想再等」：立即退出
+    if (shuttingDown) process.exit(0);
+    shuttingDown = true;
+    server.close(() => process.exit(0));
+    // 宽限期到：断开仍在占线的连接（媒体流只能截断，客户端会自动重连续播）
+    setTimeout(() => server.closeAllConnections(), SHUTDOWN_GRACE_MS);
+    // 终极兜底：无论如何都在硬上限内退出
+    setTimeout(() => process.exit(0), SHUTDOWN_GRACE_MS + 2000);
+  });
 }
