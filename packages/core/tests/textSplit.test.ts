@@ -86,6 +86,69 @@ Second paragraph here.`;
     expect(out).toEqual(['a'.repeat(100), 'a'.repeat(100), 'a'.repeat(50)]);
   });
 
+  it('硬切前先落盘已聚合词：输出顺序与原文一致（不把前词排到切块之后）', () => {
+    // 旧实现：'aaa' 聚在 current 里未 flush，x*700 的硬切块直接入 out，
+    // 结果 [x*100 ×7, 'aaa bbb']——前词静默跳到末尾
+    const text = 'aaa ' + 'x'.repeat(700) + ' bbb';
+    const out = splitSentences(text, { maxChars: 100 });
+    expect(out[0]).toBe('aaa');
+    expect(out[out.length - 1]).toBe('bbb');
+    expect(out.slice(1, -1).every((s) => /^x+$/.test(s) && s.length === 100)).toBe(true);
+    // 内容无损（切块间由 join 注入空格，只校验切块串接后 x 连续段完整）
+    expect(out.slice(1, -1).join('')).toBe('x'.repeat(700));
+  });
+
+  it('硬切切点避开代理对：emoji 不被切成孤代理', () => {
+    const emoji = '😀'.repeat(250); // 每个Emoji是 1 个代理对（2 个 UTF-16 码元）
+    const out = splitSentences(emoji, { maxChars: 101 }); // 奇数上限会落在代理对中间
+    expect(out.length).toBeGreaterThan(1);
+    // 切点回退后每块码元数为偶数（无孤代理），内容无损
+    for (const s of out) expect(s.length % 2).toBe(0);
+    expect(out.join('')).toBe(emoji);
+  });
+
+  it('非法 maxChars 防御：0/负数/NaN 回退默认 600，不死循环不静默禁用', () => {
+    // 0/负数旧实现会让 st += maxChars 永不推进（死循环），NaN 会禁用全部兜底切分
+    const long = 'y'.repeat(1300);
+    expect(splitSentences(long, { maxChars: 0 })[0]!.length).toBe(600);
+    expect(splitSentences(long, { maxChars: -5 })[0]!.length).toBe(600);
+    expect(splitSentences(long, { maxChars: Number.NaN })[0]!.length).toBe(600);
+    // 小数向下取整（切长为正整数）
+    expect(splitSentences(long, { maxChars: 100.9 })[0]!.length).toBe(100);
+  });
+
+  it('缩写前瞻守卫仅对句点生效：?/! 后是真句界不被吞', () => {
+    // 旧实现：? 后跟 "A." 会命中前瞻守卫，两句被并成一句
+    const out = splitSentences('Do you agree? A. Smith did.');
+    expect(out[0]).toBe('Do you agree?');
+    expect(out.length).toBeGreaterThan(1);
+    // 真句点后的列表字母情形：前一词为 3 字母（>2），不触发守卫
+    const out2 = splitSentences('Choose one. A. red');
+    expect(out2[0]).toBe('Choose one.');
+  });
+
+  it('多字母缩写链首段同样放行：Ph.D. 不被拆成 "Ph." + "D. …"', () => {
+    // bare 为 2 字母的缩写链首（Ph.）+ 下一词为 D. → 守卫放行；末段句点处
+    // （D. 后无「字母+句点」）正常断句
+    const out = splitSentences('He has a Ph.D. in physics.');
+    expect(out[0]).toBe('He has a Ph.D. in physics.');
+  });
+
+  it('尾碎片合并的边界：数字小数点并入、字母句点独立', () => {
+    // "3.5" 的点不是句界，作为尾碎片并入上一句
+    expect(splitSentences('It costs. 3.5')).toEqual(['It costs. 3.5']);
+    // "A. red" 含字母+句点，像独立列表项，不回并
+    const out = splitSentences('Choose one. A. red');
+    expect(out[out.length - 1]).toBe('A. red');
+  });
+
+  it('maxChars 下限钳到 2：切长 1 无法回退代理对切点', () => {
+    const emoji = '😀'.repeat(5); // 5 个代理对
+    const out = splitSentences(emoji, { maxChars: 1 });
+    for (const s of out) expect(s.length % 2).toBe(0); // 无孤代理
+    expect(out.join('')).toBe(emoji);
+  });
+
   it('半角冒号无空白跟随不构成切点（12:30 不被切开）', () => {
     // 触发兜底切分（>maxChars）但时间里的冒号后无空白，不应在 12: 30 处断开注入空格
     const long = Array.from({ length: 40 }, (_, i) => `item${i}`).join(' ') + ' at 12:30 end.';

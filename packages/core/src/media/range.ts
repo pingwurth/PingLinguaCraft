@@ -27,8 +27,9 @@ export const DEFAULT_MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 /**
  * 解析 Range 头为字节区间（含端点），并完成分片上限钳制
  * @param rangeHeader   请求头 Range 值，如 "bytes=0-1023" / "bytes=1024-" / "bytes=-500"
- * @param size          文件总大小（字节）；非有限正数视为空文件（不可满足），
- *                      防止负数/NaN 产出 start>end 或 NaN 端点流进 Content-Range/流式 API
+ * @param size          文件总大小（字节）；非有限值或 ≤0 视为空文件（不可满足），
+ *                      小数向下取整（字节端点必须为整数）；防止负数/NaN/小数产出
+ *                      非法端点流进 Content-Range/流式 API
  * @param maxChunkBytes 单区间分片上限；非有限或 <1 的值视为不限制（NaN 静默穿透
  *                      会退化成全文件 206，小数会产出小数端点让 createReadStream 抛错）
  * @returns ok 已钳制的可满足区间 / invalid 语法非法（忽略 Range 回 200）/ unsatisfiable 不可满足（416）
@@ -52,9 +53,12 @@ export function parseRange(
   const startRaw = m[1]!;
   const endRaw = m[2]!;
 
-  // 文件大小归一化：0/负数/NaN/非整数都无法承载任何字节区间，统一按不可满足处理
-  // （正则命中的前提下 416 语义正确；size 来自 statSync 正常恒为非负整数，此为纯函数防御）
-  if (!Number.isFinite(size) || size <= 0) return { kind: 'unsatisfiable' };
+  // 文件大小归一化：非有限值或 ≤0 无法承载任何字节区间，按不可满足处理（正则命中
+  // 的前提下 416 语义正确；size 来自 statSync 恒为非负整数，此为纯函数防御）；
+  // 小数向下取整——字节区间端点必须为整数，半字节端点会让 Content-Range 非法、
+  // createReadStream 抛 ERR_OUT_OF_RANGE 变 500
+  const fileSize = Number.isFinite(size) ? Math.floor(size) : size;
+  if (!Number.isFinite(fileSize) || fileSize <= 0) return { kind: 'unsatisfiable' };
 
   // 后缀区间 "bytes=-500"：最后 500 字节；长度超限按 RFC 钳制为整个文件
   if (startRaw === '') {
@@ -63,21 +67,21 @@ export function parseRange(
     // 后缀长度为 0（"bytes=-0"）引用零字节：语法合法但不可满足；
     // 正则限定 \d+ 无负数入参；溢出数值（超安全整数）远大于 size，min 钳制后仍语义正确
     if (len === 0) return { kind: 'unsatisfiable' };
-    const clamped = Math.min(len, size);
-    const end = size - 1;
+    const clamped = Math.min(len, fileSize);
+    const end = fileSize - 1;
     // 分片上限锚定文件尾：窗口超限时只保留最后 limit 字节（真正的尾部不丢）
-    const start = Math.max(size - clamped, end - limit + 1);
+    const start = Math.max(fileSize - clamped, end - limit + 1);
     return { kind: 'ok', start, end };
   }
 
   // 正则已限定 \d+，无负数/非数字入参；溢出的起点必然 ≥ size，按不可满足处理（416）
   const start = Number(startRaw);
-  if (start >= size) return { kind: 'unsatisfiable' };
+  if (start >= fileSize) return { kind: 'unsatisfiable' };
 
   const end =
     endRaw === ''
-      ? size - 1 // 开放区间 "bytes=1024-"：到文件尾
-      : Math.min(Number(endRaw), size - 1); // 结束位超限按 RFC 钳制为文件尾（返回 206 而非 416）
+      ? fileSize - 1 // 开放区间 "bytes=1024-"：到文件尾
+      : Math.min(Number(endRaw), fileSize - 1); // 结束位超限按 RFC 钳制为文件尾（返回 206 而非 416）
   // 倒置区间（end < start）按 RFC 9110 为语法无效 → 忽略 Range 回 200
   if (end < start) return { kind: 'invalid' };
   // 分片上限锚定起点：窗口超限时收窄 end（与后缀区间的尾部锚定相对）

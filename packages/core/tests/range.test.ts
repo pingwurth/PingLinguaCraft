@@ -66,6 +66,9 @@ describe('parseRange 基础语义（表驱动：输入 × 文件大小 → 期�
     ['bytes=-10', -5, UNSAT],
     ['bytes=0-99', Number.NaN, UNSAT],
     ['bytes=-10', Number.NaN, UNSAT],
+    // —— 小数 size 向下取整（字节端点必须为整数，半字节端点会让流式 API 抛错）——
+    ['bytes=0-', 10.5, ok(0, 9)],
+    ['bytes=-3', 10.9, ok(7, 9)], // floor(10.9)=10：10 字节文件的最后 3 字节
   ])('%s（size=%s）→ %j', (input, size, expected) => {
     expect(parseRange(input, size)).toEqual(expected);
   });

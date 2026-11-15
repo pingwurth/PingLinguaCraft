@@ -69,14 +69,6 @@ info() { printf '\033[1;34m[AI审]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[AI审]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[AI审]\033[0m %s\n' "$*" >&2; }
 
-# 校验放函数定义之后（此处才可安全调 fail）：非正整数会让后续算术展开
-# $((TIMEOUT_MIN * 60 + 120)) 直接报错，在 set -e 下整个审查（进而整个提交）
-# 被莫名中止；这是工具侧配置错误，退出码用 2（调用方降级放行而非误报阻断级发现）
-if [[ ! "$TIMEOUT_MIN" =~ ^[1-9][0-9]*$ ]]; then
-  fail "OCR_TIMEOUT_MIN 须为正整数分钟数（当前值：$TIMEOUT_MIN）"
-  exit 2
-fi
-
 # ---- 逃生口 ----
 if [[ "${SKIP_AI:-0}" == "1" || "${SKIP_GATES:-0}" == "1" ]]; then
   warn "SKIP_AI/SKIP_GATES=1，跳过 AI 代码审查"
@@ -91,6 +83,15 @@ if [[ "${SKIP_AI:-0}" == "1" || "${SKIP_GATES:-0}" == "1" ]]; then
       && mv -f "$ARCHIVE_DIR/skip.log.tmp" "$ARCHIVE_DIR/skip.log" || rm -f "$ARCHIVE_DIR/skip.log.tmp"
   fi
   exit 0
+fi
+
+# 参数校验放在逃生口之后（此前在前：环境里残留非法 OCR_TIMEOUT_MIN 时，SKIP_AI=1
+# 也会 exit 2 而不是跳过，违背逃生口语义）：非正整数会让后续算术展开
+# $((TIMEOUT_MIN * 60 + 120)) 直接报错，在 set -e 下整个审查（进而整个提交）
+# 被莫名中止；这是工具侧配置错误，退出码用 2（调用方降级放行而非误报阻断级发现）
+if [[ ! "$TIMEOUT_MIN" =~ ^[1-9][0-9]*$ ]]; then
+  fail "OCR_TIMEOUT_MIN 须为正整数分钟数（当前值：$TIMEOUT_MIN）"
+  exit 2
 fi
 
 # ---- 依赖检查：无 ocr 则降级放行 ----
@@ -126,12 +127,17 @@ trap 'rm -f "$json_file" "$render_file" ${bg_file:+"$bg_file"}; if [[ -n "${snap
 # 若被忽略规则跳过，快照 diff 会丢失这部分内容、背离「审查内容与提交严格一致」。
 build_staged_snapshot() { # $1=快照目录
   local snap="$1"
+  # 钩子环境会导出 GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE（git commit -a、
+  # worktree 调用时），它们优先级高于 -C——不剥离的话快照仓库操作会落回用户
+  # 仓库、污染正在进行的提交所用的临时 index。仅快照仓库侧的调用走该包装；
+  # 下方对用户仓库的调用（archive / checkout-index / diff）必须保留原环境
+  local -a snap_git=(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_PREFIX git)
   # 1) HEAD 树展开为基线（内容取自 git 对象库，不经 shell 展开，路径安全）
   git archive HEAD | tar -x -C "$snap" || return 1
   # 2) 快照目录成为一次性仓库，基线先行提交（跳过钩子/签名，匿名作者）
-  git -C "$snap" init -q -b main || return 1
-  git -C "$snap" add -A -f || return 1
-  git -C "$snap" -c user.name=ai-review -c user.email=ai-review@localhost \
+  "${snap_git[@]}" -C "$snap" init -q -b main || return 1
+  "${snap_git[@]}" -C "$snap" add -A -f || return 1
+  "${snap_git[@]}" -C "$snap" -c user.name=ai-review -c user.email=ai-review@localhost \
     commit -q --no-gpg-sign --no-verify -m "baseline(HEAD)" || return 1
   # 3) 暂存内容覆盖快照（checkout-index 导出 index 内容，即暂存版本；-f 覆盖基线文件）
   git checkout-index --prefix="$snap/" -a -f || return 1
@@ -139,7 +145,7 @@ build_staged_snapshot() { # $1=快照目录
   git diff --cached --name-only --diff-filter=D --no-renames -z |
     while IFS= read -r -d '' f; do rm -f -- "$snap/$f"; done || return 1
   # 5) 暂存内容全部入 index：该仓库 workspace 变更 == 暂存区 vs HEAD
-  git -C "$snap" add -A -f || return 1
+  "${snap_git[@]}" -C "$snap" add -A -f || return 1
 }
 
 # ---- 参数 → ocr review 目标（默认 workspace 模式：staged+unstaged+untracked）----
@@ -159,6 +165,7 @@ target=()         # 追加到 ocr review 的目标参数（--commit / --repo / -
 archive_tag=""    # 归档文件名后缀（--commit / --from 模式）
 scope_desc="工作区变更（staged+unstaged+untracked）"  # 启动日志里的审查范围描述
 from_ref=""       # --from 的源 ref（--to 展示用）
+to_ref=""         # --to 的目标 ref（重复出现即参数误用）
 mode=workspace
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -180,8 +187,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --to)
-      [[ "$mode" == "from" && -n "${2:-}" ]] || { usage; exit 2; }
+      [[ "$mode" == "from" && -n "${2:-}" && -z "${to_ref:-}" ]] || { usage; exit 2; }
+      to_ref="$2"
       target+=(--to "$2")
+      # 目标 ref 也进归档名（ref 含 / 转义），多次 --to 在上方守卫拦截——
+      # 重复 --to 会把参数错误留给 ocr，落入「执行失败/超时」降级放行，审查形同虚设
+      archive_tag="${archive_tag}-to-${2//\//-}"
       scope_desc="分支 diff（${from_ref}..${2}）"
       shift 2
       ;;

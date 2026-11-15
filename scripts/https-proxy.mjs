@@ -92,6 +92,20 @@ const server = https.createServer(
     // timeout 处理器据此豁免背压期的空闲超时
     let backpressured = false;
     let bpDeadline = null;
+    // 背压解除的统一收尾（drain/流结束/下游出错三处共用）：清标记 + 清兜底定时器
+    const clearBackpressure = () => {
+      backpressured = false;
+      if (bpDeadline) {
+        clearTimeout(bpDeadline);
+        bpDeadline = null;
+      }
+    };
+    // 重挂上游 socket 的空闲计时器：'timeout' 触发后计时器不会自动重挂（只在新
+    // 读写活动时重挂），彻底暂停期间至多触发一次——不重挂的话，下游恢复读取而
+    // 上游恰好挂死（drain→resume 后无字节流量）时再无机制能触发超时，请求悬死
+    const rearmIdleTimer = () => {
+      proxied.socket?.setTimeout?.(UPSTREAM_IDLE_TIMEOUT_MS);
+    };
     const proxied = http.request(
       {
         hostname: upstream.hostname,
@@ -119,20 +133,14 @@ const server = https.createServer(
           );
           bpDeadline.unref?.();
           res.once('drain', () => {
-            backpressured = false;
-            // 真实流量恢复：清掉兜底定时器再续读
-            if (bpDeadline) {
-              clearTimeout(bpDeadline);
-              bpDeadline = null;
-            }
+            // 真实流量恢复：统一收尾后重挂空闲计时器再续读（上游若真挂死仍会被超时兜住）
+            clearBackpressure();
+            rearmIdleTimer();
             upstreamRes.resume();
           });
         });
         upstreamRes.on('end', () => {
-          if (bpDeadline) {
-            clearTimeout(bpDeadline);
-            bpDeadline = null;
-          }
+          clearBackpressure();
           res.end();
         });
         // 上游响应流中途出错（next start 崩溃/断开）：只能截断，不追加文本
@@ -144,11 +152,7 @@ const server = https.createServer(
     // 等待上游期间、或写 502 时客户端已断开，同样会触发 res 的 error，只在响应
     // 回调里挂监听会留下未覆盖窗口
     res.on('error', () => {
-      backpressured = false;
-      if (bpDeadline) {
-        clearTimeout(bpDeadline);
-        bpDeadline = null;
-      }
+      clearBackpressure();
       proxied.destroy();
     });
     // 上游连接阶段出错（未就绪/已退出）：未回传时给可读的 502；已回传只能截断
@@ -161,10 +165,14 @@ const server = https.createServer(
       }
     });
     // 空闲超时：销毁上游连接（上面的 error 处理负责收尾下游）；
-    // 背压期间豁免——手机弱网收拢 TCP 窗时上游暂停读是正常背压，不是挂死；
-    // 下游彻底不读的挂死场景由回传泵里的 bpDeadline 墙钟兜底销毁
+    // 背压期间豁免并重挂计时器——手机弱网收拢 TCP 窗时上游暂停读是正常背压，
+    // 不是挂死（重挂保证豁免后仍有下一次超时机会）；下游彻底不读的挂死场景
+    // 由回传泵里的 bpDeadline 墙钟兜底销毁
     proxied.on('timeout', () => {
-      if (backpressured) return;
+      if (backpressured) {
+        rearmIdleTimer();
+        return;
+      }
       proxied.destroy(new Error(`上游空闲超时 (${UPSTREAM_IDLE_TIMEOUT_MS}ms)`));
     });
     // 入站请求流出错（手机弱网中断上传，ECONNRESET）：pipe 不转发源错误，
@@ -191,6 +199,9 @@ server.listen(port, '0.0.0.0', () => {
  * 宽限期后强制断开残余连接（close 回调随之触发），另有终极兜底硬退出。
  * 上游 next start 进程由 dev-https.sh 的 trap 回收，本代理只负责自己有界退出。 */
 const SHUTDOWN_GRACE_MS = 3000;
+// 终极兜底硬退出的硬上限：宽限期 + 2s 余量（具名常量——与 SHUTDOWN_GRACE_MS 并排
+// 的裸数字容易在调宽限期时被遗忘）
+const SHUTDOWN_HARD_EXIT_MS = SHUTDOWN_GRACE_MS + 2000;
 let shuttingDown = false;
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
@@ -200,7 +211,11 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
     server.close(() => process.exit(0));
     // 宽限期到：断开仍在占线的连接（媒体流只能截断，客户端会自动重连续播）
     setTimeout(() => server.closeAllConnections(), SHUTDOWN_GRACE_MS);
-    // 终极兜底：无论如何都在硬上限内退出
-    setTimeout(() => process.exit(0), SHUTDOWN_GRACE_MS + 2000);
+    // 终极兜底：无论如何都在硬上限内退出（closeAllConnections 后仍未退说明
+    // 收尾逻辑自身卡死，留一行现场便于诊断）
+    setTimeout(() => {
+      console.error(`代理停机：宽限期后进程仍未退出，按硬上限 ${SHUTDOWN_HARD_EXIT_MS}ms 强制退出`);
+      process.exit(0);
+    }, SHUTDOWN_HARD_EXIT_MS);
   });
 }

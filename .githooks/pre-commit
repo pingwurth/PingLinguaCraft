@@ -66,31 +66,42 @@ py_files="$(grep -E '^services/ai-engine/.*\.py$|^services/ai-engine/(pyproject\
 # ---- 判断是否涉及 Shell 脚本（一并纳入 AI 审查范围）----
 sh_files="$(grep -E '\.(sh)$|^\.githooks/' <<<"$staged" || true)"
 
+# ---- 预检 A：暂存 diff 卫生检查（纯文档提交也过——开销极小，只读索引）----
+# git diff --cached --check 拦两类问题：未解决的冲突标记（<<<<<<<）与空白错误
+# （行尾空格/缩进混用 tab）；有问题的文件与行号直接打印在失败信息里。
+# markdown 显式排除：其硬换行就是行尾双空格、又常保留 CRLF，文档的合法排版
+# 会把提交硬拦——这只会把人推向 --no-verify
+if ! git diff --cached --check -- . ':(exclude)*.md' ':(exclude)*.markdown'; then
+  fail_gate "diff 卫生检查" "暂存内容含冲突标记或空白错误：请修复后重新暂存（git diff --cached --check -- . ':(exclude)*.md' ':(exclude)*.markdown' 查看详情），或 git commit --no-verify 跳过（慎用）"
+fi
+
+# 冲突标记独立扫描：--check 把 markdown 整类排除了，而文档恰是最易残留 <<<<<<<
+# 的文件——扫暂存 diff 的新增行补上这个缺口。只认行首 <<<<<<< / >>>>>>>；
+# ======= 不匹配（markdown 里是合法的 setext 标题下划线）
+conflict_hits="$(git diff --cached --unified=0 2>/dev/null | grep -aE '^\+((<{7})|(>{7}))' | head -3 || true)"
+if [[ -n "$conflict_hits" ]]; then
+  printf '冲突标记样例：\n%s\n' "$conflict_hits" >&2
+  fail_gate "冲突标记" "暂存内容含未解决的冲突标记（<<<<<<< / >>>>>>>，含 markdown 文件）：请解决后重新暂存，或 git commit --no-verify 跳过（慎用）"
+fi
+
 if [[ -z "$ts_files" && -z "$py_files" && -z "$sh_files" && -z "$sql_files" ]]; then
   echo "[pre-commit] 暂存内容不含代码文件，跳过门禁"
   exit 0
 fi
 
-# ---- 预检 A：暂存 diff 卫生检查 ----
-# git diff --cached --check 拦两类问题：未解决的冲突标记（<<<<<<<）与空白错误
-# （行尾空格/缩进混用 tab）；有问题的文件与行号直接打印在失败信息里。
-# markdown 显式排除：其硬换行就是行尾双空格、又常保留 CRLF，混排提交（代码+文档）
-# 里文档的合法排版会把整个提交硬拦——这只会把人推向 --no-verify
-if ! git diff --cached --check -- . ':(exclude)*.md' ':(exclude)*.markdown'; then
-  fail_gate "diff 卫生检查" "暂存内容含冲突标记或空白错误：请修复后重新暂存（git diff --cached --check -- . ':(exclude)*.md' 查看详情）"
-fi
-
 # ---- 预检 B：暂存 Shell 脚本语法检查 ----
 # bash -n 只做语法解析不执行；读暂存版本（git show :file）而非工作区文件——
 # 工作区可能是修复后的，与实际提交内容不一致。
-# 只查 shebang 声明为 shell 的脚本：.githooks/ 里将来混入非 shell 钩子
-# （如 python 的 commit-msg）不该被当 shell 解析而误报语法错误
+# 只查 shebang 声明为 bash/sh 的脚本：.githooks/ 里将来混入其他解释器钩子
+# （python 的 commit-msg、zsh/fish 脚本——其独有语法在 bash -n 下是误报）不应被当 bash 解析
 if [[ -n "$sh_files" ]]; then
   while IFS= read -r f; do
-    shebang="$(git show ":$f" | head -n 1)"
-    if [[ "$shebang" =~ ^#![[:space:]]*/.*[ab]?sh([[:space:]]|$) ]]; then
+    # head 早退会让 git show 收 EPIPE（141），pipefail 下命令替换非 0 再被 set -e
+    # 中止整个钩子——|| true 兜底（空 shebang 只会跳过语法检查，不误报）
+    shebang="$(git show ":$f" 2>/dev/null | head -n 1 || true)"
+    if [[ "$shebang" =~ ^#![[:space:]]*([^[:space:]]*/)*([[:space:]]*env([[:space:]]+-S[[:space:]]+|[[:space:]]+))?(ba|da)?sh([[:space:]]|$) ]]; then
       if ! git show ":$f" | bash -n; then
-        fail_gate "bash -n" "暂存的 $f 存在 Shell 语法错误：请修复后重新暂存"
+        fail_gate "bash -n" "暂存的 $f 存在 Shell 语法错误：请修复后重新暂存，或 git commit --no-verify 跳过（慎用）"
       fi
     fi
   done <<<"$sh_files"
@@ -128,31 +139,33 @@ if [[ -n "$py_files" ]]; then
   fi
 fi
 
-# ---- 门禁五：DB 迁移重放（*.sql 暂存时；一次性库上全量重放 + quick_check）----
+# ---- 门禁五：DB 迁移重放（*.sql 暂存时；一次性库上全量重放 + 一致性核对）----
 # Node 三件套不解析 SQL，此前的 *.sql 触发方式是零验证空转；重放能拦下
-# 语法错误、顺序依赖错、与既有 schema 冲突的破坏性 DDL
+# 语法错误、顺序依赖错、与既有 schema 冲突的破坏性 DDL，另核对「已应用迁移
+# 未被改动」与「journal 与 .sql 文件一一对应」
 if [[ -n "$sql_files" ]]; then
   command -v pnpm >/dev/null 2>&1 \
     || fail_gate "pnpm" "未找到 pnpm，请先安装（Node ≥22 / pnpm 10）"
   echo "[pre-commit] 门禁 5/6 DB 迁移重放 ..."
   (pnpm --filter @pinglc/web exec node scripts/verify-migrations.mjs) \
-    || fail_gate "迁移重放" "迁移在一次性库上重放失败：请修复迁移文件后再提交（详情见上方输出）"
+    || fail_gate "迁移重放" "迁移校验失败（迁移被改动/重放失败/journal 不一致——详情见上方输出；依赖未装先 pnpm install）：请修复后再提交，或 git commit --no-verify 跳过（慎用）"
 fi
 
 # ---- 门禁六：AI 语义审查（scripts/ai-review.sh 内部自带降级与 SKIP_AI 逃生口）----
 # --staged：只审暂存快照，未暂存的 WIP 不入审（审查内容与提交严格一致）；
-# 退出码语义：1=存在阻断级发现（拦下）；2=工具侧前提不满足（如仓库尚无 HEAD 基线）——
-# 属「AI 层故障」而非代码问题，按约定降级放行并醒目提示，不把人推向 --no-verify。
+# 退出码语义：1=存在阻断级发现（唯一拦下的码）；其余任何非 0（2=工具侧前提
+# 不满足、130=Ctrl-C、137=OOM、141=SIGPIPE 等）都按「AI 层故障绝不卡死提交」
+# 降级放行并醒目提示——它们不是代码问题，硬拦只会把人推向 --no-verify。
 # 经 bash 调用并做存在性守卫：脚本缺失或丢失执行位时降级放行，
 # 而不是以 126/127 阻断每一次提交（与「AI 层故障绝不卡死提交」的约定一致）
 if [[ -f "$ROOT/scripts/ai-review.sh" ]]; then
   echo "[pre-commit] 门禁 6/6 AI 语义审查（ocr，审暂存快照，约 0.5-2 分钟）..."
   ai_rc=0
   bash "$ROOT/scripts/ai-review.sh" --staged || ai_rc=$?
-  if [[ "$ai_rc" -eq 2 ]]; then
-    echo "[pre-commit] AI 审查工具侧前提不满足（exit 2），降级放行——详见上方输出" >&2
-  elif [[ "$ai_rc" -ne 0 ]]; then
+  if [[ "$ai_rc" -eq 1 ]]; then
     fail_gate "AI 审查" "存在阻断级发现（critical/high）：请修复后重新提交，或 SKIP_AI=1 / git commit --no-verify 跳过（慎用）"
+  elif [[ "$ai_rc" -ne 0 ]]; then
+    echo "[pre-commit] AI 审查工具侧异常（exit $ai_rc），降级放行——详见上方输出" >&2
   fi
 else
   echo "[pre-commit] scripts/ai-review.sh 缺失，跳过 AI 审查（降级放行）"

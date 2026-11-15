@@ -98,10 +98,19 @@ function hasPendingMigrations(sqlite: Database.Database, migrationsFolder: strin
     const journal = JSON.parse(
       readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf8')
     ) as { entries?: Array<{ when?: number | string }> };
-    // journal 最新条目的 when（drizzle 生成时单调递增，取 max 兜底防乱序）
-    const maxJournalWhen = Math.max(
-      ...journal.entries!.map((e) => Number(e.when ?? Number.NEGATIVE_INFINITY))
-    );
+    // journal 最新条目的 when（drizzle 生成时单调递增，取 max 兜底防乱序）。
+    // 任何条目的 when 非有限数值（journal 格式漂移）时按「有待执行」处理：
+    // NaN 参与比较恒为 false，会静默跳过快照裸跑 DDL——正是快照要堵的窗口
+    const whens = journal.entries!.map((e) => Number(e.when));
+    let maxJournalWhen: number;
+    if (whens.every(Number.isFinite)) {
+      maxJournalWhen = Math.max(...whens);
+    } else {
+      // 格式漂移：fail-safe 按有待执行处理，但必须留线索——否则此后每次启动
+      // 都判定有待执行并快照一次，悄悄耗掉轮转保留位却无人知道根因在 journal
+      console.warn('[db] 迁移 journal 含非数值 when（meta/_journal.json 格式漂移？），按有待执行迁移处理');
+      maxJournalWhen = Number.POSITIVE_INFINITY;
+    }
     // 已应用的最大 created_at（SQLite 双引号才是标识符引用，单引号是字符串字面量——
     // 靠兼容解析才碰巧成立；表不存在（全新库）按无已应用处理）
     const row = sqlite
@@ -125,14 +134,33 @@ function hasPendingMigrations(sqlite: Database.Database, migrationsFolder: strin
 function snapshotDbFile(sqlite: Database.Database): string | null {
   // ISO 时间戳里的冒号/点替换为连字符，保证文件名字典序 == 时间序
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // 声明在 try 外：中途失败（磁盘满等）可能已产出残缺文件，catch 里要能清理
+  const base = `${SNAPSHOT_DIR}/pinglc-premigrate-${stamp}.db`;
   try {
     mkdirSync(SNAPSHOT_DIR, { recursive: true });
-    const base = `${SNAPSHOT_DIR}/pinglc-premigrate-${stamp}.db`;
     // 路径经绑定参数传入，不做字符串拼接与手工转义（转义规则再确定也不如参数化根除）
     sqlite.prepare('VACUUM INTO ?').run(base);
+    // 产出校验：大小检查拦不住「非空但损坏」（VACUUM INTO 中途失败）与「合法但
+    // 空库」（0 字节源库的产出）——只读打开跑 quick_check，与 scripts/backup.sh
+    // 的快照校验同一纪律；不合格即删，不占用轮转保留位
+    const snap = new Database(base, { readonly: true });
+    let quickCheck: string | undefined;
+    try {
+      quickCheck = (snap.prepare('PRAGMA quick_check;').get() as { quick_check?: string } | undefined)
+        ?.quick_check;
+    } finally {
+      snap.close();
+    }
+    if (quickCheck !== 'ok') {
+      rmSync(base, { force: true });
+      console.warn(`[db] 迁移前快照校验未通过（${quickCheck ?? '无法打开'}），已丢弃（继续执行迁移）`);
+      return null;
+    }
     rotateSnapshots();
     return base;
   } catch (err) {
+    // 清掉可能的残缺产出，再告警不阻断迁移（迁移本身可回放）
+    rmSync(base, { force: true });
     console.warn('[db] 迁移前快照失败（继续执行迁移）：', err);
     return null;
   }

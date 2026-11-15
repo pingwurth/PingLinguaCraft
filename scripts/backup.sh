@@ -7,9 +7,11 @@
 # 数据库一致性（关键设计）：pinglc.db 运行在 WAL 模式，web 进程长期持有连接
 # 并持续写 -wal——直接 tar 主库三件套（.db/-wal/-shm）必然撕裂：三个文件是
 # 在不同瞬间读到的，恢复时可能 malformed。因此实时库三件套绝不入包，改用
-# SQLite 在线一致性快照生成自洽单文件（sqlite3 分支 VACUUM INTO / python3 分支
-# backup API——均为写入方无感知的页级复制，不依赖 checkpoint 是否成功），
-# quick_check 校验通过后才以 .pinglc/pinglc.db 之名打入归档。无 sqlite3/python3
+# SQLite 在线一致性快照生成自洽单文件后打入归档。两个分支语义均为「写入方无
+# 感知、产出必自洽、不依赖 checkpoint」，机制不同：sqlite3 分支 VACUUM INTO
+# 是一致性读事务内对整库重新序列化（CPU/IO 与库体积成正比，需 sqlite3 ≥3.27）；
+# python3 分支 backup API 是页级复制。均经 quick_check 校验后才以
+# .pinglc/pinglc.db 之名入包。无 sqlite3/python3
 # 可用时宁可中止也不产出「看似可恢复实则撕裂」的备份。
 #
 # 落定纪律：归档先写 .tmp、全量解压校验通过后改名——半截备份不占保留位、
@@ -17,7 +19,7 @@
 #
 # 用法：
 #   ./scripts/backup.sh [目标目录]           # 默认 ~/pinglc-backups
-#   ./scripts/backup.sh /mnt/backup --full   # --full 连模型一起备份
+#   ./scripts/backup.sh /mnt/backup --full   # --full 全量：模型目录与迁移前快照目录（.pinglc/backups）都入包，归档可能多出最多 5 份整库副本
 set -euo pipefail
 
 DEST_DIR="${1:-$HOME/pinglc-backups}"
@@ -39,10 +41,24 @@ TMP_OUT="$OUT.tmp"   # 先写临时名，校验通过才 mv 落定
 STAGE="$(mktemp -d "$DEST_DIR/.pinglc-snap.XXXXXX")"
 trap 'rm -rf "$STAGE" "$TMP_OUT"' EXIT
 
-# ---- 生成自洽数据库快照（在线备份；成功后 quick_check 复核）----
+# ---- 前置检查：GNU tar（有库要打包快照时；失败要发生在昂贵快照生成之前）----
+# 可移植性说明：--transform 是 GNU tar 专属（macOS/Alpine 的 bsdtar 对应能力是
+# -s 语法）；快照顶名依赖它，非 GNU tar 时明确报错而非静默产出错误布局的归档。
+# 版本探测用命令替换读全量输出再匹配：管道接 head/grep -q 会提前关管，tar 在
+# pipefail 下收到 SIGPIPE（141）被误判为「非 GNU tar」，GNU 主机上反常中止
+if [[ -f "$SRC/pinglc.db" ]]; then
+  tar_ver="$(tar --version 2>/dev/null || true)"
+  if [[ "$tar_ver" != *"GNU tar"* ]]; then
+    echo "错误：打包快照需要 GNU tar 的 --transform（当前 tar 非 GNU）；请安装 GNU tar 后重试" >&2
+    exit 1
+  fi
+fi
+
+# ---- 生成自洽数据库快照（在线备份；成功后统一由 snapshot_ok 复核）----
 
 # python3 备用快照分支：路径经 argv 传入，不拼接进 Python 源码（路径含引号/
-# 反斜杠时既不会语法错误也没有注入面）；在线备份 API 为页级复制，写入方无感知
+# 反斜杠时既不会语法错误也没有注入面）；只负责生成，quick_check 统一由
+# snapshot_ok 做（单一校验器，避免降级路径上同一库被校验两遍的白开销）
 snapshot_with_python() { # $1=源库 $2=快照目标
   python3 - "$1" "$2" <<'PYEOF'
 import sys, sqlite3
@@ -53,8 +69,6 @@ with dst:
     src.backup(dst)                  # 在线备份 API：页级复制，写入方无感知
 src.close()
 dst.close()
-check = sqlite3.connect(sys.argv[2]).execute("PRAGMA quick_check;").fetchone()[0]
-sys.exit(0 if check == "ok" else 1)
 PYEOF
 }
 
@@ -82,7 +96,9 @@ if [[ -f "$DB" ]]; then
   if command -v sqlite3 >/dev/null 2>&1; then
     # 用 VACUUM INTO 而非 .backup dot-command：dot-command 的引号解析规则不明确，
     # DEST_DIR 路径含引号时会语法错误产出残缺快照；SQL 字符串字面量的转义规则
-    # 是确定的（' → ''），语义同样是在线一致性快照（页级复制，写入方无感知）。
+    # 是确定的（' → ''）。语义说明：VACUUM INTO 是「单条一致性读事务内对整库
+    # 重新序列化」——对写入方无感知、产出必自洽，但 CPU/IO 与库体积成正比
+    # （非 backup API 的页级增量复制），大库上快照耗时相应增长。
     # -cmd '.timeout 5000'：CLI 位置参数只保证处理一个 SQL，dot-command 走选项通道
     # 才不依赖多位置参数的构建差异；CLI 默认 busy_timeout=0，库被瞬时锁住会立刻
     # 失败中止备份，此处对齐 python 分支 connect 的默认 5s 重试窗，两个分支行为一致
@@ -90,10 +106,12 @@ if [[ -f "$DB" ]]; then
     if ! sqlite3 -bail -cmd '.timeout 5000' "$DB" "VACUUM INTO '$snap_sql';" \
        || ! snapshot_ok "$SNAP"; then
       # sqlite3 在场但失败（典型：版本 < 3.27 不支持 VACUUM INTO）不是死路：
-      # python3 在场就降级重试；提示升级 sqlite3，避免下次每次都走降级路径
+      # python3 在场就降级重试；提示升级 sqlite3，避免下次每次都走降级路径。
+      # 清理含全部伴生文件——中途失败的 VACUUM INTO 可能留下 rollback journal
+      sqlite3_rm_artifacts() { rm -f -- "$1" "$1-journal" "$1-wal" "$1-shm"; }
       if command -v python3 >/dev/null 2>&1; then
         echo "警告：sqlite3 快照失败（若版本 < 3.27 不支持 VACUUM INTO，建议升级），降级 python3 分支重试" >&2
-        rm -f "$SNAP"
+        sqlite3_rm_artifacts "$SNAP"
         snapshot_with_python "$DB" "$SNAP" && snapshot_ok "$SNAP" || snap_failed=1
       else
         snap_failed=1
@@ -112,24 +130,12 @@ if [[ -f "$DB" ]]; then
 fi
 
 # ---- 打包：实时库三件套排除，快照经 --transform 顶替 .pinglc/pinglc.db 之名 ----
-# 可移植性说明：--transform 是 GNU tar 专属（macOS/Alpine 的 bsdtar 对应能力是
-# -s 语法）；快照顶名依赖它，非 GNU tar 时明确报错而非静默产出错误布局的归档
-# 版本探测用命令替换读全量输出再匹配：管道接 head/grep -q 会提前关管，tar 在
-# pipefail 下收到 SIGPIPE（141）被误判为「非 GNU tar」，GNU 主机上反常中止
-if [[ "$HAVE_DB" == "1" ]]; then
-  tar_ver="$(tar --version 2>/dev/null || true)"
-  if [[ "$tar_ver" != *"GNU tar"* ]]; then
-    echo "错误：打包快照需要 GNU tar 的 --transform（当前 tar 非 GNU）；请安装 GNU tar 后重试" >&2
-    exit 1
-  fi
-fi
-
 # 默认排除模型目录（可重新下载）与迁移前快照目录（.pinglc/backups 最多 5 份整库
-# 副本，入包会让每份归档体积放大数倍；它们是 premigrate 回退点，与备份归档目的
-# 正交）；--full 只放开模型目录，快照目录任何模式都不入包
+# 副本，入包会让每份归档体积放大数倍）；--full 恢复「全量」语义（模型与快照目录
+# 都入包——迁移/异地恢复场景确实可能需要 premigrate 回退点随归档走）
 EXCLUDES=(--exclude '.pinglc/models' --exclude '.pinglc/backups')
 if [[ "$FULL" == "--full" ]]; then
-  EXCLUDES=(--exclude '.pinglc/backups')
+  EXCLUDES=()
 fi
 
 echo "备份 $SRC → $OUT ..."
@@ -139,11 +145,11 @@ if [[ "$HAVE_DB" == "1" ]]; then
     --exclude '.pinglc/pinglc.db' \
     --exclude '.pinglc/pinglc.db-wal' \
     --exclude '.pinglc/pinglc.db-shm' \
-    "${EXCLUDES[@]}" .pinglc \
+    ${EXCLUDES[@]+"${EXCLUDES[@]}"} .pinglc \
     --transform 's|^__snap__\.db$|.pinglc/pinglc.db|' \
     -C "$STAGE" __snap__.db
 else
-  tar -czf "$TMP_OUT" -C "$HOME" "${EXCLUDES[@]}" .pinglc
+  tar -czf "$TMP_OUT" -C "$HOME" ${EXCLUDES[@]+"${EXCLUDES[@]}"} .pinglc
 fi
 
 # ---- 校验：全量解压读到底（结构坏/截断在此暴露），且快照成员确实在包内 ----
