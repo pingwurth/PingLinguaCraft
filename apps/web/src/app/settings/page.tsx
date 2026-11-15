@@ -41,6 +41,20 @@ const WHISPER_SPECS: Array<{ value: string; label: string }> = [
   { value: 'large-v3', label: '最准 · 引擎默认（推荐）' },
 ];
 
+/** 云端 TTS（阿里云 qwen-audio-3.0 系）的系统音色清单（存 paramsJson.voice）
+ *  仅列系统音色；500+ 基础音色（qwen-audio-3.0-tts-{plus|flash}-xxx）可手输 */
+/** 云端 TTS 缺省音色（与引擎 aliyun_native.DEFAULT_TTS_VOICE 同值，改动须两侧同步） */
+const DEFAULT_CLOUD_TTS_VOICE = 'longanlingxin';
+const CLOUD_TTS_VOICES: Array<{ value: string; label: string }> = [
+  { value: 'longanlingxin', label: '龙安灵心 · 女 · 知心温暖 · plus 旗舰' },
+  { value: 'longanlufeng', label: '龙安鲁风 · 男 · 明亮开朗 · plus 旗舰' },
+  { value: 'longanfengyue', label: '龙安风悦 · 女 · 自然亲切 · flash' },
+  { value: 'longanyuanfei', label: '龙安元妃 · 女 · 高傲妃子音 · flash' },
+  { value: 'longanxiaoxin', label: '龙安小昕 · 女 · 亲切活泼 · flash' },
+  { value: 'loongmary', label: 'loongmary · 女 · 温暖英音 · flash' },
+  { value: 'loongjohn', label: 'loongjohn · 男 · 沉稳美音 · flash' },
+];
+
 /**
  * 本地对齐引擎下拉选项（值即档案 model 字段，未来 /align handler 按此分发：
  * whisperx=本机 wav2vec2 强制对齐；mfa:<声学模型名>=pinglc-mfa 镜像内烘焙的模型）
@@ -89,9 +103,12 @@ interface Draft {
   secretId: string;
   /** 口语评测：苛刻指数 1.0 宽松~4.0 严格（paramsJson.scoreCoeff） */
   scoreCoeff: string;
-  /** STT/TTS 云端的接口路径（paramsJson.apiPath）：阿里云等原生 API 的专属路径，
-   *  如 TTS /services/audio/tts/SpeechSynthesizer；OpenAI 兼容端点无需填写 */
+  /** STT 云端的接口路径（paramsJson.apiPath）：阿里云等原生 API 的专属路径，
+   *  如 /api/v1/services/aigc/multimodal-generation/generation；OpenAI 兼容端点无需填写。
+   *  （TTS 云端不存 apiPath——WebSocket 地址由端点 host 推导） */
   apiPath: string;
+  /** 云端 TTS 音色（paramsJson.voice）：阿里云系统音色清单见 CLOUD_TTS_VOICES，基础音色可手输 */
+  cloudVoice: string;
   /** 编辑时原档案是否已配 Key（Key 只进不出，不回填进表单；留空保存=保持原值） */
   hasKey?: boolean;
 }
@@ -112,6 +129,7 @@ function blankDraft(): Draft {
     secretId: '',
     scoreCoeff: '2',
     apiPath: '',
+    cloudVoice: DEFAULT_CLOUD_TTS_VOICE,
   };
 }
 
@@ -149,8 +167,9 @@ const CAP_RULES: Record<
     label: '语音合成 TTS',
     cloudOnly: false,
     nameHint: { local: '如 Kokoro', cloud: '如 阿里云 TTS' },
-    // 本地档案带 engine（edge 联网 / kokoro 离线路由），云端档案可带 apiPath
-    params: (d) => (d.kind === 'local' ? { engine: d.engine } : { apiPath: d.apiPath }),
+    // 本地档案带 engine（edge 联网 / kokoro 离线路由）；云端档案带音色
+    // （apiPath 已废弃——TTS 走 WebSocket 由端点推地址，历史档案残留无害）
+    params: (d) => (d.kind === 'local' ? { engine: d.engine } : { voice: d.cloudVoice }),
   },
   align: {
     label: '音素对齐',
@@ -283,6 +302,7 @@ export default function SettingsPage() {
       secretId: typeof params.secretId === 'string' ? params.secretId : '',
       scoreCoeff: params.scoreCoeff != null ? String(params.scoreCoeff) : '2',
       apiPath: typeof params.apiPath === 'string' ? params.apiPath : '',
+      cloudVoice: typeof params.voice === 'string' ? params.voice : DEFAULT_CLOUD_TTS_VOICE,
       hasKey: p.hasKey,
     });
   };
@@ -618,18 +638,15 @@ export default function SettingsPage() {
                   className="rounded border border-input bg-background px-2 py-1.5"
                 />
               </label>
-              {/* 端点路径（仅 STT/TTS 云端）：阿里云等原生 API 的专属接口路径，OpenAI 兼容端点无需填写 */}
-              {(draft.capability === 'stt' || draft.capability === 'tts') && (
+              {/* 端点路径（仅 STT 云端）：阿里云等原生 API 的专属接口路径，OpenAI 兼容端点无需填写。
+                  TTS 云端不显示——地址由端点 host 推导（WebSocket），params 不再存 apiPath */}
+              {draft.capability === 'stt' && (
                 <label className="flex flex-col gap-1 md:col-span-2">
                   <span className="text-xs text-muted-foreground">端点路径（OpenAI 兼容端点留空）</span>
                   <input
                     value={draft.apiPath}
                     onChange={(e) => setDraft({ ...draft, apiPath: e.target.value })}
-                    placeholder={
-                      draft.capability === 'tts'
-                        ? '留空（WebSocket 自动路由）'
-                        : '/api/v1/services/aigc/multimodal-generation/generation'
-                    }
+                    placeholder="/api/v1/services/aigc/multimodal-generation/generation"
                     className="rounded border border-input bg-background px-2 py-1.5"
                   />
                 </label>
@@ -722,6 +739,18 @@ export default function SettingsPage() {
                 {((fetchModels.error as Error | null)?.message ?? '').slice(0, 80)}
               </span>
             )}
+          </label>
+        )}
+        {/* 云端 TTS 音色（可输入下拉：系统音色清单见 CLOUD_TTS_VOICES，基础音色可手输；存 paramsJson.voice） */}
+        {draft.capability === 'tts' && draft.kind === 'cloud' && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">音色</span>
+            <ComboboxInput
+              value={draft.cloudVoice}
+              onChange={(v) => setDraft({ ...draft, cloudVoice: v })}
+              options={CLOUD_TTS_VOICES}
+              placeholder={`${DEFAULT_CLOUD_TTS_VOICE}（默认）`}
+            />
           </label>
         )}
       </div>
@@ -1086,9 +1115,14 @@ function sublineOf(p: ProviderDTO): string {
     return `${label.split('（')[0]} · ${p.endpointUrl ?? ''} · ${p.model ?? ''}${p.hasKey ? ' · 🔑' : ' · 无Key'}`;
   }
   if (p.kind === 'cloud') {
-    // STT/TTS 云端配置了端点路径时拼接显示（完整调用地址 = URL + 路径）
+    // 云端 TTS：模型 · 音色（音色存 paramsJson.voice，缺省=引擎默认）
+    if (p.capability === 'tts') {
+      const voice = parseParamsJson(p.paramsJson).voice;
+      return `${p.endpointUrl ?? ''} · ${p.model ?? ''} · ${voice ? String(voice) : '默认音色'}${p.hasKey ? ' · 🔑' : ' · 无Key'}`;
+    }
+    // 云端 STT 配置了端点路径时拼接显示（完整调用地址 = URL + 路径）
     const apiPath = parseParamsJson(p.paramsJson).apiPath;
-    const suffix = (p.capability === 'stt' || p.capability === 'tts') && apiPath ? String(apiPath) : '';
+    const suffix = p.capability === 'stt' && apiPath ? String(apiPath) : '';
     return `${p.endpointUrl ?? ''}${suffix} · ${p.model ?? ''}${p.hasKey ? ' · 🔑' : ' · 无Key'}`;
   }
   return `${localEngineLabel(p)} · ${p.model ?? '默认'}`;
