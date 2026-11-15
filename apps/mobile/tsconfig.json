@@ -1,0 +1,11 @@
+// @pinglc/mobile 的 TypeScript 配置：Exo 约定 + 工作区路径
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "moduleResolution": "bundler",
+    "skipLibCheck": true
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
+}

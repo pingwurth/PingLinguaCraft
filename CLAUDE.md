@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目
 
-PingLinguaCraft：媒体驱动的英文精听学习工具。导入音视频自动生成字幕（本地 faster-whisper）、导入文本生成音频（Edge-TTS/kokoro），逐句精读/听写/跟读/测验/闯关，AI 侍读相伴。**单用户自托管**，数据全在本机 `~/.pinglc/`，手机以 PWA 访问。路线图 M0–M5 见 README.md，当前处于 M0（脚手架）阶段。
+PingLinguaCraft：媒体驱动的英文精听学习工具。导入音视频自动生成字幕（本地 faster-whisper）、导入文本生成音频（Edge-TTS/kokoro），逐句精读/听写/跟读/测验/闯关，AI 侍读相伴。**单用户自托管**，数据全在本机 `~/.pinglc/`，手机以 PWA 访问。路线图 M0–M5 见 README.md，M0–M4 已交付（19 条需求全落地），M5 打磨进行中：PWA 离线壳（serwist）与 Expo 骨架已就位。
 
 ## 编码规范
 
@@ -43,7 +43,7 @@ pnpm monorepo，四个工作区：
 | `apps/web` | Web 应用（UI + 全部业务 API + SQLite） | Next.js 15 / React 19 / Tailwind v4 / Drizzle / better-sqlite3（状态/数据请求库在真正引入时再装） |
 | `packages/core` | 双端共享纯逻辑（字幕解析/分词/分句/SRS/类型） | 纯 TS，**零运行时依赖（强制）**，以 TS 源码经 transpilePackages 消费 |
 | `services/ai-engine` | 本地 AI 引擎 | FastAPI（uv 管理，Python **3.12 锁定**——whisperx 兼容性），仅监听 127.0.0.1:8765 |
-| `apps/mobile` | Expo 应用（M5 里程碑才创建） | 复用 @pinglc/core |
+| `apps/mobile` | Expo 应用（M5 骨架已建：设置→藏经阁→基础播放页，expo-av） | 复用 @pinglc/core，Metro 适配 pnpm workspace |
 
 关键架构约定（违反会破坏整体设计）：
 

@@ -16,6 +16,7 @@ import { AssistantProvider } from '@/features/assistant/AssistantContext';
 import { Assistant } from '@/features/assistant/Assistant';
 import { SelectionAsk } from '@/features/assistant/SelectionAsk';
 import { Providers } from './providers';
+import { SwRegister } from '@/components/SwRegister';
 
 /** Inter：界面功能字体（导航、控件、输入、数据标签） */
 const inter = Inter({
@@ -70,6 +71,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {/* body 元素：承载应用外壳与页面内容（Providers 数据层 + AssistantProvider 侍读层） */}
       <body className="antialiased">
         <Providers>
+          {/* SW 注册（生产构建生效；离线壳与 PWA 安装的前提） */}
+          <SwRegister />
           <AssistantProvider>
             <AppShell>{children}</AppShell>
             {/* AI 侍读：悬浮球 + 抽屉 + 划词入口（全页面存在，需求 15） */}

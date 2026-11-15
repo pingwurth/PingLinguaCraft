@@ -1,0 +1,26 @@
+{
+  "//": "Expo 应用配置：名称/包名/横竖屏（播放页以纵向为主）",
+  "expo": {
+    "name": "纸墨研习",
+    "slug": "pinglinguacraft",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "pinglc",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FBF9F5",
+    "ios": {
+      "bundleIdentifier": "com.ping.pinglinguacraft",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.ping.pinglinguacraft",
+      "usesCleartextTraffic": true
+    }
+  }
+}

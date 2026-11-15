@@ -30,7 +30,8 @@ uv run --directory services/ai-engine uvicorn app.main:app --port 8765
 
 | 目录 | 说明 |
 |---|---|
-| `apps/web` | Next.js 15 应用（UI + API + SQLite/Drizzle） |
+| `apps/web` | Next.js 15 应用（UI + API + SQLite/Drizzle + serwist PWA） |
+| `apps/mobile` | Expo 应用骨架（expo-av 播放，复用 core，连局域网） |
 | `packages/core` | 双端共享纯逻辑（字幕解析/分词/分句/SRS） |
 | `services/ai-engine` | 本地 AI 引擎（FastAPI：STT/TTS/对齐/翻译/LLM） |
 | `docs/` | 需求（inspiration.md）与设计稿（ui/ + 设计系统 DESIGN.md） |
@@ -42,9 +43,11 @@ uv run --directory services/ai-engine uvicorn app.main:app --port 8765
 
 ## 路线图
 
-- **M0 脚手架 + 设计系统**（当前）：monorepo / 设计 token / 双壳 / DB schema / Range 流式 / 引擎骨架
-- **M1 MVP 核心闭环**：三种导入 → STT → 分句 → 翻译 → 播放页（当前句 + 双语精读）→ 生词/收藏/笔记
-- **M2 练习模式**：听写 / 跟读 / 测验
-- **M3 AI 侍读 + 闯关**：悬浮球助手、六模式闯关、AI 关卡页
-- **M4 SRS + 词汇深度**：FSRS 复习、词源拓扑、深学卡
-- **M5 打磨 + Expo**：移动原生应用（复用 core）
+- **M0 脚手架 + 设计系统** ✅
+- **M1 MVP 核心闭环** ✅ 三种导入 → STT → 分句 → 翻译 → 播放页（当前句 + 双语精读）→ 生词/收藏/笔记
+- **M2 练习模式** ✅ 听写（双模式）/ 跟读录音 / LLM 测验 + 错题本
+- **M3 AI 侍读 + 闯关** ✅ 悬浮球流式对话、划词提问、六玩法闯关、AI 关卡页（沙箱）
+- **M4 SRS + 词汇深度** ✅ FSRS-6（与 ts-fsrs 对齐）多题型复习、词源拓扑、仿写构架
+- **M5 打磨 + Expo** ✅ serwist PWA 离线壳 + Expo 应用骨架（设置→藏经阁→基础播放页，复用 core）
+
+19 条需求全部落地。
