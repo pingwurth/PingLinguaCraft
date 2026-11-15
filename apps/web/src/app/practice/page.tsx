@@ -88,6 +88,9 @@ export default function PracticePage() {
         <p className="mt-1 text-sm text-ochre">听写 · 跟读 · 测验 —— 进入材料的练习标签页开始</p>
       </header>
 
+      {/* 智能复习入口（M4：FSRS-6，需求 18） */}
+      <ReviewEntry />
+
       {/* 可练习材料列表 */}
       {recent.isLoading ? (
         <p className="py-12 text-center text-sm text-muted-foreground">装载中…</p>
@@ -165,5 +168,31 @@ export default function PracticePage() {
 
       <p className="mt-8 text-[11px] text-muted-foreground">SRS 记忆轮转复习将在 M4 里程碑在此就位。</p>
     </div>
+  );
+}
+
+
+/** 智能复习入口（到期/新词统计 + 进入复习） */
+function ReviewEntry() {
+  const stats = useQuery({
+    queryKey: ['review-queue-stats'],
+    queryFn: () =>
+      api<{ stats: { totalWords: number; dueCount: number; newCount: number } }>('/api/review/queue?limit=1'),
+  });
+  const s = stats.data?.stats;
+  return (
+    <Link
+      href="/review"
+      className="deckle mb-6 flex items-center gap-4 rounded-md border bg-card p-4 transition-colors hover:bg-accent/60"
+    >
+      <span className="material-symbols-outlined text-3xl text-primary">psychology</span>
+      <div className="flex-1">
+        <p className="font-serif text-base">智能复习 · 记忆轮转</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {s ? `${s.dueCount} 词到期 · ${s.newCount} 新词待记 · 词库 ${s.totalWords}` : 'FSRS-6 调度的多题型训练'}
+        </p>
+      </div>
+      <span className="material-symbols-outlined text-2xl text-ochre">chevron_right</span>
+    </Link>
   );
 }

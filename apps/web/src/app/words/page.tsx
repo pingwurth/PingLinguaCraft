@@ -183,6 +183,39 @@ function WordRow({
   const [editNote, setEditNote] = useState(false);
   const [note, setNote] = useState(word.noteMd ?? '');
 
+  /* ---- 深学卡（词源拓扑 + 仿写构架，M4）---- */
+  const deep = useQuery({
+    queryKey: ['deep', word.id],
+    queryFn: () =>
+      api<{
+        etymology: { origin: string; roots: Array<{ part: string; meaning: string; lang?: string }>; related: Array<{ word: string; relation: string }> } | null;
+        frames: Array<{ pattern: string; tip?: string }> | null;
+      }>(`/api/words/${word.id}/deep`),
+    enabled: expanded,
+  });
+  const genDeep = useMutation({
+    mutationFn: async () => {
+      const r = await api<{ cached?: boolean; jobId?: string }>(`/api/words/${word.id}/deep`, {
+        method: 'POST',
+        // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成（幂等分支只对首次）
+        body: JSON.stringify({ force: Boolean(deep.data?.etymology && deep.data?.frames) }),
+      });
+      if (r.cached) return;
+      if (r.jobId) {
+        // 轮询至终态后刷新
+        const timer = setInterval(async () => {
+          const { job } = await api<{ job: { status: string } }>(`/api/jobs/${r.jobId}`);
+          if (job.status === 'succeeded' || job.status === 'failed') {
+            clearInterval(timer);
+            void deep.refetch();
+          }
+        }, 1500);
+        setTimeout(() => clearInterval(timer), 120_000);
+      }
+    },
+    onSuccess: () => void deep.refetch(),
+  });
+
   const saveNote = useMutation({
     mutationFn: () =>
       api(`/api/words/${word.id}`, { method: 'PATCH', body: JSON.stringify({ noteMd: note }) }),
@@ -211,6 +244,65 @@ function WordRow({
       {/* 展开体 */}
       {expanded && (
         <div className="border-t border-border px-4 py-3">
+          {/* 深学卡：词源拓扑 + 仿写构架（M4） */}
+          <div className="mb-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <h4 className="text-xs font-medium text-muted-foreground">深学卡 · 词源与构架</h4>
+              <button
+                onClick={() => genDeep.mutate()}
+                disabled={genDeep.isPending}
+                className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-sm">account_tree</span>
+                {deep.data?.etymology && deep.data?.frames ? '重新生成' : genDeep.isPending ? '生成中…' : '生成'}
+              </button>
+            </div>
+            {deep.isLoading ? (
+              <p className="text-xs text-muted-foreground">装载中…</p>
+            ) : deep.data?.etymology ? (
+              <div className="rounded-md bg-muted/40 p-3 text-xs">
+                {/* 词源概述 */}
+                <p className="text-sm">{deep.data.etymology.origin}</p>
+                {/* 构词成分（拓扑根节点） */}
+                {deep.data.etymology.roots.length > 0 && (
+                  <div className="mt-2 border-l-2 border-[#b91c1c]/40 pl-3">
+                    {deep.data.etymology.roots.map((r, i) => (
+                      <p key={i}>
+                        <span className="font-serif font-medium">{r.part}</span>
+                        <span className="text-muted-foreground"> — {r.meaning}</span>
+                        {r.lang && <span className="ml-1 text-[10px] text-ochre">（{r.lang}）</span>}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {/* 同源词 */}
+                {deep.data.etymology.related.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {deep.data.etymology.related.map((r, i) => (
+                      <span key={i} className="rounded-full bg-background px-2 py-0.5" title={r.relation}>
+                        {r.word}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* 仿写构架 */}
+                {deep.data?.frames && deep.data.frames.length > 0 && (
+                  <div className="mt-3 border-t border-border pt-2">
+                    <p className="mb-1 text-[11px] text-ochre">仿写构架</p>
+                    {deep.data.frames.map((f, i) => (
+                      <p key={i} className="font-serif">
+                        {f.pattern}
+                        {f.tip && <span className="ml-2 font-sans text-[11px] text-muted-foreground">{f.tip}</span>}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">尚未生成（需在设置页配置 LLM 档案）</p>
+            )}
+          </div>
+
           {/* 我的笔记 */}
           <div className="mb-3">
             <div className="mb-1.5 flex items-center justify-between">
@@ -251,6 +343,7 @@ function WordRow({
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <h4 className="text-xs font-medium text-muted-foreground">AI 笔记</h4>
+              <span className="hidden" />
               <button onClick={onGenNote} className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary">
                 <span className="material-symbols-outlined text-sm">auto_awesome</span>
                 {word.aiNoteStatus === 'ready' ? '重新生成' : '生成'}

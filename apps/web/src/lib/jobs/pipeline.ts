@@ -42,6 +42,7 @@ import {
 import { materialDir } from '@/lib/server/media';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
 import { QUIZ_SYSTEM, buildQuizPrompt, QuizSchema, repairPrompt } from '@/lib/quiz';
+import { DEEP_SYSTEM, buildDeepPrompt, DeepCardSchema, deepRepairPrompt } from '@/lib/deepCard';
 
 /** 在途任务注册表（进程内；重启后为空 → recovery 判定依据） */
 const _inflight = new Set<string>();
@@ -443,6 +444,9 @@ async function runPipeline(jobId: string): Promise<void> {
         break;
       case 'ai_level':
         await aiLevelPipeline(jobId, job.cueId!);
+        break;
+      case 'deep_card':
+        await deepCardPipeline(jobId, JSON.parse(job.payloadJson ?? '{}'));
         break;
       default:
         throw new Error(`未知管线类型：${job.type}`);
@@ -981,4 +985,75 @@ async function aiLevelPipeline(jobId: string, cueId: number): Promise<void> {
     })
     .run();
   updateJob(jobId, { progress: 1, message: '关卡已生成' });
+}
+
+/* ---------------------------------------------------------------------------
+ * 深学卡管线（M4：词源拓扑 + 仿写构架）
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 深学卡：LLM 一次产出词源树 + 仿写构架 → zod 校验（失败修复重试一次）→
+ * 词源写 words.etymologyJson，构架写 ai_artifacts('imitation')
+ */
+async function deepCardPipeline(jobId: string, payload: { wordId: number }): Promise<void> {
+  const db = getDb();
+  const profile = resolveProfile('llm');
+  if (!profile || profile.kind !== 'cloud') {
+    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+  }
+  const word = db.select().from(wordsTable).where(eq(wordsTable.id, payload.wordId)).all()[0];
+  if (!word) throw new Error('单词不存在');
+  const example = payloadOriginSentence(db, word.originCueId);
+
+  updateJob(jobId, { progress: 0.2, message: `深学卡生成中（${profile.name}）…` });
+  const prompt = buildDeepPrompt(word.displayForm, example === '（无）' ? null : example);
+
+  let r = await enginePost<{ json: unknown }>('/llm/chat', {
+    profile: toEngineProfile(profile),
+    system: DEEP_SYSTEM,
+    user: prompt,
+    want_json: true,
+    temperature: 0.4,
+  });
+  let parsed = DeepCardSchema.safeParse(r.json);
+  if (!parsed.success) {
+    updateJob(jobId, { progress: 0.6, message: '结构校验未过，修复重试…' });
+    r = await enginePost<{ json: unknown }>('/llm/chat', {
+      profile: toEngineProfile(profile),
+      system: DEEP_SYSTEM,
+      user: `${prompt}\n\n${deepRepairPrompt(parsed.error.issues)}`,
+      want_json: true,
+      temperature: 0.2,
+    });
+    parsed = DeepCardSchema.safeParse(r.json);
+  }
+  if (!parsed.success) {
+    throw new EngineError(`模型两次都未产出合规深学卡：${parsed.error.issues[0]?.message ?? ''}`, 0);
+  }
+
+  const now = new Date();
+  // 词源树 → words.etymologyJson（词藏页直接渲染）
+  // frames 即数组本体（zod intersection 输出 A & { frames: [...] }，解构所得
+  // 为数组；e2e 已验证前端契约 Array<{pattern,tip}> 直读）
+  const { frames, ...etymology } = parsed.data;
+  db.update(wordsTable)
+    .set({ etymologyJson: JSON.stringify(etymology), updatedAt: now })
+    .where(eq(wordsTable.id, word.id))
+    .run();
+  // 仿写构架 → ai_artifacts（kind=imitation，同词覆盖式更新：先删旧）
+  db.delete(aiArtifacts)
+    .where(and(eq(aiArtifacts.kind, 'imitation'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, word.id)))
+    .run();
+  db.insert(aiArtifacts)
+    .values({
+      userId: 1,
+      kind: 'imitation',
+      subjectType: 'word',
+      subjectId: word.id,
+      provider: profile.name,
+      contentMd: JSON.stringify(frames),
+      createdAt: now,
+    })
+    .run();
+  updateJob(jobId, { progress: 1, message: '深学卡已生成' });
 }
