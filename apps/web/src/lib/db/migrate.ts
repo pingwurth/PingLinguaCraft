@@ -23,9 +23,32 @@
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import Database from 'better-sqlite3';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DB_PATH, MEDIA_ROOT, PINGLC_HOME } from './paths';
+
+/**
+ * 静默取文件大小（字节）；取不到（权限/非目录等）返回 -1，让调用方按不合格处理
+ */
+function statSize(path: string): number {
+  try {
+    return statSync(path).size;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * 静默删除快照产出：rmSync 的 force 只吞 ENOENT，EACCES/ENOTDIR/EPERM 仍会抛出
+ * ——清理失败若逃逸会把「告警不阻断迁移」变成「快照故障阻断启动」，故再兜一层
+ */
+function rmQuiet(path: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    /* 尽力而为：残留文件不参与轮转判定之外的关键路径 */
+  }
+}
 
 /** 迁移前快照目录与保留组数（遵循「一切用户数据在 ~/.pinglc/」约定） */
 const SNAPSHOT_DIR = join(PINGLC_HOME, 'backups');
@@ -140,9 +163,10 @@ function snapshotDbFile(sqlite: Database.Database): string | null {
     mkdirSync(SNAPSHOT_DIR, { recursive: true });
     // 路径经绑定参数传入，不做字符串拼接与手工转义（转义规则再确定也不如参数化根除）
     sqlite.prepare('VACUUM INTO ?').run(base);
-    // 产出校验：大小检查拦不住「非空但损坏」（VACUUM INTO 中途失败）与「合法但
-    // 空库」（0 字节源库的产出）——只读打开跑 quick_check，与 scripts/backup.sh
-    // 的快照校验同一纪律；不合格即删，不占用轮转保留位
+    // 产出校验（与 scripts/backup.sh 的「非空 + quick_check」同一纪律）：
+    // 非空断言拦「合法但空库」（0 字节源库的产出——quick_check 对它也返回 ok）；
+    // quick_check 拦「非空但损坏」（VACUUM INTO 中途失败）；不合格即删，
+    // 不占用轮转保留位
     const snap = new Database(base, { readonly: true });
     let quickCheck: string | undefined;
     try {
@@ -151,16 +175,22 @@ function snapshotDbFile(sqlite: Database.Database): string | null {
     } finally {
       snap.close();
     }
-    if (quickCheck !== 'ok') {
-      rmSync(base, { force: true });
-      console.warn(`[db] 迁移前快照校验未通过（${quickCheck ?? '无法打开'}），已丢弃（继续执行迁移）`);
+    const size = statSize(base);
+    if (size <= 0 || quickCheck !== 'ok') {
+      // 大小与 quick_check 都进告警（先取值再删文件）：空产出（0 字节源库）的
+      // quick_check 仍是 ok，只报其一会让排障看不出到底是空产出还是损坏
+      rmQuiet(base);
+      console.warn(
+        `[db] 迁移前快照校验未通过（size=${size}B quick_check=${quickCheck ?? '无法打开'}），已丢弃（继续执行迁移）`
+      );
       return null;
     }
     rotateSnapshots();
     return base;
   } catch (err) {
-    // 清掉可能的残缺产出，再告警不阻断迁移（迁移本身可回放）
-    rmSync(base, { force: true });
+    // 清掉可能的残缺产出，再告警不阻断迁移（迁移本身可回放）；清理自身再失败
+    // 也不能让异常逃出去阻断启动——快照任何失败都只告警
+    rmQuiet(base);
     console.warn('[db] 迁移前快照失败（继续执行迁移）：', err);
     return null;
   }

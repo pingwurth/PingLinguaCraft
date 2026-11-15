@@ -102,7 +102,8 @@ const server = https.createServer(
     };
     // 重挂上游 socket 的空闲计时器：'timeout' 触发后计时器不会自动重挂（只在新
     // 读写活动时重挂），彻底暂停期间至多触发一次——不重挂的话，下游恢复读取而
-    // 上游恰好挂死（drain→resume 后无字节流量）时再无机制能触发超时，请求悬死
+    // 上游恰好挂死（drain→resume 后无字节流量）时再无机制能触发超时，请求悬死。
+    // （函数体延后求值，可先于 proxied 声明）
     const rearmIdleTimer = () => {
       proxied.socket?.setTimeout?.(UPSTREAM_IDLE_TIMEOUT_MS);
     };
@@ -164,16 +165,22 @@ const server = https.createServer(
         res.destroy();
       }
     });
-    // 空闲超时：销毁上游连接（上面的 error 处理负责收尾下游）；
-    // 背压期间豁免并重挂计时器——手机弱网收拢 TCP 窗时上游暂停读是正常背压，
-    // 不是挂死（重挂保证豁免后仍有下一次超时机会）；下游彻底不读的挂死场景
-    // 由回传泵里的 bpDeadline 墙钟兜底销毁
-    proxied.on('timeout', () => {
-      if (backpressured) {
-        rearmIdleTimer();
-        return;
-      }
-      proxied.destroy(new Error(`上游空闲超时 (${UPSTREAM_IDLE_TIMEOUT_MS}ms)`));
+    // 空闲超时监听挂在 socket 层而非 proxied 的 'timeout' 事件：后者经 ClientRequest
+    // 以 socket.once 转发，每个请求至多触发一次，第一次豁免后再也不会再来；
+    // socket.on('timeout') 每次触发都到达，配合豁免时的显式重挂构成完整闭环。
+    // 请求结束即解绑：Node ≥19 默认 agent 开 keepAlive，socket 会在顺序请求间
+    // 复用——不解绑则监听随请求数线性增长（MaxListeners 告警），旧闭包还会在
+    // 超时触发时 destroy 早已完成的请求
+    proxied.on('socket', (sock) => {
+      const onIdleTimeout = () => {
+        if (backpressured) {
+          rearmIdleTimer();
+          return;
+        }
+        proxied.destroy(new Error(`上游空闲超时 (${UPSTREAM_IDLE_TIMEOUT_MS}ms)`));
+      };
+      sock.on('timeout', onIdleTimeout);
+      proxied.on('close', () => sock.removeListener('timeout', onIdleTimeout));
     });
     // 入站请求流出错（手机弱网中断上传，ECONNRESET）：pipe 不转发源错误，
     // 不挂监听会成为未捕获异常带走整个代理进程

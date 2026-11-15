@@ -71,14 +71,16 @@ sh_files="$(grep -E '\.(sh)$|^\.githooks/' <<<"$staged" || true)"
 # （行尾空格/缩进混用 tab）；有问题的文件与行号直接打印在失败信息里。
 # markdown 显式排除：其硬换行就是行尾双空格、又常保留 CRLF，文档的合法排版
 # 会把提交硬拦——这只会把人推向 --no-verify
-if ! git diff --cached --check -- . ':(exclude)*.md' ':(exclude)*.markdown'; then
+if ! git --no-pager diff --cached --check --no-ext-diff --no-color -- . ':(exclude)*.md' ':(exclude)*.markdown'; then
   fail_gate "diff 卫生检查" "暂存内容含冲突标记或空白错误：请修复后重新暂存（git diff --cached --check -- . ':(exclude)*.md' ':(exclude)*.markdown' 查看详情），或 git commit --no-verify 跳过（慎用）"
 fi
 
 # 冲突标记独立扫描：--check 把 markdown 整类排除了，而文档恰是最易残留 <<<<<<<
 # 的文件——扫暂存 diff 的新增行补上这个缺口。只认行首 <<<<<<< / >>>>>>>；
-# ======= 不匹配（markdown 里是合法的 setext 标题下划线）
-conflict_hits="$(git diff --cached --unified=0 2>/dev/null | grep -aE '^\+((<{7})|(>{7}))' | head -3 || true)"
+# ======= 不匹配（markdown 里是合法的 setext 标题下划线）。
+# --no-ext-diff --no-color 锁定标准 unified 输出：diff.external / color.ui=always
+# 等用户级配置会让新增行不再以 + 开头，扫描随之静默失效
+conflict_hits="$(git --no-pager diff --cached --unified=0 --no-ext-diff --no-color 2>/dev/null | grep -aE '^\+((<{7})|(>{7}))' | head -3 || true)"
 if [[ -n "$conflict_hits" ]]; then
   printf '冲突标记样例：\n%s\n' "$conflict_hits" >&2
   fail_gate "冲突标记" "暂存内容含未解决的冲突标记（<<<<<<< / >>>>>>>，含 markdown 文件）：请解决后重新暂存，或 git commit --no-verify 跳过（慎用）"

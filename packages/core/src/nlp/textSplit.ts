@@ -163,7 +163,8 @@ export function splitSentences(text: string, opts: TextSplitOptions = {}): strin
             for (let st = 0; st < w.length; ) {
               let en = Math.min(st + maxChars, w.length);
               // 切点落在代理对中间（emoji/扩展 CJK）会产出孤代理进入 TTS/字幕：
-              // 高代理恰在切点前一位时回退一位错开；maxChars=1 的极端无法回退只能拆对
+              // 高代理恰在切点前一位时回退一位错开（maxChars 已钳 ≥2，此条件
+              // 恒可回退——保留判断仅作纯防御）
               if (en < w.length && en - 1 > st) {
                 const prev = w[en - 1]!;
                 if (prev >= '\uD800' && prev <= '\uDBFF') en--;
