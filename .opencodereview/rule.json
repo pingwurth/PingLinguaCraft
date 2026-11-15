@@ -8,12 +8,12 @@
     },
     {
       "path": "apps/web/**",
-      "rule": "#### apps/web 规范（强制）\n- **设计系统**：语义色一律用 token（如 bg-primary / text-ink），禁止写裸色值（如 #B91C1C、bg-red-500、rgb(...)）——这是纸墨风设计系统的硬约束\n- **架构**：DB 写入只发生在 web（编排者角色）；engine 是无状态执行器，web 是 engine 的唯一调用方\n- **媒体流**：/api/media/[materialId] 相关代码必须保持 HTTP Range/206 语义\n- **播放器时钟**：读 currentTime 用 rAF（不用 timeupdate 事件）；循环回跳在 rAF tick 内完成\n- 文件头部中文注释、函数中文 doc、HTML 元素中文注释（React 组件内 JSX 亦然）",
+      "rule": "#### apps/web 规范（强制）\n- **设计系统**：语义色一律用 token（如 bg-primary / text-ink），禁止写裸色值（如 #B91C1C、bg-red-500、rgb(...)）——这是纸墨风设计系统的硬约束\n- **架构**：DB 写入只发生在 web（编排者角色）；engine 是无状态执行器，web 是 engine 的唯一调用方\n- **API 参数防御**：动态路由/查询参数的数值 id 一律经 lib/server/params 的 parseIdParam 解析（NaN/非正整数 → 400，禁止裸 Number(id) 进 SQL）；body 中的枚举值必须对白名单校验后才入库\n- **媒体流**：/api/media/[materialId] 相关代码必须保持 HTTP Range/206 语义\n- **播放器时钟**：读 currentTime 用 rAF（不用 timeupdate 事件）；循环回跳在 rAF tick 内完成\n- 文件头部中文注释、函数中文 doc、HTML 元素中文注释（React 组件内 JSX 亦然）",
       "merge_system_rule": true
     },
     {
       "path": "services/ai-engine/**",
-      "rule": "#### ai-engine 规范（强制）\n- **无状态执行器**：引擎绝不写数据库，只做计算并回传结果；DB 写入只发生在 web 侧\n- Python 版本锁定 3.12（whisperx 兼容性），禁止使用 3.12+ 专属语法之外的新特性依赖\n- 服务仅监听 127.0.0.1:8765，禁止绑定 0.0.0.0\n- API Key 只在服务端读取，接口永不回传密钥明文\n- 文件头部中文注释、函数中文 doc",
+      "rule": "#### ai-engine 规范（强制）\n- **无状态执行器**：引擎绝不写数据库，只做计算并回传结果；DB 写入只发生在 web 侧\n- **临时/工作目录与中间文件必须唯一命名**（uuid/任务 id，如 .tts-parts-<uuid>），禁止固定名——同步 API 与 job worker 会并发执行同类任务，固定名互踩会串音/删除他人在途分片/损坏缓存（tts_common.new_batch_workdir 是标准构造器）\n- Python 版本锁定 3.12（whisperx 兼容性），禁止使用 3.12+ 专属语法之外的新特性依赖\n- 服务仅监听 127.0.0.1:8765，禁止绑定 0.0.0.0\n- API Key 只在服务端读取，接口永不回传密钥明文\n- 文件头部中文注释、函数中文 doc",
       "merge_system_rule": true
     },
     {
