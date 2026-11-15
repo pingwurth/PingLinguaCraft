@@ -8,6 +8,7 @@
  * 字幕未就绪时显示处理进度（任务轮询）。
  */
 
+import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Player } from '@/features/player/Player';
@@ -78,12 +79,23 @@ export default function MaterialPage({ params }: { params: Promise<{ id: string 
   return (
     /* 播放页容器：移动单列 / 桌面左右分栏 */
     <div className="mx-auto w-full max-w-6xl px-3 pb-8 pt-3 md:px-8 md:pt-6">
-      {/* 面包屑标题 */}
+      {/* 面包屑标题 + 闯关入口（需求 17：听过一遍解锁） */}
       <header className="mb-3 flex items-baseline gap-2">
         <h1 className="truncate font-serif text-lg md:text-xl">{material.title}</h1>
         <span className="ml-auto shrink-0 text-xs text-ochre">
           {material.sentenceCount ?? '—'} 句 · {material.uniqueWordCount ?? '—'} 词
         </span>
+        <Link
+          href={`/material/${material.id}/challenge`}
+          className={`flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs ${
+            progress?.listenedThrough ? 'bg-primary text-primary-foreground' : 'border border-ochre/40 text-ochre'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm">
+            {progress?.listenedThrough ? 'military_tech' : 'lock'}
+          </span>
+          闯关
+        </Link>
       </header>
 
       {/* 播放器（sticky：移动端滚动时保持可见） */}

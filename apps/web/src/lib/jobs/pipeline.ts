@@ -441,6 +441,9 @@ async function runPipeline(jobId: string): Promise<void> {
       case 'ai_quiz':
         await aiQuizPipeline(jobId, job.materialId!);
         break;
+      case 'ai_level':
+        await aiLevelPipeline(jobId, job.cueId!);
+        break;
       default:
         throw new Error(`未知管线类型：${job.type}`);
     }
@@ -914,4 +917,68 @@ async function aiQuizPipeline(jobId: string, materialId: number): Promise<void> 
     })
     .run();
   updateJob(jobId, { progress: 1, message: `已生成测验「${parsed.data.title}」（${parsed.data.questions.length} 题）` });
+}
+
+/* ---------------------------------------------------------------------------
+ * AI 关卡生成管线（M3，需求 8：针对单句生成闯关交互网页）
+ * ------------------------------------------------------------------------- */
+
+/** 关卡生成系统提示 */
+const LEVEL_SYSTEM =
+  '你是交互式英语练习网页生成器。基于给定英文句子生成一个自包含的 HTML 闯关小游戏。' +
+  '硬性要求：单个 HTML 文件、不引用任何外部资源（无 CDN/字体/图片请求）、' +
+  '内联 <style> 与 <script>、移动端优先（viewport、触控友好）、纸墨风格' +
+  '（暖纸底色 #FBF9F5、朱砂 #B91C1C、浓墨 #1E2022、圆角 4px、细边框）。' +
+  '玩法：把该句拆成打乱的词块/填空/配对等小关卡，答对给反馈，全部完成显示「通关」。' +
+  '只输出 HTML 源码本身，不要任何解释，不要 Markdown 代码围栏。';
+
+/**
+ * 关卡生成：LLM 产 HTML → 剥可能的围栏 → 落盘 ~/.pinglc/artifacts/ → ai_artifacts 登记
+ */
+async function aiLevelPipeline(jobId: string, cueId: number): Promise<void> {
+  const db = getDb();
+  const profile = resolveProfile('llm');
+  if (!profile || profile.kind !== 'cloud') {
+    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+  }
+  const cue = db.select().from(cuesTable).where(eq(cuesTable.id, cueId)).all()[0];
+  if (!cue) throw new Error('句段不存在');
+
+  updateJob(jobId, { progress: 0.2, message: `AI 关卡生成中（${profile.name}）…` });
+  const { content } = await enginePost<{ content: string | null }>('/llm/chat', {
+    profile: toEngineProfile(profile),
+    system: LEVEL_SYSTEM,
+    user: `英文原句：${cue.textEn}\n中文译文：${cue.textZh ?? '（无）'}\n\n生成闯关网页。`,
+    temperature: 0.5,
+  });
+  let html = (content ?? '').trim();
+  // 剥 ```html 围栏（模型偶发不守约）
+  const fence = html.match(/^```(?:html)?\s*([\s\S]*?)\s*```$/);
+  if (fence) html = fence[1]!.trim();
+  if (!/<html[\s>]/i.test(html) || html.length < 200) {
+    throw new EngineError('模型未返回有效 HTML 关卡页', 0);
+  }
+
+  // 落盘与登记（绝对路径存 artifactPath，/artifacts/[id] 路由校验 .pinglc 前缀后直读）
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { homedir } = await import('node:os');
+  const dir = join(homedir(), '.pinglc', 'artifacts');
+  mkdirSync(dir, { recursive: true });
+  const fileName = `level-${cueId}-${Date.now()}.html`;
+  const abs = join(dir, fileName);
+  writeFileSync(abs, html, 'utf-8');
+
+  db.insert(aiArtifacts)
+    .values({
+      userId: 1,
+      kind: 'level_page',
+      subjectType: 'cue',
+      subjectId: cueId,
+      provider: profile.name,
+      artifactPath: abs,
+      createdAt: new Date(),
+    })
+    .run();
+  updateJob(jobId, { progress: 1, message: '关卡已生成' });
 }

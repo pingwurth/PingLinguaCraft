@@ -202,3 +202,53 @@ async def transcribe(
         return r.json()["text"]
     except (KeyError, ValueError):
         return r.text
+
+
+async def chat_stream(
+    endpoint_url: str,
+    api_key: str | None,
+    model: str,
+    messages: list[dict],
+    *,
+    temperature: float | None = None,
+):
+    """流式对话：逐块产出增量文本（OpenAI SSE 协议，delta.content）
+
+    用作异步生成器：async for chunk in chat_stream(...) —— 引擎以 SSE 透传给 web。
+    网络错误在首个块前抛 OpenAICompatError；中途断流以 [断流] 增量收尾（UI 可见）。
+    """
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+    }
+    if temperature is not None:
+        body["temperature"] = temperature
+    url = f"{_base(endpoint_url)}/chat/completions"
+    client = _make_client(endpoint_url)
+    try:
+        async with client.stream("POST", url, json=body, headers=_headers(api_key)) as resp:
+            if resp.status_code != 200:
+                text = (await resp.aread()).decode("utf-8", "replace")
+                raise OpenAICompatError(f"云端返回 {resp.status_code}：{text[:300]}")
+            async for line in resp.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload or payload == "[DONE]":
+                    if payload == "[DONE]":
+                        return
+                    continue
+                try:
+                    delta = json.loads(payload)["choices"][0]["delta"]
+                except (ValueError, KeyError, IndexError):
+                    continue
+                piece = delta.get("content")
+                if piece:
+                    yield piece
+    except OpenAICompatError:
+        raise
+    except httpx.HTTPError as exc:
+        raise OpenAICompatError(f"流式连接中断：{exc}") from exc
+    finally:
+        await client.aclose()

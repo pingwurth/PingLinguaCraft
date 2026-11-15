@@ -9,7 +9,7 @@
  * - AI 解析并收藏（分类选择；重新生成走收藏页）
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { extractWords } from '@pinglc/core';
 import { usePlayer } from '@/features/player/store';
@@ -75,6 +75,56 @@ export function CurrentSentenceTab({ cue, materialId }: { cue: CueDTO | null; ma
     },
   });
 
+  /* ---- AI 关卡页（需求 8：生成本句交互闯关网页）---- */
+  const [levelReady, setLevelReady] = useState(false);
+  const [levelOpen, setLevelOpen] = useState<number | null>(null); // artifactId（打开弹窗）
+  const level = useMutation({
+    mutationFn: async () => {
+      // 先查缓存；无则生成任务并轮询
+      const cur = await api<{ artifact: { id: number } | null }>(`/api/cues/${cue!.id}/level`);
+      if (cur.artifact) return cur.artifact.id;
+      const { jobId } = await api<{ jobId: string }>(`/api/cues/${cue!.id}/level`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const { job } = await api<{ job: { status: string; error: string | null } }>(`/api/jobs/${jobId}`);
+        if (job.status === 'succeeded') {
+          const done = await api<{ artifact: { id: number } | null }>(`/api/cues/${cue!.id}/level`);
+          if (done.artifact) return done.artifact.id;
+          throw new Error('关卡生成完成但产物缺失');
+        }
+        if (job.status === 'failed') throw new Error(job.error ?? '生成失败');
+      }
+      throw new Error('生成超时');
+    },
+    onSuccess: (artifactId) => {
+      setLevelReady(true);
+      setLevelOpen(artifactId);
+    },
+  });
+  /** 查询已有关卡（跟随激活句切换重置） */
+  useEffect(() => {
+    setLevelReady(false);
+    setLevelOpen(null);
+    if (cue) {
+      void api<{ artifact: { id: number } | null }>(`/api/cues/${cue.id}/level`).then((r) => {
+        if (r.artifact) setLevelReady(true);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只依赖句 id（cue 对象每次渲染新建）
+  }, [cue?.id]);
+  const ensureLevel = async () => {
+    if (levelReady) {
+      // 已有：直接打开最新
+      const r = await api<{ artifact: { id: number } | null }>(`/api/cues/${cue!.id}/level`);
+      if (r.artifact) setLevelOpen(r.artifact.id);
+      return;
+    }
+    level.mutate();
+  };
+
   /** 点词 → 加生词本 */
   const addWord = useMutation({
     mutationFn: (word: string) =>
@@ -133,6 +183,12 @@ export function CurrentSentenceTab({ cue, materialId }: { cue: CueDTO | null; ma
           busy={analyze.isPending}
           onClick={() => analyze.mutate()}
         />
+        <ActionChip
+          icon="stadia_controller"
+          label={levelReady ? "打开关卡" : "生成关卡"}
+          busy={level.isPending}
+          onClick={() => void ensureLevel()}
+        />
         <span className="ml-auto self-center text-xs text-ochre">
           第 {activeCueIndex + 1} 句
           {cue.sttConfidence != null && ` · 置信 ${Math.round(cue.sttConfidence * 100)}%`}
@@ -185,6 +241,27 @@ export function CurrentSentenceTab({ cue, materialId }: { cue: CueDTO | null; ma
           <MarkdownView source={notePreview} />
         )}
       </section>
+
+      {/* AI 关卡页弹窗（沙箱 iframe：无同源权限，CSP 由服务路由下发） */}
+      {levelOpen !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setLevelOpen(null)}>
+          <div className="deckle flex h-[80dvh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border bg-background" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+              <h4 className="font-serif text-sm">本句闯关 · AI 关卡</h4>
+              <button onClick={() => setLevelOpen(null)} aria-label="关闭关卡" className="flex size-8 items-center justify-center rounded">
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+            {/* sandbox 不带 allow-same-origin：页面脚本无法触达父页与 Cookie */}
+            <iframe
+              src={`/artifacts/${levelOpen}`}
+              title="AI 关卡"
+              sandbox="allow-scripts"
+              className="flex-1 border-0"
+            />
+          </div>
+        </div>
+      )}
 
       {/* toast 提示（复用全局样式，居底浮出） */}
       {toast && (

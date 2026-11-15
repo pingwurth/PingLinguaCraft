@@ -12,6 +12,9 @@ import { Inter, Newsreader } from 'next/font/google';
 import { preload } from 'react-dom';
 import './globals.css';
 import { AppShell } from '@/components/shell/AppShell';
+import { AssistantProvider } from '@/features/assistant/AssistantContext';
+import { Assistant } from '@/features/assistant/Assistant';
+import { SelectionAsk } from '@/features/assistant/SelectionAsk';
 import { Providers } from './providers';
 
 /** Inter：界面功能字体（导航、控件、输入、数据标签） */
@@ -64,10 +67,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     /* html 元素：挂载字体 CSS 变量（图标字体见 globals.css 的 @font-face） */
     <html lang="zh-CN" className={`${inter.variable} ${newsreader.variable}`}>
-      {/* body 元素：承载应用外壳与页面内容（Providers 提供 react-query 上下文） */}
+      {/* body 元素：承载应用外壳与页面内容（Providers 数据层 + AssistantProvider 侍读层） */}
       <body className="antialiased">
         <Providers>
-          <AppShell>{children}</AppShell>
+          <AssistantProvider>
+            <AppShell>{children}</AppShell>
+            {/* AI 侍读：悬浮球 + 抽屉 + 划词入口（全页面存在，需求 15） */}
+            <Assistant />
+            <SelectionAsk />
+          </AssistantProvider>
         </Providers>
       </body>
     </html>

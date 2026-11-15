@@ -9,6 +9,7 @@ profile 形态（web 端 provider_profiles 解析后随请求传入）：
 import asyncio
 from typing import Any
 
+import orjson
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -255,13 +256,21 @@ def _as_str_list(result: Any, expected: int) -> list[str]:
 
 
 class LLMRequest(BaseModel):
-    """LLM 请求：AI 解析 / 单词笔记 / 关卡生成等（M1 非流式）"""
+    """LLM 请求：AI 解析 / 单词笔记 / 关卡生成等（非流式）"""
 
     profile: dict
     system: str | None = None
     user: str
     temperature: float | None = None
     want_json: bool = False
+
+
+class LLMStreamRequest(BaseModel):
+    """LLM 流式请求（AI 侍读）：完整多轮 messages，SSE 增量返回"""
+
+    profile: dict
+    messages: list[dict]
+    temperature: float | None = None
 
 
 @router.post("/llm/chat")
@@ -401,3 +410,27 @@ async def yt_download_job_handler(params: dict, job: Job) -> dict:
     job.message = "下载完成"
     job.progress = 1.0
     return result
+
+
+@router.post("/llm/chat/stream")
+async def llm_chat_stream(req: LLMStreamRequest):
+    """流式对话（AI 侍读）：云端 SSE → 引擎 SSE 透传（text/event-stream）"""
+    from fastapi.responses import StreamingResponse  # noqa: PLC0415
+
+    profile = req.profile
+    if profile.get("kind") != "cloud":
+        raise HTTPException(status_code=400, detail="LLM 档案必须提供云端 OpenAI 兼容端点")
+
+    async def gen():
+        try:
+            async for piece in openai_compat.chat_stream(
+                profile["endpoint_url"], profile.get("api_key"), profile["model"],
+                req.messages, temperature=req.temperature,
+            ):
+                # SSE 数据行（增量 JSON，避免裸文本里的换行破坏协议）
+                yield f"data: {orjson.dumps({'delta': piece}).decode()}\n\n"
+        except openai_compat.OpenAICompatError as exc:
+            yield f"data: {orjson.dumps({'error': str(exc)}).decode()}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")

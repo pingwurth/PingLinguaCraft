@@ -457,3 +457,29 @@ export const quizAttempts = sqliteTable(
     index('idx_quiz_attempts_wrong').on(t.isCorrect),
   ]
 );
+
+/* ---------------------------------------------------------------------------
+ * 闯关成绩（M3，需求 17：六玩法各记最好成绩）
+ * ------------------------------------------------------------------------- */
+export const challengeRecords = sqliteTable(
+  'challenge_records',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').notNull().default(1),
+    materialId: integer('material_id')
+      .notNull()
+      .references(() => materials.id, { onDelete: 'cascade' }),
+    /** 玩法：grid（九宫格拼句）/ dictation / shadow_score（跟读评分）/
+     * shadowing（影子跟读）/ recite（全文背诵）/ scenario（情景实战） */
+    mode: text('mode').notNull(),
+    /** 最好成绩 0~100 */
+    score: real('score').notNull(),
+    /** 明细 JSON（各句得分/耗时等） */
+    detailJson: text('detail_json'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('uq_challenge_mode').on(t.materialId, t.mode),
+    index('idx_challenge_material').on(t.materialId),
+  ]
+);
