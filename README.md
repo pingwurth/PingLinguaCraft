@@ -31,7 +31,7 @@ uv run --directory services/ai-engine uvicorn app.main:app --port 8765
 | 目录 | 说明 |
 |---|---|
 | `apps/web` | Next.js 15 应用（UI + API + SQLite/Drizzle + serwist PWA） |
-| `apps/mobile` | Expo 应用骨架（expo-av 播放，复用 core，连局域网） |
+| `apps/mobile` | Expo 应用骨架（expo-audio 播放，复用 core，连局域网） |
 | `packages/core` | 双端共享纯逻辑（字幕解析/分词/分句/SRS） |
 | `services/ai-engine` | 本地 AI 引擎（FastAPI：STT/TTS/对齐/翻译/LLM） |
 | `docs/` | 需求（inspiration.md）与设计稿（ui/ + 设计系统 DESIGN.md） |

@@ -8,9 +8,11 @@
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { MarkdownView } from '@/components/MarkdownView';
-import { api, type JobDTO } from '@/lib/api';
+import { api } from '@/lib/api';
+import { waitForJob } from '@/lib/jobs/wait';
 
 /** 词本形态 */
 interface BookDTO {
@@ -55,14 +57,6 @@ export default function WordsPage() {
     enabled: !!current,
   });
 
-  /* AI 笔记任务轮询（展开的词在 pending 时轮询） */
-  const aiJob = useQuery({
-    queryKey: ['ai-note-job', expanded],
-    queryFn: () => api<{ jobs: JobDTO[] }>('/api/jobs'),
-    enabled: false, // 由 mutation onSuccess 手动触发一次刷新
-  });
-  void aiJob;
-
   /* 建词本 */
   const createBook = useMutation({
     mutationFn: () => api('/api/word-books', { method: 'POST', body: JSON.stringify({ name: newBook }) }),
@@ -72,26 +66,29 @@ export default function WordsPage() {
     },
   });
 
-  /** 生成 AI 笔记（任务） */
+  /** 生成 AI 笔记（任务内联轮询至终态；失败向下抛由 isPending/isError 呈现） */
   const genNote = useMutation({
-    mutationFn: (wordId: number) => api<{ jobId: string }>(`/api/words/${wordId}/ai-note`, { method: 'POST' }),
-    onSuccess: (_r, wordId) => {
-      // 轮询任务完成（简化：定时刷新词表直至 ready/failed）
-      const timer = setInterval(() => {
-        void words.refetch();
-        const w = words.data?.words.find((x) => x.id === wordId);
-        if (w && w.aiNoteStatus !== 'pending') clearInterval(timer);
-      }, 2000);
-      setTimeout(() => clearInterval(timer), 120_000);
+    mutationFn: async (wordId: number) => {
+      const r = await api<{ jobId: string }>(`/api/words/${wordId}/ai-note`, { method: 'POST' });
+      await waitForJob(r.jobId);
     },
+    onSuccess: () => void words.refetch(),
   });
 
   return (
     /* 页面容器：移动单列 / 桌面两栏 */
     <div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-12 md:py-10">
       <header className="mb-6">
+        {/* 页标题 */}
         <h2 className="font-serif text-2xl md:text-3xl">词藏</h2>
-        <p className="mt-1 text-sm text-ochre">划词收录，日积月累（复习系统将在 M4 交付）</p>
+        {/* 副标题：复习入口指引（FSRS-6 已交付，去演练场轮转牢记） */}
+        <p className="mt-1 text-sm text-ochre">
+          划词收录，日积月累 ——{' '}
+          <Link href="/review" className="underline underline-offset-2 hover:text-primary">
+            智能复习
+          </Link>{' '}
+          轮转牢记
+        </p>
       </header>
 
       <div className="flex flex-col gap-6 md:flex-row">
@@ -153,6 +150,8 @@ export default function WordsPage() {
                   expanded={expanded === w.id}
                   onToggle={() => setExpanded(expanded === w.id ? null : w.id)}
                   onGenNote={() => genNote.mutate(w.id)}
+                  notePending={genNote.isPending && expanded === w.id}
+                  noteError={genNote.isError && expanded === w.id ? (genNote.error instanceof Error ? genNote.error.message : '生成失败') : null}
                   onSaved={() => void words.refetch()}
                 />
               ))}
@@ -172,12 +171,18 @@ function WordRow({
   expanded,
   onToggle,
   onGenNote,
+  notePending,
+  noteError,
   onSaved,
 }: {
   word: WordDTO;
   expanded: boolean;
   onToggle: () => void;
   onGenNote: () => void;
+  /** AI 笔记生成中（父级 mutation 状态下发，驱动按钮禁用与文案） */
+  notePending: boolean;
+  /** AI 笔记生成失败信息（null=无失败） */
+  noteError: string | null;
   onSaved: () => void;
 }) {
   const [editNote, setEditNote] = useState(false);
@@ -200,18 +205,10 @@ function WordRow({
         // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成（幂等分支只对首次）
         body: JSON.stringify({ force: Boolean(deep.data?.etymology && deep.data?.frames) }),
       });
-      if (r.cached) return;
-      if (r.jobId) {
-        // 轮询至终态后刷新
-        const timer = setInterval(async () => {
-          const { job } = await api<{ job: { status: string } }>(`/api/jobs/${r.jobId}`);
-          if (job.status === 'succeeded' || job.status === 'failed') {
-            clearInterval(timer);
-            void deep.refetch();
-          }
-        }, 1500);
-        setTimeout(() => clearInterval(timer), 120_000);
-      }
+      if (r.cached || !r.jobId) return;
+      // 轮询收在 mutationFn 内：isPending 全程为真（不会提前恢复可点致重复建任务），
+      // 终态/失败/超时都有明确出口，卸载也不留游离定时器
+      await waitForJob(r.jobId);
     },
     onSuccess: () => void deep.refetch(),
   });
@@ -248,6 +245,7 @@ function WordRow({
           <div className="mb-3">
             <div className="mb-1.5 flex items-center justify-between">
               <h4 className="text-xs font-medium text-muted-foreground">深学卡 · 词源与构架</h4>
+              {/* 深学卡生成按钮（pending 全程禁用，防重复建任务） */}
               <button
                 onClick={() => genDeep.mutate()}
                 disabled={genDeep.isPending}
@@ -257,6 +255,10 @@ function WordRow({
                 {deep.data?.etymology && deep.data?.frames ? '重新生成' : genDeep.isPending ? '生成中…' : '生成'}
               </button>
             </div>
+            {/* 深学卡生成失败提示 */}
+            {genDeep.isError && (
+              <p className="mb-1.5 text-xs text-destructive">生成失败：{genDeep.error instanceof Error ? genDeep.error.message : '未知错误'}</p>
+            )}
             {deep.isLoading ? (
               <p className="text-xs text-muted-foreground">装载中…</p>
             ) : deep.data?.etymology ? (
@@ -265,7 +267,7 @@ function WordRow({
                 <p className="text-sm">{deep.data.etymology.origin}</p>
                 {/* 构词成分（拓扑根节点） */}
                 {deep.data.etymology.roots.length > 0 && (
-                  <div className="mt-2 border-l-2 border-[#b91c1c]/40 pl-3">
+                  <div className="mt-2 border-l-2 border-primary/40 pl-3">
                     {deep.data.etymology.roots.map((r, i) => (
                       <p key={i}>
                         <span className="font-serif font-medium">{r.part}</span>
@@ -343,12 +345,18 @@ function WordRow({
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <h4 className="text-xs font-medium text-muted-foreground">AI 笔记</h4>
-              <span className="hidden" />
-              <button onClick={onGenNote} className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary">
+              {/* AI 笔记生成按钮（pending 全程禁用，防重复建任务） */}
+              <button
+                onClick={onGenNote}
+                disabled={notePending}
+                className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary disabled:opacity-50"
+              >
                 <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                {word.aiNoteStatus === 'ready' ? '重新生成' : '生成'}
+                {notePending ? '生成中…' : word.aiNoteStatus === 'ready' ? '重新生成' : '生成'}
               </button>
             </div>
+            {/* AI 笔记生成失败提示 */}
+            {noteError && <p className="mb-1.5 text-xs text-destructive">生成失败：{noteError}</p>}
             {word.aiNoteStatus === 'pending' ? (
               <p className="text-xs text-primary">AI 笔记生成中…（可在本页等待，或稍后回来查看）</p>
             ) : word.aiNoteMd ? (

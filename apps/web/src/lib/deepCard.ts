@@ -2,7 +2,8 @@
  * 深学卡领域逻辑（M4：词源拓扑 + 仿写构架，设计稿 _6 词源溯流 / ai_2 深学卡）
  *
  * 一次 LLM 调用产出两部分：词源树（JSON，前端渲染拓扑）+ 仿写构架（句型模板）。
- * zod 严格校验 + 修复提示词。
+ * zod 严格校验；校验失败的修复提示词与测验共用 quiz.ts 的 repairPrompt
+ * （调用-校验-修复循环在 pipeline.ts 的 structuredLLM 单点实现）。
  */
 
 import { z } from 'zod';
@@ -67,15 +68,4 @@ export const DEEP_SYSTEM =
  */
 export function buildDeepPrompt(word: string, example: string | null): string {
   return `单词：${word}\n语境例句：${example ?? '（无）'}\n\n请给出词源树与仿写构架。`;
-}
-
-/**
- * zod 失败 → 修复提示
- */
-export function deepRepairPrompt(issues: z.ZodIssue[]): string {
-  const detail = issues
-    .slice(0, 4)
-    .map((i) => `${i.path.join('.')}: ${i.message}`)
-    .join('；');
-  return `你上一条输出未通过校验（${detail}）。请严格按要求的 JSON 结构重新输出，不要任何解释。`;
 }

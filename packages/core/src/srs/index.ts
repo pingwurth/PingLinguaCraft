@@ -18,6 +18,7 @@ export {
   nextRecallStability,
   nextForgetStability,
   stabilityToInterval,
+  calendarDaysBetween,
   fsrsSchedule,
 } from './fsrs';
 export type { FSRSRating, FSRSState, FSRSResult, FSRSOptions } from './fsrs';

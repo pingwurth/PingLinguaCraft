@@ -10,8 +10,6 @@ import {
   Pressable,
   RefreshControl,
   SafeAreaView,
-  ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +18,7 @@ import {
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useAudioPlayer } from 'expo-audio';
 import type { AudioStatus } from 'expo-audio';
+import { findCueIndex } from '@pinglc/core';
 import { api, getBaseUrl, setBaseUrl, type Collection, type CueDTO, type MaterialListItem } from './lib/api';
 
 /** 纸墨色板（与 web 设计 token 一致） */
@@ -131,20 +130,22 @@ export default function App() {
     }
   }, [player, screen]);
 
-  /* 播放状态订阅：currentTime → 激活句跟随高亮（与 web 端同语义） */
+  /* 播放状态订阅：currentTime → 激活句跟随高亮（二分查句与 web 端共用
+     @pinglc/core 的 findCueIndex；变了才 setState，不做每事件线性扫描） */
   useEffect(() => {
     if (screen.name !== 'player') return;
     const sub = player.addListener('playbackStatusUpdate', (st: AudioStatus) => {
       const t = (st.currentTime ?? 0) * 1000;
-      const idx = cues.findIndex((c) => t >= c.startMs && t < c.endMs);
-      if (idx >= 0) setActiveCue(idx);
+      const idx = findCueIndex(cues, t);
+      // 句间空隙返回 -1：保留上一句高亮（不闪清、计数不出现「第 0 句」）
+      if (idx !== -1) setActiveCue((prev) => (prev === idx ? prev : idx));
       // 播放态以音频事实为准（不读 state——effect 闭包里的 playing 是过期快照，
       // 播放结束/被打断时图标会卡在 ❚❚）
       setPlaying(Boolean(st.playing));
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen.name === 'player' ? screen.material.id : null, player]);
+  }, [screen.name === 'player' ? screen.material.id : null, player, cues]);
 
   /* —— 屏幕渲染 —— */
 
@@ -229,7 +230,7 @@ export default function App() {
           renderItem={({ item }) => (
             <Pressable
               style={styles.card}
-              onPress={() => void openMaterial(item, screen.name === 'collection' ? screen.collection : { id: -1, name: '', materialCount: 0 })}
+              onPress={() => void openMaterial(item, screen.collection)}
               disabled={item.subtitleStatus !== 'ready'}
             >
               <Text style={styles.cardTitle}>{item.title}</Text>

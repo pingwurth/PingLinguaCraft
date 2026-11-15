@@ -5,7 +5,10 @@
  * 词级时间戳、字幕句段（cue）、材料、学习进度等。
  * 这些类型与数据库 schema（apps/web/src/lib/db/schema.ts）字段一一对应，
  * 但保持纯数据形态（无 ORM 依赖），便于双端复用。
+ * API 响应 DTO（双端共用的接口契约）见 ./api.ts。
  */
+
+export * from './api';
 
 /**
  * 词级时间戳：STT/对齐产出的单个单词信息

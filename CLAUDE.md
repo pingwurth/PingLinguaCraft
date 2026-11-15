@@ -43,7 +43,7 @@ pnpm monorepo，四个工作区：
 | `apps/web` | Web 应用（UI + 全部业务 API + SQLite） | Next.js 15 / React 19 / Tailwind v4 / Drizzle / better-sqlite3（状态/数据请求库在真正引入时再装） |
 | `packages/core` | 双端共享纯逻辑（字幕解析/分词/分句/SRS/类型） | 纯 TS，**零运行时依赖（强制）**，以 TS 源码经 transpilePackages 消费 |
 | `services/ai-engine` | 本地 AI 引擎 | FastAPI（uv 管理，Python **3.12 锁定**——whisperx 兼容性），仅监听 127.0.0.1:8765 |
-| `apps/mobile` | Expo 应用（M5 骨架已建：设置→藏经阁→基础播放页，expo-av） | 复用 @pinglc/core，Metro 适配 pnpm workspace |
+| `apps/mobile` | Expo 应用（M5 骨架已建：设置→藏经阁→基础播放页，expo-audio） | 复用 @pinglc/core，Metro 适配 pnpm workspace |
 
 关键架构约定（违反会破坏整体设计）：
 

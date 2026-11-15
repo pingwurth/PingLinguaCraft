@@ -1,9 +1,19 @@
 /**
- * 服务端 API 客户端（局域网 web 服务）
+ * 服务端 API 客户端（局域网 web 服务，Expo 端）
  *
- * BASE_URL 解析顺序：expo-runtime 全局 __PINGLC_BASE_URL__（App 首屏可写入）→
- * 默认 http://<本机局域网 IP>:3000 估摸值（启动页提供设置输入覆盖）。
+ * 基址为内存态模块变量：App 重启后归零，需在设置屏重输（M5 骨架暂不做
+ * 持久化，后续可接 AsyncStorage 记住上次地址）。
+ * 响应解析与错误契约（{ error } → 抛错）复用 @pinglc/core 的
+ * parseApiResponse，与 web 端同一实现；领域 DTO 类型同样来自 @pinglc/core
+ * 单一来源（此处再导出，双端契约不再手工复制漂移）。
  */
+
+import { parseApiResponse } from '@pinglc/core';
+
+export type { Collection, MaterialListItem, CueDTO } from '@pinglc/core';
+
+/** 请求超时（毫秒）：网络对目标地址丢包不回 RST 时 fetch 永不 settle，必须兜底 */
+const REQUEST_TIMEOUT_MS = 8_000;
 
 /** API 基址（运行时可被 setBaseUrl 更新） */
 let baseUrl = '';
@@ -24,48 +34,43 @@ export function getBaseUrl(): string {
 }
 
 /**
- * 通用请求：非 2xx 抛错（消息可展示）
+ * 通用请求：8 秒超时；超时/非 2xx 抛错（消息可展示）
+ * @param path 接口路径（/api/…）
+ * @param init fetch 参数
  */
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!baseUrl) throw new Error('未设置服务地址');
-  const resp = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  const text = await resp.text();
-  let data: unknown = null;
+  // 手动 AbortController + 定时器（Hermes 无 AbortSignal.timeout）。
+  // 调用方自带 signal 时桥接到内部控制器（外部取消同样中断请求），
+  // 且不吞掉外部取消的 AbortError（只把「超时」翻译成人话）
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, REQUEST_TIMEOUT_MS);
+  const external = init?.signal;
+  const onExternalAbort = () => ctrl.abort();
+  if (external) {
+    // 已中止的 signal 不会再触发 abort 事件——直接中止内部控制器
+    if (external.aborted) ctrl.abort();
+    else external.addEventListener('abort', onExternalAbort);
+  }
   try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    /* 非 JSON */
+    const resp = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      signal: ctrl.signal,
+      // FormData（未来上传场景）不能强设 Content-Type（boundary 由 fetch 生成）
+      headers: init?.body instanceof FormData ? (init?.headers ?? {}) : { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    });
+    return await parseApiResponse<T>(resp);
+  } catch (e) {
+    if (timedOut) {
+      throw new Error(`连接超时（${REQUEST_TIMEOUT_MS / 1000} 秒），请检查地址与网络`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    external?.removeEventListener('abort', onExternalAbort);
   }
-  if (!resp.ok) {
-    throw new Error((data as { error?: string } | null)?.error ?? `请求失败 ${resp.status}`);
-  }
-  return data as T;
-}
-
-/* ---------- 领域类型（@pinglc/core 的纯数据形态直用） ---------- */
-
-export interface Collection {
-  id: number;
-  name: string;
-  materialCount: number;
-}
-
-export interface MaterialListItem {
-  id: number;
-  title: string;
-  sourceType: string;
-  subtitleStatus: string;
-  sentenceCount: number | null;
-}
-
-export interface CueDTO {
-  id: number;
-  index: number;
-  startMs: number;
-  endMs: number;
-  textEn: string;
-  textZh: string | null;
 }

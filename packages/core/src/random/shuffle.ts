@@ -51,3 +51,25 @@ export function seededShuffle<T>(items: readonly T[], seed: number | string): T[
   }
   return out;
 }
+
+/**
+ * 种子采样（不放回）：同一 (数组, k, 种子) 恒得同一批结果；不修改原数组。
+ * 只做 k 次随机交换（部分 Fisher-Yates），不做全量洗牌——大池子只取少数
+ * 几项（如复习页从 200 词干扰池取 3 项）时避免整池洗牌的开销。
+ * @param items 待采样数组
+ * @param k     采样数量（超出数组长度时取全部）
+ * @param seed  种子（数字或字符串）
+ * @returns 采样结果（保持确定性）
+ */
+export function seededPick<T>(items: readonly T[], k: number, seed: number | string): T[] {
+  const rand = typeof seed === 'number' ? mulberry32(seed) : mulberry32(hashSeed(seed));
+  const out = [...items];
+  const n = Math.min(k, out.length);
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(rand() * (out.length - i));
+    const tmp = out[i]!;
+    out[i] = out[j]!;
+    out[j] = tmp;
+  }
+  return out.slice(0, n);
+}

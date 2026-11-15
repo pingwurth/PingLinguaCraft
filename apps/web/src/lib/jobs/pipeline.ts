@@ -24,6 +24,7 @@ import {
   parseVtt,
   type WordTiming,
 } from '@pinglc/core';
+import type { z } from 'zod';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import {
   cues as cuesTable,
@@ -40,9 +41,9 @@ import {
   engineSubmitJob,
 } from '@/lib/server/engine';
 import { materialDir } from '@/lib/server/media';
-import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { resolveProfile, toEngineProfile, type ResolvedProfile } from '@/lib/server/providers';
 import { QUIZ_SYSTEM, buildQuizPrompt, QuizSchema, repairPrompt } from '@/lib/quiz';
-import { DEEP_SYSTEM, buildDeepPrompt, DeepCardSchema, deepRepairPrompt } from '@/lib/deepCard';
+import { DEEP_SYSTEM, buildDeepPrompt, DeepCardSchema } from '@/lib/deepCard';
 
 /** 在途任务注册表（进程内；重启后为空 → recovery 判定依据） */
 const _inflight = new Set<string>();
@@ -840,6 +841,67 @@ function payloadOriginSentence(db: ReturnType<typeof getDb>, cueId: number | nul
 export { updateJob as updateJobRow };
 
 /* ---------------------------------------------------------------------------
+ * 结构化 LLM 调用（测验 / 深学卡共用）
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 结构化 LLM 调用：云档案守卫 → /llm/chat want_json 生成 → zod 校验 →
+ * 失败把错误回喂修复重试一次 → 仍失败抛 EngineError。
+ * 此前测验与深学卡各持一份逐字相同的调用-校验-修复循环，重试策略/温度/
+ * 提示词的任何调整都要改多处且必然漂移——收敛为单一实现。
+ * @param opts.schema     zod schema（want_json 产物的安全解析）
+ * @param opts.system     系统提示
+ * @param opts.user       用户提示
+ * @param opts.label      产物名（错误文案用，如「测验」「深学卡」）
+ * @param opts.onProgress 进度回调（stage 区分首 generation 与修复重试两段）
+ * @returns 解析后的数据与生效档案（provider 落库溯源用）
+ */
+async function structuredLLM<T>(opts: {
+  schema: z.ZodType<T>;
+  system: string;
+  user: string;
+  label: string;
+  onProgress?: (stage: 'generate' | 'repair', message: string) => void;
+}): Promise<{ data: T; profile: ResolvedProfile }> {
+  const profile = resolveProfile('llm');
+  if (!profile || profile.kind !== 'cloud') {
+    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+  }
+
+  // 进度文案复用调用方的领域 label（如「深学卡」「测验」），任务面板不丢上下文
+  opts.onProgress?.('generate', `${opts.label}生成中（${profile.name}）…`);
+  let r = await enginePost<{ json: unknown }>('/llm/chat', {
+    profile: toEngineProfile(profile),
+    system: opts.system,
+    user: opts.user,
+    want_json: true,
+    temperature: 0.4,
+  });
+  let parsed = opts.schema.safeParse(r.json);
+
+  // 修复重试一次（zod 校验失败 → 把错误回喂，修复提示词共用 quiz.ts 的 repairPrompt）
+  if (!parsed.success) {
+    opts.onProgress?.('repair', '结构校验未过，修复重试…');
+    r = await enginePost<{ json: unknown }>('/llm/chat', {
+      profile: toEngineProfile(profile),
+      system: opts.system,
+      user: `${opts.user}\n\n${repairPrompt(parsed.error.issues)}`,
+      want_json: true,
+      temperature: 0.2,
+    });
+    parsed = opts.schema.safeParse(r.json);
+  }
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.')}: ${i.message}`)
+      .join('；');
+    throw new EngineError(`模型两次都未产出合规${opts.label}：${detail}`, 0);
+  }
+  return { data: parsed.data, profile };
+}
+
+/* ---------------------------------------------------------------------------
  * 测验生成管线（M2，需求 12）
  * ------------------------------------------------------------------------- */
 
@@ -848,10 +910,6 @@ export { updateJob as updateJobRow };
  */
 async function aiQuizPipeline(jobId: string, materialId: number): Promise<void> {
   const db = getDb();
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
-    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
-  }
   const material = db
     .select()
     .from(materialsTable)
@@ -876,38 +934,16 @@ async function aiQuizPipeline(jobId: string, materialId: number): Promise<void> 
     sampled.push(allCues[idx]!);
   }
 
-  updateJob(jobId, { progress: 0.2, message: `AI 出题中（${profile.name}）…` });
-  const prompt = buildQuizPrompt(material.title, sampled);
+  updateJob(jobId, { progress: 0.2, message: `AI 出题中（采样 ${sampled.length} 句）…` });
 
-  // 第一次生成
-  let r = await enginePost<{ json: unknown }>('/llm/chat', {
-    profile: toEngineProfile(profile),
+  // 结构化生成（共享 structuredLLM：校验 + 修复重试 + 档案守卫）
+  const { data: quiz, profile } = await structuredLLM({
+    schema: QuizSchema,
     system: QUIZ_SYSTEM,
-    user: prompt,
-    want_json: true,
-    temperature: 0.4,
+    user: buildQuizPrompt(material.title, sampled),
+    label: '测验',
+    onProgress: (stage, message) => updateJob(jobId, { progress: stage === 'generate' ? 0.3 : 0.6, message }),
   });
-  let parsed = QuizSchema.safeParse(r.json);
-
-  // 修复重试一次（zod 校验失败 → 把错误回喂）
-  if (!parsed.success) {
-    updateJob(jobId, { progress: 0.6, message: '结构校验未过，修复重试…' });
-    r = await enginePost<{ json: unknown }>('/llm/chat', {
-      profile: toEngineProfile(profile),
-      system: QUIZ_SYSTEM,
-      user: `${prompt}\n\n${repairPrompt(parsed.error.issues)}`,
-      want_json: true,
-      temperature: 0.2,
-    });
-    parsed = QuizSchema.safeParse(r.json);
-  }
-  if (!parsed.success) {
-    const detail = parsed.error.issues
-      .slice(0, 3)
-      .map((i) => `${i.path.join('.')}: ${i.message}`)
-      .join('；');
-    throw new EngineError(`模型两次都未产出合规测验：${detail}`, 0);
-  }
 
   db.insert(aiArtifacts)
     .values({
@@ -916,11 +952,11 @@ async function aiQuizPipeline(jobId: string, materialId: number): Promise<void> 
       subjectType: 'material',
       subjectId: materialId,
       provider: profile.name,
-      contentMd: JSON.stringify(parsed.data),
+      contentMd: JSON.stringify(quiz),
       createdAt: new Date(),
     })
     .run();
-  updateJob(jobId, { progress: 1, message: `已生成测验「${parsed.data.title}」（${parsed.data.questions.length} 题）` });
+  updateJob(jobId, { progress: 1, message: `已生成测验「${quiz.title}」（${quiz.questions.length} 题）` });
 }
 
 /* ---------------------------------------------------------------------------
@@ -997,63 +1033,45 @@ async function aiLevelPipeline(jobId: string, cueId: number): Promise<void> {
  */
 async function deepCardPipeline(jobId: string, payload: { wordId: number }): Promise<void> {
   const db = getDb();
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
-    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
-  }
   const word = db.select().from(wordsTable).where(eq(wordsTable.id, payload.wordId)).all()[0];
   if (!word) throw new Error('单词不存在');
   const example = payloadOriginSentence(db, word.originCueId);
 
-  updateJob(jobId, { progress: 0.2, message: `深学卡生成中（${profile.name}）…` });
-  const prompt = buildDeepPrompt(word.displayForm, example === '（无）' ? null : example);
-
-  let r = await enginePost<{ json: unknown }>('/llm/chat', {
-    profile: toEngineProfile(profile),
+  // 结构化生成（共享 structuredLLM：校验 + 修复重试 + 档案守卫）
+  const { data: card, profile } = await structuredLLM({
+    schema: DeepCardSchema,
     system: DEEP_SYSTEM,
-    user: prompt,
-    want_json: true,
-    temperature: 0.4,
+    user: buildDeepPrompt(word.displayForm, example === '（无）' ? null : example),
+    label: '深学卡',
+    onProgress: (stage, message) => updateJob(jobId, { progress: stage === 'generate' ? 0.2 : 0.6, message }),
   });
-  let parsed = DeepCardSchema.safeParse(r.json);
-  if (!parsed.success) {
-    updateJob(jobId, { progress: 0.6, message: '结构校验未过，修复重试…' });
-    r = await enginePost<{ json: unknown }>('/llm/chat', {
-      profile: toEngineProfile(profile),
-      system: DEEP_SYSTEM,
-      user: `${prompt}\n\n${deepRepairPrompt(parsed.error.issues)}`,
-      want_json: true,
-      temperature: 0.2,
-    });
-    parsed = DeepCardSchema.safeParse(r.json);
-  }
-  if (!parsed.success) {
-    throw new EngineError(`模型两次都未产出合规深学卡：${parsed.error.issues[0]?.message ?? ''}`, 0);
-  }
 
   const now = new Date();
   // 词源树 → words.etymologyJson（词藏页直接渲染）
   // frames 即数组本体（zod intersection 输出 A & { frames: [...] }，解构所得
   // 为数组；e2e 已验证前端契约 Array<{pattern,tip}> 直读）
-  const { frames, ...etymology } = parsed.data;
-  db.update(wordsTable)
-    .set({ etymologyJson: JSON.stringify(etymology), updatedAt: now })
-    .where(eq(wordsTable.id, word.id))
-    .run();
-  // 仿写构架 → ai_artifacts（kind=imitation，同词覆盖式更新：先删旧）
-  db.delete(aiArtifacts)
-    .where(and(eq(aiArtifacts.kind, 'imitation'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, word.id)))
-    .run();
-  db.insert(aiArtifacts)
-    .values({
-      userId: 1,
-      kind: 'imitation',
-      subjectType: 'word',
-      subjectId: word.id,
-      provider: profile.name,
-      contentMd: JSON.stringify(frames),
-      createdAt: now,
-    })
-    .run();
+  const { frames, ...etymology } = card;
+  // 仿写构架 → ai_artifacts（kind=imitation，同词覆盖式更新：先删旧）。
+  // 三条写库同一事务：中途崩溃不留「旧词源 + 构架尽失」的半张卡
+  db.transaction((tx) => {
+    tx.update(wordsTable)
+      .set({ etymologyJson: JSON.stringify(etymology), updatedAt: now })
+      .where(eq(wordsTable.id, word.id))
+      .run();
+    tx.delete(aiArtifacts)
+      .where(and(eq(aiArtifacts.kind, 'imitation'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, word.id)))
+      .run();
+    tx.insert(aiArtifacts)
+      .values({
+        userId: 1,
+        kind: 'imitation',
+        subjectType: 'word',
+        subjectId: word.id,
+        provider: profile.name,
+        contentMd: JSON.stringify(frames),
+        createdAt: now,
+      })
+      .run();
+  });
   updateJob(jobId, { progress: 1, message: '深学卡已生成' });
 }

@@ -23,7 +23,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '需要 wordId 与合法 rating' }, { status: 400 });
   }
   const db = getDb();
-  const word = db.select().from(words).where(eq(words.id, body.wordId)).all()[0];
+  // 热写路径只取 id 判存在（words 表含 aiNoteMd/etymologyJson 等大文本列，
+  // 逐次评分反序列化整行纯属浪费）
+  const word = db.select({ id: words.id }).from(words).where(eq(words.id, body.wordId)).all()[0];
   if (!word) return NextResponse.json({ error: '单词不存在' }, { status: 404 });
 
   // 现有卡（无则新卡）
@@ -33,7 +35,6 @@ export async function POST(request: Request) {
     .where(and(eq(srsCards.itemType, 'word'), eq(srsCards.itemId, word.id)))
     .all()[0];
   const now = new Date();
-  void card;
   const result = fsrsSchedule(
     card
       ? {

@@ -1,5 +1,5 @@
 {
-  "//": "@pinglc/core —— web 与 Expo 共享的纯逻辑层：字幕解析/序列化、分词、分句、SRS 算法、领域类型。刻意保持零运行时依赖，供双端无冲突复用",
+  "//": "@pinglc/core —— web 与 Expo 共享的纯逻辑层：字幕解析/序列化、分词、分句、SRS 算法、媒体时间轴、API 客户端内核、领域类型。刻意保持零运行时依赖，供双端无冲突复用",
   "name": "@pinglc/core",
   "version": "0.1.0",
   "private": true,
@@ -11,7 +11,9 @@
     "./subtitles": "./src/subtitles/index.ts",
     "./nlp": "./src/nlp/index.ts",
     "./srs": "./src/srs/index.ts",
-    "./types": "./src/types/index.ts"
+    "./types": "./src/types/index.ts",
+    "./media": "./src/media/index.ts",
+    "./api": "./src/api/index.ts"
   },
   "scripts": {
     "test": "vitest run",

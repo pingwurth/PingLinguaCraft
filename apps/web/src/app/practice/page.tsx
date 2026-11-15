@@ -166,7 +166,7 @@ export default function PracticePage() {
         )}
       </section>
 
-      <p className="mt-8 text-[11px] text-muted-foreground">SRS 记忆轮转复习将在 M4 里程碑在此就位。</p>
+      <p className="mt-8 text-[11px] text-muted-foreground">更多练习方式（跟读评分、闯关）随材料页陆续就位。</p>
     </div>
   );
 }
@@ -174,10 +174,11 @@ export default function PracticePage() {
 
 /** 智能复习入口（到期/新词统计 + 进入复习） */
 function ReviewEntry() {
+  // statsOnly=1 短路：只取三个统计数字，不建队/不取干扰池（那是复习页的活）
   const stats = useQuery({
     queryKey: ['review-queue-stats'],
     queryFn: () =>
-      api<{ stats: { totalWords: number; dueCount: number; newCount: number } }>('/api/review/queue?limit=1'),
+      api<{ stats: { totalWords: number; dueCount: number; newCount: number } }>('/api/review/queue?statsOnly=1'),
   });
   const s = stats.data?.stats;
   return (

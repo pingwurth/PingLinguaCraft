@@ -10,28 +10,12 @@
  */
 
 import { useEffect } from 'react';
+import { findCueIndex } from '@pinglc/core';
 import { usePlayer } from './store';
 
-/**
- * 找到包含时间 t 的句段下标（无命中返回 -1）
- * @param cues 句段数组（按 startMs 升序）
- * @param t 查询时间（毫秒）
- */
-export function findCueIndex(
-  cues: Array<{ startMs: number; endMs: number }>,
-  t: number
-): number {
-  let lo = 0;
-  let hi = cues.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const c = cues[mid]!;
-    if (t < c.startMs) hi = mid - 1;
-    else if (t >= c.endMs) lo = mid + 1;
-    else return mid;
-  }
-  return -1;
-}
+// findCueIndex（二分查当前句）已上移 @pinglc/core —— 与 Expo 端播放跟随共用；
+// 此处再导出保持播放器内部既有引用面稳定
+export { findCueIndex };
 
 /**
  * 启动 rAF 时钟：绑定媒体元素，驱动 store 的时间/激活句/循环回跳
