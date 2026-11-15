@@ -31,6 +31,7 @@ import {
   jobs as jobsTable,
   materials as materialsTable,
   words as wordsTable,
+  aiArtifacts,
 } from '@/lib/db/schema';
 import {
   EngineError,
@@ -40,6 +41,7 @@ import {
 } from '@/lib/server/engine';
 import { materialDir } from '@/lib/server/media';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { QUIZ_SYSTEM, buildQuizPrompt, QuizSchema, repairPrompt } from '@/lib/quiz';
 
 /** 在途任务注册表（进程内；重启后为空 → recovery 判定依据） */
 const _inflight = new Set<string>();
@@ -436,6 +438,9 @@ async function runPipeline(jobId: string): Promise<void> {
       case 'ai_note':
         await aiNotePipeline(jobId, JSON.parse(job.payloadJson ?? '{}'));
         break;
+      case 'ai_quiz':
+        await aiQuizPipeline(jobId, job.materialId!);
+        break;
       default:
         throw new Error(`未知管线类型：${job.type}`);
     }
@@ -826,3 +831,87 @@ function payloadOriginSentence(db: ReturnType<typeof getDb>, cueId: number | nul
 }
 
 export { updateJob as updateJobRow };
+
+/* ---------------------------------------------------------------------------
+ * 测验生成管线（M2，需求 12）
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 测验生成：采样句段 → LLM 出题 → zod 严格校验（失败带错误修复重试一次）→ 产物落库
+ */
+async function aiQuizPipeline(jobId: string, materialId: number): Promise<void> {
+  const db = getDb();
+  const profile = resolveProfile('llm');
+  if (!profile || profile.kind !== 'cloud') {
+    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+  }
+  const material = db
+    .select()
+    .from(materialsTable)
+    .where(eq(materialsTable.id, materialId))
+    .all()[0];
+  if (!material) throw new Error('材料不存在');
+
+  // 采样句段：按句序均匀取最多 12 句（开头/中间/结尾都覆盖）
+  const allCues = db
+    .select({ index: cuesTable.index, textEn: cuesTable.textEn, textZh: cuesTable.textZh })
+    .from(cuesTable)
+    .where(eq(cuesTable.materialId, materialId))
+    .all()
+    .sort((a, b) => a.index - b.index);
+  if (allCues.length < 3) throw new Error('句段太少，无法出题（至少 3 句）');
+  // 均匀采样：等距下标必然含首句与末句（step 取整会漏尾，这里用比例插值）
+  const SAMPLE_CAP = 12;
+  const cap = Math.min(SAMPLE_CAP, allCues.length);
+  const sampled: typeof allCues = [];
+  for (let k = 0; k < cap; k++) {
+    const idx = cap === 1 ? 0 : Math.round((k * (allCues.length - 1)) / (cap - 1));
+    sampled.push(allCues[idx]!);
+  }
+
+  updateJob(jobId, { progress: 0.2, message: `AI 出题中（${profile.name}）…` });
+  const prompt = buildQuizPrompt(material.title, sampled);
+
+  // 第一次生成
+  let r = await enginePost<{ json: unknown }>('/llm/chat', {
+    profile: toEngineProfile(profile),
+    system: QUIZ_SYSTEM,
+    user: prompt,
+    want_json: true,
+    temperature: 0.4,
+  });
+  let parsed = QuizSchema.safeParse(r.json);
+
+  // 修复重试一次（zod 校验失败 → 把错误回喂）
+  if (!parsed.success) {
+    updateJob(jobId, { progress: 0.6, message: '结构校验未过，修复重试…' });
+    r = await enginePost<{ json: unknown }>('/llm/chat', {
+      profile: toEngineProfile(profile),
+      system: QUIZ_SYSTEM,
+      user: `${prompt}\n\n${repairPrompt(parsed.error.issues)}`,
+      want_json: true,
+      temperature: 0.2,
+    });
+    parsed = QuizSchema.safeParse(r.json);
+  }
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.')}: ${i.message}`)
+      .join('；');
+    throw new EngineError(`模型两次都未产出合规测验：${detail}`, 0);
+  }
+
+  db.insert(aiArtifacts)
+    .values({
+      userId: 1,
+      kind: 'quiz',
+      subjectType: 'material',
+      subjectId: materialId,
+      provider: profile.name,
+      contentMd: JSON.stringify(parsed.data),
+      createdAt: new Date(),
+    })
+    .run();
+  updateJob(jobId, { progress: 1, message: `已生成测验「${parsed.data.title}」（${parsed.data.questions.length} 题）` });
+}

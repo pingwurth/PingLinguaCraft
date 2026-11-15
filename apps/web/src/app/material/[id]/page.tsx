@@ -13,11 +13,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Player } from '@/features/player/Player';
 import { CurrentSentenceTab } from '@/features/reading/CurrentSentenceTab';
 import { BilingualTab } from '@/features/reading/BilingualTab';
+import { DictationTab } from '@/features/practice/DictationTab';
+import { ShadowingTab } from '@/features/practice/ShadowingTab';
+import { QuizTab } from '@/features/practice/QuizTab';
 import { usePlayer } from '@/features/player/store';
 import { api, type CueDTO, type JobDTO, type MaterialDetail, type ProgressDTO } from '@/lib/api';
 
-/** 标签页标识（M2 扩展听写/跟读/测验） */
-type TabKey = 'current' | 'bilingual';
+/** 标签页标识（需求 7：当前句/双语精读/听写/跟读/测验） */
+type TabKey = 'current' | 'bilingual' | 'dictation' | 'shadowing' | 'quiz';
 
 /**
  * 播放页
@@ -102,18 +105,21 @@ export default function MaterialPage({ params }: { params: Promise<{ id: string 
         />
       ) : (
         <>
-          {/* 标签条（sticky 于播放器下方） */}
-          <nav className="deckle sticky top-[calc(env(safe-area-inset-top)+3.4rem)] z-10 -mx-3 mb-2 flex border-b bg-background/95 px-3 backdrop-blur md:static md:mx-0 md:px-0">
+          {/* 标签条（sticky 于播放器下方；横向滚动容纳 5 个标签） */}
+          <nav className="deckle sticky top-[calc(env(safe-area-inset-top)+3.4rem)] z-10 -mx-3 mb-2 flex overflow-x-auto border-b bg-background/95 px-3 backdrop-blur md:static md:mx-0 md:px-0">
             {(
               [
                 ['current', '当前句'],
                 ['bilingual', '双语精读'],
+                ['dictation', '听写'],
+                ['shadowing', '跟读'],
+                ['quiz', '测验'],
               ] as Array<[TabKey, string]>
             ).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setTab(key)}
-                className={`relative px-4 py-2.5 text-sm transition-colors ${
+                className={`relative shrink-0 px-4 py-2.5 text-sm transition-colors ${
                   tab === key ? 'font-medium text-primary' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -122,21 +128,15 @@ export default function MaterialPage({ params }: { params: Promise<{ id: string 
                 {tab === key && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />}
               </button>
             ))}
-            {/* M2+ 占位标签（灰显预告） */}
-            {['听写', '跟读', '测验'].map((label) => (
-              <span key={label} className="px-4 py-2.5 text-sm text-muted-foreground/40">
-                {label}
-              </span>
-            ))}
           </nav>
 
           {/* 标签内容 */}
           <div className="min-h-50dvh">
-            {tab === 'current' ? (
-              <CurrentSentenceTab cue={activeCue} materialId={materialId} />
-            ) : (
-              <BilingualTab cues={cues} material={material} />
-            )}
+            {tab === 'current' && <CurrentSentenceTab cue={activeCue} materialId={materialId} />}
+            {tab === 'bilingual' && <BilingualTab cues={cues} material={material} />}
+            {tab === 'dictation' && <DictationTab cues={cues} />}
+            {tab === 'shadowing' && <ShadowingTab cues={cues} />}
+            {tab === 'quiz' && <QuizTab materialId={materialId} />}
           </div>
         </>
       )}

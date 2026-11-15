@@ -42,6 +42,8 @@ interface PlayerState {
   controlsVisible: boolean;
   /** 点词朗读目标（读一次即清） */
   pendingSpeak: { text: string; nonce: number } | null;
+  /** 单句播放区间（听写/跟读用：播到 end 自动暂停；null=无） */
+  playRange: { startMs: number; endMs: number } | null;
 
   // ---- 动作 ----
   setCues: (cues: CueDTO[]) => void;
@@ -59,6 +61,7 @@ interface PlayerState {
   setControlsVisible: (v: boolean) => void;
   speakWord: (text: string) => void;
   clearPendingSpeak: () => void;
+  setPlayRange: (range: { startMs: number; endMs: number } | null) => void;
 }
 
 /** 全局播放器 store 单例 */
@@ -77,6 +80,7 @@ export const usePlayer = create<PlayerState>((set) => ({
   subtitleMode: 'bilingual',
   controlsVisible: true,
   pendingSpeak: null,
+  playRange: null,
 
   setCues: (cues) => set({ cues }),
   setActiveCueIndex: (activeCueIndex) => set({ activeCueIndex }),
@@ -102,4 +106,5 @@ export const usePlayer = create<PlayerState>((set) => ({
   setControlsVisible: (controlsVisible) => set({ controlsVisible }),
   speakWord: (text) => set({ pendingSpeak: { text, nonce: Date.now() } }),
   clearPendingSpeak: () => set({ pendingSpeak: null }),
+  setPlayRange: (playRange: { startMs: number; endMs: number } | null) => set({ playRange }),
 }));

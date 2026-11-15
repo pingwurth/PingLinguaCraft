@@ -52,6 +52,14 @@ export function useMediaClock(mediaRef: React.RefObject<HTMLVideoElement | null>
       const s = usePlayer.getState();
       const t = media.currentTime * 1000;
 
+      // —— 单句播放区间：到点自动暂停（听写/跟读的「听原文」）——
+      // 判定必须先于循环回跳：循环条件命中会提前 return，「听一次」将变成无限循环
+      if (s.playRange && t >= s.playRange.endMs && !media.paused) {
+        media.pause();
+        s.setPlayRange(null);
+        return;
+      }
+
       // —— 循环回跳（在渲染前完成，听感无断点）——
       if (s.loopMode === 'sentence' && s.activeCueIndex >= 0) {
         const cue = s.cues[s.activeCueIndex];

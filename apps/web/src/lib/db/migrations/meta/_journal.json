@@ -15,6 +15,13 @@
       "when": 1794689922231,
       "tag": "0001_wide_unicorn",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794704940245,
+      "tag": "0002_slimy_karma",
+      "breakpoints": true
     }
   ]
 }

@@ -428,3 +428,32 @@ export const aiArtifacts = sqliteTable(
   },
   (t) => [index('idx_artifacts_subject').on(t.subjectType, t.subjectId)]
 );
+
+/* ---------------------------------------------------------------------------
+ * 测验作答记录（M2）—— 错题回顾的数据源
+ * ------------------------------------------------------------------------- */
+export const quizAttempts = sqliteTable(
+  'quiz_attempts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').notNull().default(1),
+    materialId: integer('material_id')
+      .notNull()
+      .references(() => materials.id, { onDelete: 'cascade' }),
+    /** 来源测验产物 id（ai_artifacts.quiz） */
+    artifactId: integer('artifact_id'),
+    /** 题型：choice / cloze / qa */
+    questionType: text('question_type').notNull(),
+    /** 题目快照 JSON（题干/选项/正确答案/解析；题目本体随测验删除仍可回顾） */
+    questionJson: text('question_json').notNull(),
+    /** 用户作答 */
+    userAnswer: text('user_answer'),
+    /** 判定（qa 题为用户自评） */
+    isCorrect: integer('is_correct', { mode: 'boolean' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_quiz_attempts_material').on(t.materialId),
+    index('idx_quiz_attempts_wrong').on(t.isCorrect),
+  ]
+);

@@ -155,19 +155,38 @@ export function Player({
   useEffect(() => {
     const m = mediaRef.current;
     if (!m) return;
-    /** 跳播事件：detail = 毫秒时间点 */
+    /** 用户主动跳播：清空单句区间（残留会让正常播放在旧句尾意外自停） */
     const onSeek = (e: Event) => {
+      usePlayer.getState().setPlayRange(null);
       const ms = (e as CustomEvent<number>).detail;
       m.currentTime = ms / 1000 + 0.01;
       void m.play().catch(() => undefined);
     };
-    /** 暂停事件（点词朗读前调用，需求 8） */
-    const onPause = () => m.pause();
+    /** 暂停事件（点词朗读前调用，需求 8）——同时放弃单句区间 */
+    const onPause = () => {
+      usePlayer.getState().setPlayRange(null);
+      m.pause();
+    };
+    /** 单句播放事件（听写/跟读「听原文」）：detail = {startMs, endMs}
+     *  进入单句播放必须退出循环模式：循环回跳先于区间终点触发，
+     *  「听一次」会被循环回跳劫持成无限循环 */
+    const onPlayRange = (e: Event) => {
+      const range = (e as CustomEvent<{ startMs: number; endMs: number }>).detail;
+      const s = usePlayer.getState();
+      s.setLoopMode('none');
+      s.setPlayRange(range);
+      m.currentTime = range.startMs / 1000 + 0.01;
+      void m.play().catch(() => undefined);
+    };
     window.addEventListener('pinglc:seek', onSeek);
     window.addEventListener('pinglc:pause', onPause);
+    window.addEventListener('pinglc:play-range', onPlayRange);
     return () => {
       window.removeEventListener('pinglc:seek', onSeek);
       window.removeEventListener('pinglc:pause', onPause);
+      window.removeEventListener('pinglc:play-range', onPlayRange);
+      // 卸载清空（store 是模块单例，不清理会跨材料泄漏）
+      usePlayer.getState().setPlayRange(null);
     };
   }, []);
 
@@ -312,6 +331,8 @@ export function Player({
     if (!el || !mediaRef.current) return;
     const rect = el.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    // 手动拖拽 = 用户接管播放：放弃单句区间（否则残留区间会在旧句尾意外自停）
+    usePlayer.getState().setPlayRange(null);
     mediaRef.current.currentTime = ratio * (duration / 1000);
   };
   const scrubRatio = useMemo(() => {
