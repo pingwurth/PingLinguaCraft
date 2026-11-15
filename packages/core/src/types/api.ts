@@ -122,10 +122,16 @@ export interface TtsVoiceOption {
   label: string;
 }
 
-/** 双 TTS 引擎音色清单（GET /api/engine/tts-voices；edge 联网 / kokoro 本地离线） */
+/** TTS 音色清单（GET /api/engine/tts-voices；清单与默认值均只在引擎持一份，web 不硬编码） */
 export interface TtsVoiceOptions {
+  /** edge 联网引擎清单 */
   edge: TtsVoiceOption[];
+  /** kokoro 本地离线引擎清单 */
   kokoro: TtsVoiceOption[];
+  /** 云端（阿里云 WebSocket）系统音色清单 */
+  cloud: TtsVoiceOption[];
+  /** 三引擎默认音色（表单留空时的引擎侧兜底，展示在 placeholder） */
+  defaults: { edge: string; kokoro: string; cloud: string };
 }
 
 /** 口语评测音素级评分（引擎 /soe 归一化；matchTag 语义同词级） */

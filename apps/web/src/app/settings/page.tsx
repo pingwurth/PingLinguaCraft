@@ -41,20 +41,6 @@ const WHISPER_SPECS: Array<{ value: string; label: string }> = [
   { value: 'large-v3', label: '最准 · 引擎默认（推荐）' },
 ];
 
-/** 云端 TTS（阿里云 qwen-audio-3.0 系）的系统音色清单（存 paramsJson.voice）
- *  仅列系统音色；500+ 基础音色（qwen-audio-3.0-tts-{plus|flash}-xxx）可手输 */
-/** 云端 TTS 缺省音色（与引擎 aliyun_native.DEFAULT_TTS_VOICE 同值，改动须两侧同步） */
-const DEFAULT_CLOUD_TTS_VOICE = 'longanlingxin';
-const CLOUD_TTS_VOICES: Array<{ value: string; label: string }> = [
-  { value: 'longanlingxin', label: '龙安灵心 · 女 · 知心温暖 · plus 旗舰' },
-  { value: 'longanlufeng', label: '龙安鲁风 · 男 · 明亮开朗 · plus 旗舰' },
-  { value: 'longanfengyue', label: '龙安风悦 · 女 · 自然亲切 · flash' },
-  { value: 'longanyuanfei', label: '龙安元妃 · 女 · 高傲妃子音 · flash' },
-  { value: 'longanxiaoxin', label: '龙安小昕 · 女 · 亲切活泼 · flash' },
-  { value: 'loongmary', label: 'loongmary · 女 · 温暖英音 · flash' },
-  { value: 'loongjohn', label: 'loongjohn · 男 · 沉稳美音 · flash' },
-];
-
 /**
  * 本地对齐引擎下拉选项（值即档案 model 字段，未来 /align handler 按此分发：
  * whisperx=本机 wav2vec2 强制对齐；mfa:<声学模型名>=pinglc-mfa 镜像内烘焙的模型）
@@ -107,7 +93,8 @@ interface Draft {
    *  如 /api/v1/services/aigc/multimodal-generation/generation；OpenAI 兼容端点无需填写。
    *  （TTS 云端不存 apiPath——WebSocket 地址由端点 host 推导） */
   apiPath: string;
-  /** 云端 TTS 音色（paramsJson.voice）：阿里云系统音色清单见 CLOUD_TTS_VOICES，基础音色可手输 */
+  /** 云端 TTS 音色（paramsJson.voice）：系统音色清单经 /api/engine/tts-voices 的 cloud 字段
+   *  下发（基础音色可手输）；空串=不写 voice，用引擎默认音色 */
   cloudVoice: string;
   /** 编辑时原档案是否已配 Key（Key 只进不出，不回填进表单；留空保存=保持原值） */
   hasKey?: boolean;
@@ -129,7 +116,7 @@ function blankDraft(): Draft {
     secretId: '',
     scoreCoeff: '2',
     apiPath: '',
-    cloudVoice: DEFAULT_CLOUD_TTS_VOICE,
+    cloudVoice: '',
   };
 }
 
@@ -160,16 +147,22 @@ const CAP_RULES: Record<
     label: '语音转写 STT',
     cloudOnly: false,
     nameHint: { local: '如 Faster Whisper', cloud: '如 GLM ASR' },
-    // 云端档案可带原生 API 的接口路径（阿里云等），OpenAI 兼容端点留空
-    params: (d) => (d.kind === 'cloud' ? { apiPath: d.apiPath } : undefined),
+    // 云端档案可带原生 API 的接口路径（阿里云等），OpenAI 兼容端点留空；
+    // params 值一律 trim（服务端只 trim 顶层字段，文档复制常带首尾空格）
+    params: (d) => (d.kind === 'cloud' ? { apiPath: d.apiPath.trim() } : undefined),
   },
   tts: {
     label: '语音合成 TTS',
     cloudOnly: false,
     nameHint: { local: '如 Kokoro', cloud: '如 阿里云 TTS' },
-    // 本地档案带 engine（edge 联网 / kokoro 离线路由）；云端档案带音色
+    // 本地档案带 engine（edge 联网 / kokoro 离线路由）；云端档案带音色（trim 后
+    // 为空则不写——引擎按 DEFAULT_TTS_VOICE 兜底，且空值不污染缓存指纹）
     // （apiPath 已废弃——TTS 走 WebSocket 由端点推地址，历史档案残留无害）
-    params: (d) => (d.kind === 'local' ? { engine: d.engine } : { voice: d.cloudVoice }),
+    params: (d) => {
+      if (d.kind === 'local') return { engine: d.engine };
+      const voice = d.cloudVoice.trim();
+      return voice ? { voice } : {};
+    },
   },
   align: {
     label: '音素对齐',
@@ -191,8 +184,13 @@ const CAP_RULES: Record<
     label: '口语评测',
     cloudOnly: true, // 无本地口语评测引擎，必配云端凭据
     nameHint: { local: '如 腾讯云口语评测', cloud: '如 腾讯云口语评测' },
-    // 凭据：url→endpointUrl、secretKey→apiKey，其余入 params
-    params: (d) => ({ provider: d.provider, appId: d.appId, secretId: d.secretId, scoreCoeff: Number(d.scoreCoeff) }),
+    // 凭据：url→endpointUrl、secretKey→apiKey，其余入 params（一律 trim）
+    params: (d) => ({
+      provider: d.provider,
+      appId: d.appId.trim(),
+      secretId: d.secretId.trim(),
+      scoreCoeff: Number(d.scoreCoeff),
+    }),
   },
 };
 
@@ -302,7 +300,7 @@ export default function SettingsPage() {
       secretId: typeof params.secretId === 'string' ? params.secretId : '',
       scoreCoeff: params.scoreCoeff != null ? String(params.scoreCoeff) : '2',
       apiPath: typeof params.apiPath === 'string' ? params.apiPath : '',
-      cloudVoice: typeof params.voice === 'string' ? params.voice : DEFAULT_CLOUD_TTS_VOICE,
+      cloudVoice: typeof params.voice === 'string' ? params.voice : '',
       hasKey: p.hasKey,
     });
   };
@@ -370,11 +368,12 @@ export default function SettingsPage() {
 
   const caps = engine.data?.capabilities;
 
-  /* TTS 音色清单（引擎透传；本地 TTS 档案表单展开时才拉取；契约类型在 core） */
+  /* TTS 音色清单与默认音色（引擎透传；本地/云端 TTS 档案表单展开时才拉取；
+     清单与默认值均只在引擎持一份，契约类型在 core） */
   const ttsVoices = useQuery({
     queryKey: ['tts-voices'],
     queryFn: () => api<TtsVoiceOptions>('/api/engine/tts-voices'),
-    enabled: draft?.capability === 'tts' && draft.kind === 'local',
+    enabled: draft?.capability === 'tts',
   });
 
   /* 模型字段下拉选项：本地按能力给预设（TTS=音色清单，STT=whisper 规格，
@@ -520,7 +519,10 @@ export default function SettingsPage() {
               disabled={!!draft.id}
               className="rounded border border-input bg-background px-2 py-1.5 disabled:opacity-60"
             >
-              <option value="cloud">云端 API（OpenAI 兼容）</option>
+              {/* TTS 云端仅走阿里云 WebSocket（引擎路由固定），如实标注防误填 OpenAI 兼容端点 */}
+              <option value="cloud">
+                {draft.capability === 'tts' ? '云端 API（阿里云 WebSocket）' : '云端 API（OpenAI 兼容）'}
+              </option>
               <option value="local">本地引擎</option>
             </select>
           </label>
@@ -676,14 +678,18 @@ export default function SettingsPage() {
                 <option value="kokoro">kokoro（本地离线）</option>
               </select>
             </label>
-            {/* 音色（可输入下拉：清单来自引擎 /tts/voices，亦可手输清单外音色） */}
+            {/* 音色（可输入下拉：清单与默认值均来自引擎 /tts/voices，亦可手输清单外音色） */}
             <label className="flex flex-col gap-1">
               <span className="text-xs text-muted-foreground">音色</span>
               <ComboboxInput
                 value={draft.model}
                 onChange={(v) => setDraft({ ...draft, model: v })}
                 options={(draft.engine === 'kokoro' ? ttsVoices.data?.kokoro : ttsVoices.data?.edge) ?? []}
-                placeholder={draft.engine === 'kokoro' ? 'bm_george（默认）' : 'en-GB-RyanNeural（默认）'}
+                placeholder={
+                  ttsVoices.data
+                    ? `${draft.engine === 'kokoro' ? ttsVoices.data.defaults.kokoro : ttsVoices.data.defaults.edge}（默认）`
+                    : '默认音色'
+                }
               />
             </label>
           </>
@@ -741,15 +747,16 @@ export default function SettingsPage() {
             )}
           </label>
         )}
-        {/* 云端 TTS 音色（可输入下拉：系统音色清单见 CLOUD_TTS_VOICES，基础音色可手输；存 paramsJson.voice） */}
+        {/* 云端 TTS 音色（可输入下拉：系统音色清单来自引擎 /tts/voices 的 cloud 字段，
+            基础音色可手输；存 paramsJson.voice，留空=引擎默认音色（placeholder 展示）） */}
         {draft.capability === 'tts' && draft.kind === 'cloud' && (
           <label className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">音色</span>
             <ComboboxInput
               value={draft.cloudVoice}
               onChange={(v) => setDraft({ ...draft, cloudVoice: v })}
-              options={CLOUD_TTS_VOICES}
-              placeholder={`${DEFAULT_CLOUD_TTS_VOICE}（默认）`}
+              options={ttsVoices.data?.cloud ?? []}
+              placeholder={ttsVoices.data ? `${ttsVoices.data.defaults.cloud}（默认）` : '默认音色'}
             />
           </label>
         )}

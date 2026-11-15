@@ -59,6 +59,9 @@
   /* 赭褐色：文学性元数据、章节标签、译文标题 */
   --ochre: #8c7b65;
 
+  /* 遮罩层：浓墨半透（弹窗/浮层遮罩统一用色，替代裸 black/50） */
+  --scrim: rgb(30 32 34 / 0.5);
+
   /* 圆角：书页裁切的柔和 4px */
   --radius: 0.25rem;
 }
@@ -87,6 +90,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-ochre: var(--ochre);
+  --color-scrim: var(--scrim);
 
   /* 圆角 token（shadcn 组件读取 --radius 派生值） */
   --radius-sm: calc(var(--radius) - 2px);

@@ -34,6 +34,19 @@ DEFAULT_STT_MODEL = "qwen-audio-3.0-asr-flash"
 DEFAULT_TTS_MODEL = "qwen-audio-3.0-tts-plus"
 DEFAULT_TTS_VOICE = "longanlingxin"
 
+# 云端 TTS 系统音色清单（单一来源：经 /tts/voices 的 cloud 字段透传给 web 设置页
+# 下拉；仅列系统音色，500+ 基础音色 qwen-audio-3.0-tts-{plus|flash}-xxx 由用户手输。
+# 与本地双引擎的 VOICE_OPTIONS 同构：{value=音色 id, label=中文展示}）
+VOICE_OPTIONS: list[dict] = [
+    {"value": "longanlingxin", "label": "龙安灵心 · 女 · 知心温暖 · plus 旗舰"},
+    {"value": "longanlufeng", "label": "龙安鲁风 · 男 · 明亮开朗 · plus 旗舰"},
+    {"value": "longanfengyue", "label": "龙安风悦 · 女 · 自然亲切 · flash"},
+    {"value": "longanyuanfei", "label": "龙安元妃 · 女 · 高傲妃子音 · flash"},
+    {"value": "longanxiaoxin", "label": "龙安小昕 · 女 · 亲切活泼 · flash"},
+    {"value": "loongmary", "label": "loongmary · 女 · 温暖英音 · flash"},
+    {"value": "loongjohn", "label": "loongjohn · 男 · 沉稳美音 · flash"},
+]
+
 # TTS 输出参数（与套餐模型实测一致：mp3 / 22050Hz）
 TTS_SAMPLE_RATE = 22050
 

@@ -13,24 +13,32 @@
  */
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Collection, type JobDTO } from '@/lib/api';
 
 /** 导入路径 tab */
 type ImportKind = 'file' | 'link' | 'text';
 
+/** 导入路径页签配置（顶部导航与指引弹窗场景卡共用单源：kind → 显示名/图标） */
+const TABS: ReadonlyArray<{ kind: ImportKind; label: string; icon: string }> = [
+  { kind: 'file', label: '本地文件', icon: 'upload_file' },
+  { kind: 'link', label: '链接导入', icon: 'link' },
+  { kind: 'text', label: '文本转音频', icon: 'text_to_speech' },
+];
+
 /** 指引弹窗已读记忆键（localStorage：关闭过一次即不再自动弹出） */
 const GUIDE_SEEN_KEY = 'pinglc.import.guideSeen';
 
-/** 场景序号中文数字（弹窗渲染用） */
-const CN_NUMS = ['一', '二', '三'] as const;
-
 /**
- * 工作流程场景数据：steps 首=手头素材、末=导入结果（中间为动作步骤）；
- * hint 为站内/站外做法提示；tab / tabLabel 为对应导入路径页签（弹窗内可一键跳转）
+ * 工作流程场景数据：num 为场景序号中文数字（随数据走，不按数组下标取——
+ * 增删场景不会出现「场景undefined」）；steps 首=手头素材、末=导入结果（中间为
+ * 动作步骤）；hint 为站内/站外做法提示（不交叉引用其他场景序号，防乱序失效）；
+ * tab 为对应导入路径页签（显示名从 TABS 单源取，弹窗内可一键跳转）
  */
-const GUIDE_SCENARIOS: Array<{
+const GUIDE_SCENARIOS: ReadonlyArray<{
+  /** 场景序号中文数字（标题「场景X」用） */
+  num: string;
   /** 场景图标（Material Symbols 名） */
   icon: string;
   /** 场景名（描述手头素材） */
@@ -39,34 +47,32 @@ const GUIDE_SCENARIOS: Array<{
   steps: string[];
   /** 站内/站外做法提示 */
   hint: string;
-  /** 对应导入路径 tab */
+  /** 对应导入路径 tab（显示名从 TABS 取） */
   tab: ImportKind;
-  /** tab 显示名 */
-  tabLabel: string;
 }> = [
   {
+    num: '一',
     icon: 'text_snippet',
     title: '只有文本',
     steps: ['文本', 'TTS 语音生成', 'STT 语音转写', '导入：音/视频 + 字幕'],
-    hint: '「文本转音频」页签粘贴即自动合成并分句（免转写）；也可先在下方 TTS 网站生成音频，再按场景二转写。',
+    hint: '「文本转音频」页签粘贴即自动合成并分句（免转写）；也可先在下方语音生成网站做出音频，再按「只有音/视频」场景转写。',
     tab: 'text',
-    tabLabel: '文本转音频',
   },
   {
+    num: '二',
     icon: 'graphic_eq',
     title: '只有音/视频文件',
     steps: ['音/视频', 'STT 语音转写', '导入：音/视频 + 字幕'],
     hint: '上传后本站自动转写（本地 Whisper 或云端档案）；也可先用下方网站转写导出 SRT，随文件上传免转写。',
     tab: 'file',
-    tabLabel: '本地文件',
   },
   {
+    num: '三',
     icon: 'task_alt',
     title: '已有音/视频 + 配套字幕',
     steps: ['音/视频 + 字幕', '直接导入'],
     hint: '同时选择媒体与 .srt / .vtt 字幕文件，跳过转写直接入库。',
     tab: 'file',
-    tabLabel: '本地文件',
   },
 ];
 
@@ -76,10 +82,10 @@ const TTS_SITES: ReadonlyArray<readonly [string, string]> = [
   ['豆包', 'https://www.doubao.com/chat/'],
 ];
 
-/** 在线语音转写（STT）服务推荐：[站点名, 链接] */
+/** 在线语音转写（STT）服务推荐：[站点名, 链接]（一律公共产品入口，不带租户域名） */
 const STT_SITES: ReadonlyArray<readonly [string, string]> = [
   ['阿里云听悟', 'https://tingwu.aliyun.com/home'],
-  ['飞书妙记', 'https://zrc5yn8rnt.feishu.cn/minutes/home'],
+  ['飞书妙记', 'https://www.feishu.cn/product/minutes'],
 ];
 
 /**
@@ -235,15 +241,9 @@ function ImportWizard() {
         </button>
       </header>
 
-      {/* 路径 tab */}
+      {/* 路径 tab（页签配置 TABS 单源，与指引弹窗场景卡共用） */}
       <nav className="deckle mb-5 flex rounded-md border bg-card p-1">
-        {(
-          [
-            ['file', '本地文件', 'upload_file'],
-            ['link', '链接导入', 'link'],
-            ['text', '文本转音频', 'text_to_speech'],
-          ] as Array<[ImportKind, string, string]>
-        ).map(([key, label, icon]) => (
+        {TABS.map(({ kind: key, label, icon }) => (
           <button
             key={key}
             onClick={() => setKind(key)}
@@ -403,8 +403,19 @@ function ImportWizard() {
 }
 
 /**
- * 流程步骤条：首节点（手头素材）赭褐虚线框、中间节点（动作步骤）压印底、
- * 末节点（导入结果）朱砂实底；节点间箭头衔接，窄屏自动换行
+ * 步骤节点着色：首节点（手头素材）赭褐虚线框 / 中间节点（动作步骤）压印底 /
+ * 末节点（导入结果）朱砂实底（拍平为早返回分支，不用嵌套三元）
+ * @param i    节点下标
+ * @param last 末节点下标（steps.length - 1）
+ */
+function stepNodeClass(i: number, last: number): string {
+  if (i === 0) return 'border border-dashed border-ochre text-ochre';
+  if (i === last) return 'bg-primary text-primary-foreground';
+  return 'bg-muted text-foreground';
+}
+
+/**
+ * 流程步骤条：三段着色节点（见 stepNodeClass），节点间箭头衔接，窄屏自动换行
  * @param steps 步骤名数组（≥2 项：首=素材，末=结果）
  */
 function FlowChain({ steps }: { steps: string[] }) {
@@ -415,17 +426,7 @@ function FlowChain({ steps }: { steps: string[] }) {
         /* 单步骤节点与其后箭头打包（末节点不带箭头） */
         <span key={step} className="flex items-center gap-1">
           {/* 步骤节点：按首（素材）/ 中（动作）/ 末（结果）三段着色 */}
-          <span
-            className={`rounded px-2 py-1 text-xs ${
-              i === 0
-                ? 'border border-dashed border-ochre text-ochre'
-                : i === steps.length - 1
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-foreground'
-            }`}
-          >
-            {step}
-          </span>
+          <span className={`rounded px-2 py-1 text-xs ${stepNodeClass(i, steps.length - 1)}`}>{step}</span>
           {/* 衔接箭头（末节点后不渲染） */}
           {i < steps.length - 1 && (
             <span className="material-symbols-outlined text-sm text-ochre" aria-hidden="true">
@@ -439,30 +440,78 @@ function FlowChain({ steps }: { steps: string[] }) {
 }
 
 /**
+ * 在线服务推荐行（语音生成/语音转写两组共用：组名 + 站点链接胶囊，外链带标识图标）
+ * @param label 组名（如「语音生成」）
+ * @param sites 站点清单：[站点名, 链接]
+ */
+function SiteLinkList({ label, sites }: { label: string; sites: ReadonlyArray<readonly [string, string]> }) {
+  return (
+    /* 组容器：组名 + 胶囊换行排布 */
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      {/* 组名 */}
+      <span className="text-xs text-muted-foreground">{label}</span>
+      {/* 站点链接胶囊（新窗口打开，带外链图标） */}
+      {sites.map(([name, url]) => (
+        <a
+          key={url}
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1 rounded border border-input bg-background px-2.5 py-1 text-xs transition-colors hover:bg-accent hover:text-primary"
+        >
+          {name}
+          <span className="material-symbols-outlined text-xs text-ochre" aria-hidden="true">
+            open_in_new
+          </span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/**
  * 工作流程指引弹窗：三场景流程图 + 在线 TTS/STT 服务推荐
  *
  * 展示「素材 → 动作 → 导入结果」的全链路，帮用户按手头素材对号入座；
  * 场景卡「去××」按钮关闭弹窗并切到对应导入路径页签。
+ * 无障碍：打开即把焦点移入弹窗卡（tabIndex=-1 容器），关闭时还原到触发元素；
+ * 弹窗期间锁定背景滚动（role=dialog 不止于视觉模态）。
  * @param onClose 关闭回调（记忆已读由调用方处理）
  * @param onGo 关闭并跳转到指定导入路径 tab
  */
 function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: ImportKind) => void }) {
+  /* 弹窗卡引用（打开时聚焦、承担 tabIndex=-1 焦点容器角色） */
+  const cardRef = useRef<HTMLDivElement>(null);
   /* Esc 键关闭（与点遮罩、关闭键等效） */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+  /* 焦点管理 + 背景滚动锁定：挂载即聚焦弹窗卡并锁滚动，卸载时双双还原 */
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cardRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      opener?.focus();
+    };
+  }, []);
 
   return (
-    /* 遮罩层：半透明墨色，点空白处关闭 */
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      {/* 弹窗卡片：纸卡底 + 书边线；内容超屏时卡片内滚动（移动端友好） */}
+    /* 遮罩层：浓墨半透（scrim token），点空白处关闭 */
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4" onClick={onClose}>
+      {/* 弹窗卡片：纸卡底 + 书边线；内容超屏时卡片内滚动（移动端友好）；
+          tabIndex=-1 使卡片可编程聚焦（焦点圈定的落点） */}
       <div
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label="导入工作流程指引"
-        className="deckle max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-md border bg-card p-5"
+        tabIndex={-1}
+        className="deckle max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-md border bg-card p-5 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 弹窗头：标题 + 一句话导语 + 关闭键 */}
@@ -485,34 +534,34 @@ function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: Import
 
         {/* 三场景卡：流程链 + 提示 + 页签跳转 */}
         <div className="mt-4 flex flex-col gap-3">
-          {GUIDE_SCENARIOS.map((s, i) => (
+          {GUIDE_SCENARIOS.map((s) => (
             <section key={s.title} className="rounded-md border border-border bg-background p-3">
-              {/* 场景标题行：图标 + 序号 + 名称 */}
+              {/* 场景标题行：图标 + 序号 + 名称（序号随场景数据走） */}
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-lg text-primary">{s.icon}</span>
                 <h4 className="text-sm font-medium">
-                  场景{CN_NUMS[i]} · {s.title}
+                  场景{s.num} · {s.title}
                 </h4>
               </div>
               {/* 流程步骤链 */}
               <div className="mt-2.5">
                 <FlowChain steps={s.steps} />
               </div>
-              {/* 做法提示 + 对应页签一键跳转 */}
+              {/* 做法提示 + 对应页签一键跳转（页签名从 TABS 单源取） */}
               <div className="mt-2 flex items-end justify-between gap-2">
                 <p className="text-xs leading-relaxed text-muted-foreground">{s.hint}</p>
                 <button
                   onClick={() => onGo(s.tab)}
                   className="shrink-0 rounded border border-primary/40 px-2 py-1 text-xs text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
                 >
-                  去「{s.tabLabel}」
+                  去「{TABS.find((t) => t.kind === s.tab)?.label ?? ''}」
                 </button>
               </div>
             </section>
           ))}
         </div>
 
-        {/* 在线服务推荐小节 */}
+        {/* 在线服务推荐小节（两组站点行共用 SiteLinkList） */}
         <div className="mt-4 border-t border-border pt-3">
           {/* 小节标题 */}
           <h4 className="flex items-center gap-1.5 text-sm font-medium">
@@ -520,41 +569,9 @@ function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: Import
             在线服务推荐
           </h4>
           {/* 语音生成（TTS）组 */}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">语音生成</span>
-            {TTS_SITES.map(([name, url]) => (
-              <a
-                key={url}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 rounded border border-input bg-background px-2.5 py-1 text-xs transition-colors hover:bg-accent hover:text-primary"
-              >
-                {name}
-                <span className="material-symbols-outlined text-xs text-ochre" aria-hidden="true">
-                  open_in_new
-                </span>
-              </a>
-            ))}
-          </div>
+          <SiteLinkList label="语音生成" sites={TTS_SITES} />
           {/* 语音转写（STT）组 */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">语音转写</span>
-            {STT_SITES.map(([name, url]) => (
-              <a
-                key={url}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 rounded border border-input bg-background px-2.5 py-1 text-xs transition-colors hover:bg-accent hover:text-primary"
-              >
-                {name}
-                <span className="material-symbols-outlined text-xs text-ochre" aria-hidden="true">
-                  open_in_new
-                </span>
-              </a>
-            ))}
-          </div>
+          <SiteLinkList label="语音转写" sites={STT_SITES} />
           {/* 兼容格式与站内能力提示 */}
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
             转写请导出 SRT / VTT 字幕，与本站导入直接兼容；本站亦内置本地合成与转写，设置页可配云端档案。

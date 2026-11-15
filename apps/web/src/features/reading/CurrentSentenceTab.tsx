@@ -244,7 +244,7 @@ export function CurrentSentenceTab({ cue, materialId }: { cue: CueDTO | null; ma
 
       {/* AI 关卡页弹窗（沙箱 iframe：无同源权限，CSP 由服务路由下发） */}
       {levelOpen !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setLevelOpen(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4" onClick={() => setLevelOpen(null)}>
           <div className="deckle flex h-[80dvh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border bg-background" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
               <h4 className="font-serif text-sm">本句闯关 · AI 关卡</h4>

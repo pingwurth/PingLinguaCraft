@@ -237,7 +237,7 @@ class TTSRequest(BaseModel):
 def _cloud_tts_voice(profile: dict, req_voice: str | None) -> str:
     """云端 TTS（阿里云原生）音色解析：请求显式指定 > 档案 params.voice > 默认音色
 
-    注意档案 model 字段在云端 TTS 是模型名（cosyvoice-v2），不作音色用。
+    注意档案 model 字段在云端 TTS 是模型名（默认 qwen-audio-3.0-tts-plus），不作音色用。
     """
     return req_voice or (profile.get("params") or {}).get("voice") or aliyun_native.DEFAULT_TTS_VOICE
 
@@ -282,8 +282,22 @@ async def tts(req: TTSRequest) -> dict:
 
 @router.get("/tts/voices")
 async def tts_voices() -> dict:
-    """两套 TTS 引擎的音色清单（web 设置页档案表单下拉用；纯静态数据，不依赖模型在位）"""
-    return {"edge": tts_edge.VOICE_OPTIONS, "kokoro": tts_kokoro.VOICE_OPTIONS}
+    """TTS 音色清单与各引擎默认音色（web 设置页档案表单下拉用；纯静态数据，不依赖模型在位）
+
+    - edge / kokoro：本地双引擎清单；cloud：阿里云系统音色清单——三份清单只在
+      引擎各持一份，web 不再硬编码任何音色（含默认值）
+    - defaults：三引擎默认音色（表单留空时的兜底，展示在 placeholder）
+    """
+    return {
+        "edge": tts_edge.VOICE_OPTIONS,
+        "kokoro": tts_kokoro.VOICE_OPTIONS,
+        "cloud": aliyun_native.VOICE_OPTIONS,
+        "defaults": {
+            "edge": tts_edge.DEFAULT_VOICE,
+            "kokoro": tts_kokoro.DEFAULT_VOICE,
+            "cloud": aliyun_native.DEFAULT_TTS_VOICE,
+        },
+    }
 
 
 async def _cloud_tts_batch(

@@ -109,3 +109,14 @@ def test_synthesize_guards(isolated):
         asyncio.run(aliyun_native.synthesize("https://x.aliyuncs.com", "sk", "m", "  "))
     with pytest.raises(openai_compat.OpenAICompatError, match="API Key"):
         asyncio.run(aliyun_native.synthesize("https://x.aliyuncs.com", None, "m", "hi"))
+
+
+def test_voice_options_invariants():
+    """云端系统音色清单（/tts/voices 的 cloud 字段直接透传）：默认音色必须在列、
+    value 唯一且无首尾空格、label 非空——web 下拉与 placeholder 依赖这些不变量"""
+    values = [v["value"] for v in aliyun_native.VOICE_OPTIONS]
+    assert aliyun_native.DEFAULT_TTS_VOICE in values
+    assert len(values) == len(set(values))
+    for v in aliyun_native.VOICE_OPTIONS:
+        assert v["value"] == v["value"].strip()
+        assert v["label"].strip()

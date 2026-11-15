@@ -122,7 +122,7 @@ export function formKeyOrStored(apiKey: string | undefined, profileId: number | 
  * 版本化音频 URL 的 v 参数数据源：切换 TTS 档案（换引擎或音色）指纹即变，
  * 客户端按新 URL 取音频，不会命中旧音色的不可变缓存。
  * 音色来源按档案形态分两侧：本地档案音色存 model 字段；云端档案 model 是
- * 模型名（如 cosyvoice-v2）、音色在 params.voice——两者都必须进哈希，
+ * 模型名（默认 qwen-audio-3.0-tts-plus）、音色在 params.voice——两者都必须进哈希，
  * 缺一侧则「只换音色」时指纹不变，immutable 缓存永远回放旧音色。
  */
 export function ttsProfileFingerprint(): string {
