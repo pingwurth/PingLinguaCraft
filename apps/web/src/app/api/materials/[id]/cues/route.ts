@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -40,13 +40,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     afterIndex?: number;
     startMs?: number;
     endMs?: number;
     textEn?: string;
     textZh?: string;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const db = getDb();
   const materialId = parseIdParam(id);
   if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });

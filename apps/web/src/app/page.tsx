@@ -27,6 +27,7 @@ export default function HomePage() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
 
   /* 材料集列表 */
   const list = useQuery({
@@ -44,8 +45,11 @@ export default function HomePage() {
     onSuccess: () => {
       setCreating(false);
       setName('');
+      setCreateError(null);
       void qc.invalidateQueries({ queryKey: ['collections'] });
     },
+    // 创建失败必须可见（此前静默恢复可点，用户无从得知失败原因）
+    onError: (err) => setCreateError(err.message),
   });
 
   const collections = list.data?.collections ?? [];
@@ -94,8 +98,9 @@ export default function HomePage() {
         </button>
       </div>
 
-      {/* 新建卷内联表单 */}
+      {/* 新建卷内联表单（含失败提示） */}
       {creating && (
+        <>
         <form
           className="deckle mb-6 flex gap-2 rounded-md border bg-card p-3"
           onSubmit={(e) => {
@@ -118,11 +123,19 @@ export default function HomePage() {
             立卷
           </button>
         </form>
+        {/* 立卷失败提示（此前失败静默，表单复位但用户无从感知） */}
+        {createError && <p className="mb-6 text-xs text-destructive">{createError}</p>}
+        </>
       )}
 
       {/* 材料集网格 */}
       {list.isLoading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">装载中…</p>
+      ) : list.isError ? (
+        /* 查询失败 ≠ 空库：落到空态会误导用户以为数据丢失 */
+        <p className="py-16 text-center text-sm text-destructive">
+          藏经阁装载失败：{list.error.message}
+        </p>
       ) : collections.length === 0 ? (
         /* 空态引导 */
         <section className="deckle flex flex-col items-center justify-center rounded-md border border-dashed bg-card/50 px-6 py-16 text-center">

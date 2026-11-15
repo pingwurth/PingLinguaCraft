@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -14,14 +15,15 @@ export const runtime = 'nodejs';
  * POST —— Body: { url, collectionId, title?, wantVideo? }
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     url?: string;
     collectionId?: number;
     title?: string;
     wantVideo?: boolean;
     sttProfileId?: number;
     translateProfileId?: number;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const url = body.url?.trim();
   if (!url || !/^https?:\/\//.test(url)) {
     return NextResponse.json({ error: '请提供合法的 http(s) 链接' }, { status: 400 });

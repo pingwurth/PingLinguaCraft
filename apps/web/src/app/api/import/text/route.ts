@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { collections, cues, materials } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -15,13 +16,14 @@ export const runtime = 'nodejs';
  * POST —— Body: { text, collectionId, title?, ttsProfileId?, translateProfileId? }
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     text?: string;
     collectionId?: number;
     title?: string;
     ttsProfileId?: number;
     translateProfileId?: number;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const text = body.text?.trim();
   if (!text) return NextResponse.json({ error: '文本不能为空' }, { status: 400 });
   const db = getDb();

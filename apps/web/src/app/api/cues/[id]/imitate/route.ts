@@ -9,7 +9,7 @@ import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
 import { EngineError, enginePost } from '@/lib/server/engine';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +26,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const pid = parseIdParam(id);
   if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = (await request.json()) as { userText?: string };
+  const body = await readJsonBody<{ userText?: string }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const userText = body.userText?.trim();
   if (!userText) return NextResponse.json({ error: '仿写内容为空' }, { status: 400 });
 

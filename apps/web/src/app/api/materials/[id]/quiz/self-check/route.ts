@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { quizAttempts } from '@/lib/db/schema';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +19,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const materialId = parseIdParam(id);
   if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = (await request.json()) as { attemptId?: number; correct?: boolean };
+  const body = await readJsonBody<{ attemptId?: number; correct?: boolean }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   if (!body.attemptId) return NextResponse.json({ error: '缺少 attemptId' }, { status: 400 });
   // 严格比较：Boolean("false") === true，必须只认真布尔
   if (body.correct !== true && body.correct !== false) {

@@ -7,6 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { providerProfiles } from '@/lib/db/schema';
 import { parseParamsJson, validateProfile } from '@/lib/providers';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -18,19 +19,22 @@ export const runtime = 'nodejs';
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = (await request.json()) as {
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
+  const body = await readJsonBody<{
     name?: string;
     kind?: string;
     endpointUrl?: string;
     apiKey?: string;
     model?: string;
     params?: Record<string, unknown>;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const db = getDb();
   const row = db
     .select()
     .from(providerProfiles)
-    .where(and(eq(providerProfiles.id, Number(id)), eq(providerProfiles.userId, 1)))
+    .where(and(eq(providerProfiles.id, pid), eq(providerProfiles.userId, 1)))
     .all()[0];
   if (!row) return NextResponse.json({ error: '档案不存在' }, { status: 404 });
 
@@ -66,6 +70,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const url = new URL(request.url);
   const action = url.searchParams.get('action');
   if (action !== 'default') {
@@ -75,7 +81,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const row = db
     .select()
     .from(providerProfiles)
-    .where(eq(providerProfiles.id, Number(id)))
+    .where(eq(providerProfiles.id, pid))
     .all()[0];
   if (!row) return NextResponse.json({ error: '档案不存在' }, { status: 404 });
   const now = new Date();
@@ -95,11 +101,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const pid = parseIdParam(id);
+  if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const row = db
     .select()
     .from(providerProfiles)
-    .where(eq(providerProfiles.id, Number(id)))
+    .where(eq(providerProfiles.id, pid))
     .all()[0];
   if (!row) return NextResponse.json({ error: '档案不存在' }, { status: 404 });
   db.delete(providerProfiles).where(eq(providerProfiles.id, row.id)).run();

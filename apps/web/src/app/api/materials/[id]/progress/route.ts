@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 import { countListenedBits } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { cues, learningProgress } from '@/lib/db/schema';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,12 +17,13 @@ export const runtime = 'nodejs';
  */
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     lastPositionMs?: number;
     maxCueIndex?: number;
     listenedMask?: string; // base64 位图
     listenedThrough?: boolean;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const materialId = parseIdParam(id);
   if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();

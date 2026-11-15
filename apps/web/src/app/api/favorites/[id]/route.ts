@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { favorites } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -18,7 +18,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const pid = parseIdParam(id);
   if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = (await request.json()) as { categoryId?: number | null; noteMd?: string | null };
+  const body = await readJsonBody<{ categoryId?: number | null; noteMd?: string | null }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (body.categoryId !== undefined) patch.categoryId = body.categoryId;
   if (body.noteMd !== undefined) patch.noteMd = body.noteMd;

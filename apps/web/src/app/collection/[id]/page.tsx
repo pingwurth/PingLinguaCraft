@@ -79,6 +79,9 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
       {/* 材料列表 */}
       {list.isLoading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">装载中…</p>
+      ) : list.isError ? (
+        /* 查询失败 ≠ 此卷尚空：落到空态会误报空卷 */
+        <p className="py-16 text-center text-sm text-destructive">材料装载失败：{list.error.message}</p>
       ) : materials.length === 0 ? (
         <div className="deckle rounded-md border border-dashed bg-card/50 px-6 py-16 text-center">
           <p className="font-serif text-lg">此卷尚空</p>

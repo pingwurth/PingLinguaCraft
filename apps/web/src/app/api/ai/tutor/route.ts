@@ -6,8 +6,9 @@
  * 会话与消息持久化到 ai_threads / ai_messages；历史随请求拼多轮上下文。
  */
 
+import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 import { getDb } from '@/lib/db';
 import { aiMessages, aiThreads } from '@/lib/db/schema';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
@@ -27,11 +28,12 @@ const HISTORY_LIMIT = 20;
  * POST —— 流式对话（SSE）
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     threadId?: number | null;
     content?: string;
     quote?: string | null;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const content = body.content?.trim();
   if (!content) return new Response(JSON.stringify({ error: '内容为空' }), { status: 400 });
 

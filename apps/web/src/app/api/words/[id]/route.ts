@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { words } from '@/lib/db/schema';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +17,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const pid = parseIdParam(id);
   if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = (await request.json()) as { noteMd?: string | null; status?: string };
+  const body = await readJsonBody<{ noteMd?: string | null; status?: string }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (body.noteMd !== undefined) patch.noteMd = body.noteMd;
   // status 必须对白名单校验后入库（直写会让任意字符串进 words.status，

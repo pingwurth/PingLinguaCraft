@@ -7,6 +7,7 @@ import { normalizeWord } from '@pinglc/core';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { wordBooks, words } from '@/lib/db/schema';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -15,12 +16,13 @@ export const runtime = 'nodejs';
  * 归一化查重（同本重复收录幂等返回已有 id）
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     word?: string;
     bookId?: number;
     cueId?: number;
     materialId?: number;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const raw = body.word?.trim();
   if (!raw) return NextResponse.json({ error: '单词不能为空' }, { status: 400 });
   const lemma = normalizeWord(raw);

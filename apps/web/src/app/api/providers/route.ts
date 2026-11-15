@@ -9,6 +9,7 @@ import { getDb } from '@/lib/db';
 import { providerProfiles } from '@/lib/db/schema';
 import { validateProfile } from '@/lib/providers';
 import { maskProfile } from '@/lib/server/providers';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -34,7 +35,7 @@ export async function GET() {
  * Body: { capability, name, kind, endpointUrl?, apiKey?, model?, params?, isDefault? }
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     capability?: string;
     name?: string;
     kind?: string;
@@ -43,7 +44,8 @@ export async function POST(request: Request) {
     model?: string;
     params?: Record<string, unknown>;
     isDefault?: boolean;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const capability = body.capability ?? '';
   const name = body.name?.trim();
   const kind = body.kind ?? 'cloud';

@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues, favoriteCategories, favorites, materials } from '@/lib/db/schema';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -53,7 +54,8 @@ export async function GET(request: Request) {
  * POST —— 手动收藏（不触发 AI 解析）；Body: { cueId, categoryId?, noteMd? }
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as { cueId?: number; categoryId?: number | null; noteMd?: string };
+  const body = await readJsonBody<{ cueId?: number; categoryId?: number | null; noteMd?: string }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   if (!body.cueId) return NextResponse.json({ error: '缺少 cueId' }, { status: 400 });
   const db = getDb();
   const dup = db

@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { enginePost } from '@/lib/server/engine';
 import { formKeyOrStored } from '@/lib/server/providers';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -16,14 +17,15 @@ export const runtime = 'nodejs';
  * 返回 { ok, detail }（detail 为模型回复或错误信息）
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     capability?: string;
     endpointUrl?: string;
     apiKey?: string;
     model?: string;
     params?: Record<string, unknown>;
     profileId?: number;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   // 能力先收敛到本路由支持的集合（llm/translate）：回库取 Key 的能力限定
   // 不吃任意客户端字符串；能力非法直接 400，而不是带着它去查 Key
   const capability = body.capability ?? '';

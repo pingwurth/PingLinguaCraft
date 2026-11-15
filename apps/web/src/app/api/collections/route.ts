@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -44,11 +45,12 @@ export async function GET() {
  * Body: { name, description?, cefrLevel? }
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     name?: string;
     description?: string;
     cefrLevel?: string;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: '材料集名不能为空' }, { status: 400 });
   const db = getDb();

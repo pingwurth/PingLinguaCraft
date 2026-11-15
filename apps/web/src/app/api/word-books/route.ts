@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { wordBooks, words } from '@/lib/db/schema';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -36,7 +37,8 @@ export async function GET() {
  * 首本自动创建为默认（词藏页展示「我的生词本」）
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as { name?: string; description?: string };
+  const body = await readJsonBody<{ name?: string; description?: string }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: '生词本名不能为空' }, { status: 400 });
   const db = getDb();

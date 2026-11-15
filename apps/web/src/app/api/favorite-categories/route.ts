@@ -2,7 +2,7 @@
  * 收藏分类 API：GET / POST / DELETE（需求 13：收藏可选择分类，支持自定义分类）
  */
 
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
@@ -28,7 +28,8 @@ export async function GET() {
  * POST —— 创建分类；Body: { name }
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as { name?: string };
+  const body = await readJsonBody<{ name?: string }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: '分类名不能为空' }, { status: 400 });
   const db = getDb();

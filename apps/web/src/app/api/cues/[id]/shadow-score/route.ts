@@ -23,6 +23,7 @@ import { getDb, PINGLC_HOME } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
 import { EngineError, enginePost, engineErrorResponse } from '@/lib/server/engine';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -89,7 +90,8 @@ async function scoreBySoe(
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const cueId = Number(id);
+  const cueId = parseIdParam(id);
+  if (cueId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
   const cue = db.select().from(cues).where(eq(cues.id, cueId)).all()[0];
   if (!cue) return NextResponse.json({ error: '句段不存在' }, { status: 404 });

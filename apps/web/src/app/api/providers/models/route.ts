@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { enginePost, engineErrorResponse } from '@/lib/server/engine';
 import { formKeyOrStored } from '@/lib/server/providers';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +21,7 @@ const KEY_LOOKUP_CAPABILITIES = new Set(['llm', 'translate', 'stt', 'tts']);
  * 返回 { models: string[] }（保持端点返回顺序）
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     endpointUrl?: string;
     apiKey?: string;
     profileId?: number;
@@ -28,7 +29,8 @@ export async function POST(request: Request) {
     capability?: string;
     /** LLM 档案的 API 格式（缺省=OpenAI 兼容方言） */
     apiFormat?: string;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const endpointUrl = body.endpointUrl?.trim();
   if (!endpointUrl) {
     return NextResponse.json({ error: '端点 URL 不能为空' }, { status: 400 });

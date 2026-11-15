@@ -9,6 +9,7 @@ import { fsrsSchedule, toFSRSRating, wordStatus, type SRating } from '@pinglc/co
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { srsCards, srsReviewLogs, words } from '@/lib/db/schema';
+import { readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +17,8 @@ export const runtime = 'nodejs';
  * POST —— 提交一次复习评分
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as { wordId?: number; rating?: SRating };
+  const body = await readJsonBody<{ wordId?: number; rating?: SRating }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const rating = body.rating;
   const RATINGS: SRating[] = ['again', 'hard', 'good', 'easy'];
   if (!body.wordId || !rating || !RATINGS.includes(rating)) {

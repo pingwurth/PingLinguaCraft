@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -19,14 +19,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const pid = parseIdParam(id);
   if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = (await request.json()) as {
+  const body = await readJsonBody<{
     startMs?: number;
     endMs?: number;
     textEn?: string;
     textZh?: string | null;
     noteMd?: string | null;
     clearTranslation?: boolean;
-  };
+  }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const db = getDb();
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   const edited: string[] = [];

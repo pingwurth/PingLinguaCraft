@@ -11,7 +11,7 @@ import { getDb } from '@/lib/db';
 import { cues as cuesTable, materials } from '@/lib/db/schema';
 import { createJob, startPipeline } from '@/lib/jobs/pipeline';
 import { uniqueWordCount } from '@pinglc/core';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -64,7 +64,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const body = (await request.json()) as { content?: string; retranslate?: boolean };
+  const body = await readJsonBody<{ content?: string; retranslate?: boolean }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const content = body.content?.trim();
   if (!content) return NextResponse.json({ error: '字幕内容为空' }, { status: 400 });
 

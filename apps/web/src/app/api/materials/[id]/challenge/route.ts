@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { challengeRecords, cues, learningProgress, materials } from '@/lib/db/schema';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -49,7 +49,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const materialId = parseIdParam(id);
   if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = (await request.json()) as { mode?: string; score?: number; detail?: unknown };
+  const body = await readJsonBody<{ mode?: string; score?: number; detail?: unknown }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const mode = body.mode ?? '';
   if (!(MODES as readonly string[]).includes(mode)) {
     return NextResponse.json({ error: `玩法必须为 ${MODES.join('/')}` }, { status: 400 });

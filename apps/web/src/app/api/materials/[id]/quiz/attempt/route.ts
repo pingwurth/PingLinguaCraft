@@ -7,7 +7,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { aiArtifacts, quizAttempts } from '@/lib/db/schema';
 import { gradeAnswer, QuizSchema, type QuizQuestion } from '@/lib/quiz';
-import { parseIdParam } from '@/lib/server/params';
+import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
@@ -21,7 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const materialId = parseIdParam(id);
   if (materialId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = (await request.json()) as { artifactId?: number; answers?: Array<number | string | null> };
+  const body = await readJsonBody<{ artifactId?: number; answers?: Array<number | string | null> }>(request);
+  if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const answers = body.answers ?? [];
 
   const db = getDb();
