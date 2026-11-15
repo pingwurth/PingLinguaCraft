@@ -44,10 +44,11 @@ def auth_headers(api_key: str | None) -> dict[str, str]:
 
 
 def base_url(endpoint_url: str) -> str:
-    """规整端点：去尾部斜杠；容错用户填了完整 chat 路径的情况"""
+    """规整端点：去尾部斜杠；容错用户填了完整 API 路径的情况"""
     base = endpoint_url.rstrip("/")
-    # 用户直接粘贴了 .../chat/completions —— 剥掉，路径由本模块统一拼接
-    for suffix in ("/chat/completions", "/audio/transcriptions", "/audio/speech"):
+    # 用户直接粘贴了 .../chat/completions —— 剥掉，路径由各格式构造器统一拼接
+    # （/responses 是 OpenAI Responses 格式的专属路径，同样剥）
+    for suffix in ("/chat/completions", "/audio/transcriptions", "/audio/speech", "/responses"):
         if base.endswith(suffix):
             base = base[: -len(suffix)]
     return base

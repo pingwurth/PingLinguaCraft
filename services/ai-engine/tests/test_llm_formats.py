@@ -285,3 +285,96 @@ def test_responses_stream(monkeypatch):
 
     _run(collect())
     assert out == ["你好"]
+
+
+# ---------------- 端点粘贴容错与模型清单翻页 ----------------
+
+
+def test_anthropic_pasted_full_path(monkeypatch):
+    """粘贴官方 curl 示例的完整路径 …/v1/messages：剥掉不双拼
+    （此前会拼出 …/v1/messages/v1/messages，所有调用 404）"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/messages"
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})
+
+    _patch_client(monkeypatch, handler)
+    out = _run(
+        llm_formats.chat(
+            "anthropic", "https://api.anthropic.com/v1/messages", "k", "m",
+            [{"role": "user", "content": "hi"}],
+        )
+    )
+    assert out == "ok"
+
+
+def test_responses_pasted_full_path(monkeypatch):
+    """粘贴 …/v1/responses 完整路径：剥掉不双拼"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/responses"
+        return httpx.Response(
+            200,
+            json={"output": [{"type": "message", "content": [{"type": "output_text", "text": "ok"}]}]},
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = _run(
+        llm_formats.chat(
+            "openai-responses", "https://api.openai.com/v1/responses", "k", "m",
+            [{"role": "user", "content": "hi"}],
+        )
+    )
+    assert out == "ok"
+
+
+def test_gemini_bare_domain_gets_version_segment(monkeypatch):
+    """裸域名端点自动补 /v1beta（无版本段 Google 直接 404）；已带版本段不重复补"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.startswith("/v1beta/models/")
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+
+    _patch_client(monkeypatch, handler)
+    out = _run(
+        llm_formats.chat(
+            "gemini", "https://generativelanguage.googleapis.com", "k", "gemini-2.5-pro",
+            [{"role": "user", "content": "hi"}],
+        )
+    )
+    assert out == "ok"
+    # 已带 /v1beta 的端点保持原样（不再追加）
+    assert llm_formats._gemini_base("https://x.example.com/v1beta") == "https://x.example.com/v1beta"
+    assert llm_formats._gemini_base("https://x.example.com/v1") == "https://x.example.com/v1"
+
+
+def test_list_models_anthropic_paginates(monkeypatch):
+    """anthropic 模型清单：limit=1000 + has_more 翻页（after_id=上一页末条，游标 URL 编码）——
+    单页小 limit 会把大目录（中转站几百个模型）静默截断"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        assert "limit=1000" in url
+        if "after_id" not in url:
+            return httpx.Response(200, json={"data": [{"id": "m1"}, {"id": "m2"}], "has_more": True})
+        assert "after_id=m2" in url
+        return httpx.Response(200, json={"data": [{"id": "m3"}], "has_more": False})
+
+    _patch_client(monkeypatch, handler)
+    out = _run(llm_formats.list_models("anthropic", "https://api.anthropic.com", "k"))
+    assert out == ["m1", "m2", "m3"]
+
+
+def test_list_models_gemini_paginates(monkeypatch):
+    """gemini 模型清单：pageSize=1000 + nextPageToken 翻页，剥 models/ 前缀"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        assert "pageSize=1000" in url
+        if "pageToken=tok" in url:
+            return httpx.Response(200, json={"models": [{"name": "models/g2"}]})
+        return httpx.Response(200, json={"models": [{"name": "models/g1"}], "nextPageToken": "tok"})
+
+    _patch_client(monkeypatch, handler)
+    out = _run(llm_formats.list_models("gemini", "https://x.example.com", "k"))
+    assert out == ["g1", "g2"]

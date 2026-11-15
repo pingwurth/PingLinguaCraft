@@ -15,15 +15,16 @@
 
 import asyncio
 import base64
-import hashlib
 import json
+import math
+import shutil
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-import websockets
 
+from ..ws_session import WsSession
 from .openai_compat import OpenAICompatError, make_client
 
 # 单次内嵌音频的体积上限（base64 前的原始字节）：平台限制 10MB，留余量
@@ -76,14 +77,19 @@ def _mime_for(path: str) -> str:
     }.get(Path(path).suffix.lower(), "audio/wav")
 
 
-def cache_path(text: str, model: str, voice: str) -> Path:
-    """云端 TTS 合成缓存路径（text+model+voice 的 sha256；cloud| 前缀与本地引擎键空间隔离）"""
-    from .. import settings  # noqa: PLC0415 —— 与 tts_edge 同策略，惰性导入便于测试隔离
+def cache_path(text: str, model: str, voice: str, endpoint_url: str = "") -> Path:
+    """云端 TTS 合成缓存路径（"cloud|model|voice|host|text" 的 sha256 → mp3）
 
-    key = hashlib.sha256(f"cloud|{model}|{voice}|{text.strip()}".encode("utf-8")).hexdigest()
-    cache_dir = Path(settings.CACHES_DIR) / "tts"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{key}.mp3"
+    host（端点的 netloc）进键：不同云端端点/网关的档案各自隔离缓存——
+    同 model+voice 但服务方不同（token-plan 域 vs MaaS 域 vs 中转）时，
+    A 档案合成的音频不该被 B 档案的内容哈希缓存直接命中。
+    cloud| 前缀与本地引擎（edge/kokoro）键空间隔离；哈希与落位走
+    tts_common.tts_cache_path 单一实现。
+    """
+    from ..engines.tts_common import tts_cache_path  # noqa: PLC0415 —— 惰性导入，避免循环依赖
+
+    host = urlparse(endpoint_url).netloc if endpoint_url else ""
+    return tts_cache_path(f"cloud|{model}|{voice}|{host}|{text.strip()}", "mp3")
 
 
 async def transcribe(
@@ -152,16 +158,85 @@ async def transcribe(
     return {"text": text, "words": words}
 
 
+async def transcribe_long(
+    endpoint_url: str,
+    api_key: str | None,
+    model: str,
+    audio_path: str,
+    *,
+    api_path: str,
+    on_progress=None,
+) -> dict:
+    """阿里云原生 STT 长音频入口：≤MAX_AUDIO_BYTES 直发，超限切 60s wav 分片转写拼接
+
+    分片逻辑与 MAX_AUDIO_BYTES 同文件维护（此前分片在 API 层、阈值常量与
+    此处脱钩——平台限制一变分片长度就静默过期）。每片带词级时间戳（相对
+    分片起点），拼接时按分片起点平移 → 整段词级时间轴；分片临时文件用后即删。
+
+    Args:
+        on_progress: 进度回调（(0~1, 说明文案)；直发即 0.5）
+    Returns:
+        {"text": 全文, "words": [{w,s,e}, …]}（时间轴为整段绝对秒）
+    Raises:
+        OpenAICompatError: 网络/HTTP/响应结构/无法探测时长
+    """
+    size = Path(audio_path).stat().st_size
+    if size <= MAX_AUDIO_BYTES:
+        if on_progress:
+            on_progress(0.5, "云端转写中")
+        return await transcribe(endpoint_url, api_key, model, audio_path, api_path=api_path)
+
+    from ..media import ffmpeg  # noqa: PLC0415
+
+    texts: list[str] = []
+    words: list[dict] = []
+    work: Path | None = None
+    try:
+        duration_ms = int((await asyncio.to_thread(ffmpeg.probe, audio_path)).get("duration_ms") or 0)
+        if duration_ms <= 0:
+            raise OpenAICompatError("无法探测音频时长，分片转写中止")
+        # 分片时长由体积上限推得：16kHz mono wav ≈ 32KB/s，60s ≈ 1.9MB（base64 后
+        # 仍稳在 MAX_AUDIO_BYTES 内；上限若调整，按 32KB/s 重新核算）
+        chunk_ms = 60_000
+        total = math.ceil(duration_ms / chunk_ms)
+        work = Path(audio_path).parent / ".stt-chunks"
+        work.mkdir(parents=True, exist_ok=True)
+        for i in range(total):
+            start, end = i * chunk_ms, min((i + 1) * chunk_ms, duration_ms)
+            chunk = str(work / f"{i:04d}.wav")
+            await asyncio.to_thread(ffmpeg.slice_audio, audio_path, start, end, chunk)
+            try:
+                piece = await transcribe(endpoint_url, api_key, model, chunk, api_path=api_path)
+            finally:
+                Path(chunk).unlink(missing_ok=True)
+            if piece["text"]:
+                texts.append(piece["text"])
+            # 分片内词时间戳（相对分片）平移到整段时间轴
+            for w in piece["words"]:
+                words.append({"w": w["w"], "s": w["s"] + start / 1000, "e": w["e"] + start / 1000})
+            if on_progress:
+                on_progress(0.05 + 0.9 * (i + 1) / total, f"云端分片转写 {i + 1}/{total}")
+    except ffmpeg.MediaError as exc:
+        # 探测/切片属本地媒体处理失败（ffmpeg 缺失/源损坏），包装为本模块异常
+        raise OpenAICompatError(f"音频分片处理失败：{exc}") from exc
+    finally:
+        # 分片目录不残留（含 slice 中途失败留下的半截片）
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+    return {"text": " ".join(texts), "words": words}
+
+
 async def synthesize(
     endpoint_url: str,
     api_key: str | None,
     model: str,
     text: str,
     *,
-    api_path: str | None = None,  # noqa: ARG001 —— TTS 走 WebSocket，apiPath 不参与（签名与 STT 对齐）
     voice: str | None = None,
 ) -> bytes:
     """云端语音合成（WebSocket 实时协议）：文本 → mp3 字节（带缓存）
+
+    建连/限时收发与传输层异常归一走共享 WsSession（与腾讯云 SOE 同一脚手架）。
 
     Args:
         model:    模型名（如 qwen-audio-3.0-tts-plus；空串兜底默认）
@@ -180,7 +255,7 @@ async def synthesize(
 
     from ..engines.tts_common import write_atomic  # noqa: PLC0415
 
-    cache = cache_path(text, model, voice)
+    cache = cache_path(text, model, voice, endpoint_url)
     if cache.is_file():
         return cache.read_bytes()
 
@@ -202,32 +277,49 @@ async def synthesize(
         },
     }
     audio = bytearray()
-    try:
-        async with websockets.connect(
-            url, max_size=MAX_AUDIO_BYTES, open_timeout=15,
-            additional_headers={"Authorization": f"bearer {api_key}"},
-        ) as ws:
-            await ws.send(json.dumps(run_task))
-            while True:
-                msg = await asyncio.wait_for(ws.recv(), timeout=120)
-                if isinstance(msg, bytes):
-                    audio.extend(msg)
-                    continue
-                event = json.loads(msg).get("header", {}).get("event")
-                if event == "task-failed":
-                    detail = json.loads(msg).get("header", {}).get("error_message", "")
-                    raise OpenAICompatError(f"云端合成失败：{detail[:200]}")
-                if event in ("task-finished", "task-canceled"):
-                    break
-    except OpenAICompatError:
-        raise
-    except asyncio.TimeoutError as exc:
-        raise OpenAICompatError("云端合成超时") from exc
-    except (websockets.WebSocketException, OSError) as exc:
-        raise OpenAICompatError(f"WebSocket 连接失败（{url}）：{exc}") from exc
+    async with WsSession(
+        url,
+        error=OpenAICompatError,
+        label="云端合成",
+        open_timeout=15,
+        recv_timeout=120,
+        headers={"Authorization": f"bearer {api_key}"},
+    ) as ws:
+        await ws.send(json.dumps(run_task))
+        while True:
+            msg = await ws.recv()
+            if isinstance(msg, bytes):
+                audio.extend(msg)
+                continue
+            event = json.loads(msg).get("header", {}).get("event")
+            if event == "task-failed":
+                detail = json.loads(msg).get("header", {}).get("error_message", "")
+                raise OpenAICompatError(f"云端合成失败：{detail[:200]}")
+            if event in ("task-finished", "task-canceled"):
+                break
 
     if not audio:
         raise OpenAICompatError("云端返回空音频")
     data = bytes(audio)
     write_atomic(cache, data)
     return data
+
+
+async def ensure_synthesized(
+    endpoint_url: str,
+    api_key: str | None,
+    model: str,
+    text: str,
+    *,
+    voice: str | None = None,
+) -> Path:
+    """确保合成产物已在缓存就位并返回其路径（缓存命中时不读回字节）
+
+    与 tts_kokoro.ensure_synthesized 同契约：产物交给 web 代理单次读取、
+    size 由调用方 stat——云端 /tts 路径此前为拿 size 把整段 mp3 读回引擎
+    内存，web 代理还要再读一遍文件。
+    """
+    cache = cache_path(text, model or DEFAULT_TTS_MODEL, voice or DEFAULT_TTS_VOICE, endpoint_url)
+    if not cache.is_file():
+        await synthesize(endpoint_url, api_key, model, text, voice=voice)
+    return cache

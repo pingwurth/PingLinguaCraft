@@ -3,22 +3,24 @@
  *
  * 引擎合成（内容哈希缓存；edge-tts 出 mp3 / kokoro 出 wav）→ 本路由读文件
  * 按扩展名回传。缓存策略：音频本体带不可变缓存头（同版本同 URL 浏览器可
- * 无限期复用，移动端流量友好）；但音频内容随 TTS 档案变（引擎/音色），
- * URL 不带判别符的话切换档案后浏览器会一直回放旧缓存。正解是客户端主动带
- * v=当前档案指纹（lib/ttsUrl，播放器/复习页已接）；无 v 的请求仍 302 到
- * 版本化 URL 兜底（302 不缓存，每次播放都重定到当期版本）——但注意 302
- * 对「升级前已钉入磁盘的旧缓存条目」无能为力，新客户端不要依赖它。
+ * 无限期复用，移动端流量友好）；但音频内容随 TTS 档案变（引擎/音色/端点），
+ * URL 不带判别符的话切换档案后浏览器会一直回放旧缓存。正解是双保险：
+ * 1. 客户端主动带 v=当前档案指纹（lib/ttsUrl，播放器/复习页已接）；
+ * 2. 服务端校验 v 必须等于当前指纹，不符一律 302 到当期版本化 URL——
+ *    不可变缓存头只发给「v=当前指纹」的请求，旧 v / 占位 v=0 / 换档案后
+ *    的跨标签页残留 v 都毒化不了任何缓存条目（302 本身不缓存）。
  */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { NextResponse } from 'next/server';
-import { enginePost, EngineError } from '@/lib/server/engine';
+import { enginePost, engineErrorResponse } from '@/lib/server/engine';
 import { resolveProfile, toEngineProfile, ttsProfileFingerprint } from '@/lib/server/providers';
 
 export const runtime = 'nodejs';
 
 /**
- * GET —— 无 v：302 到带当前档案指纹的 URL；有 v：合成（或复用缓存）并回传
+ * GET —— v 缺失或与当前档案指纹不符：302 到带当前指纹的 URL（302 不缓存）；
+ * v 为当前指纹：合成（或复用缓存）并以不可变缓存头回传
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -26,14 +28,23 @@ export async function GET(request: Request) {
   const voice = url.searchParams.get('voice') ?? undefined;
   if (!text) return NextResponse.json({ error: '缺少 text' }, { status: 400 });
 
-  // 缓存判别符：当前 TTS 档案（引擎 + 音色）的短指纹。v 仅作客户端缓存键，
-  // 服务端始终以当前档案为准合成（指纹计算在 lib/server/providers 单一来源）
-  if (!url.searchParams.get('v')) {
-    url.searchParams.set('v', ttsProfileFingerprint());
-    return NextResponse.redirect(url, 302);
+  // 档案只读一次：指纹闸门与合成共用同一快照（各调一次 resolveProfile 存在
+  // 跨快照窗口——两次读取之间切档案会让闸门放行一个即将失效的 v）
+  const profile = resolveProfile('tts');
+  // 缓存判别符：当前 TTS 档案（类型/引擎/模型/音色/端点）的短指纹（单一来源：
+  // lib/server/providers）。v 与指纹不符即重定向——这是不可变缓存头的前置闸门：
+  // 档案已切换而客户端仍持旧 v（或降级占位 v=0）时，若照旧回 200+immutable，
+  // 该 (text, 旧v) 条目会被新档案的音频毒化且一年无法驱逐；302 到当期版本
+  // 让旧 URL 永远拿不到可缓存的实体响应
+  const currentV = ttsProfileFingerprint(profile);
+  if (url.searchParams.get('v') !== currentV) {
+    url.searchParams.set('v', currentV);
+    const redirect = NextResponse.redirect(url, 302);
+    // 显式禁缓存：正确性论证依赖「302 不被缓存」，不交给浏览器默认行为
+    redirect.headers.set('Cache-Control', 'no-store');
+    return redirect;
   }
 
-  const profile = resolveProfile('tts');
   try {
     const { path } = await enginePost<{ path: string }>('/tts', {
       text,
@@ -48,12 +59,11 @@ export async function GET(request: Request) {
       headers: {
         'Content-Type': contentType,
         'Content-Length': String(data.length),
-        // 同 (text, 档案版本) 恒定产物：版本化 URL（v=档案指纹）可无限期缓存
+        // 走到此处必是「v=当前指纹」：同 (text, 档案版本) 恒定产物，可无限期缓存
         'Cache-Control': 'public, max-age=31536000, immutable',
       },
     });
   } catch (err) {
-    const msg = err instanceof EngineError ? err.message : '合成失败';
-    return NextResponse.json({ error: msg }, { status: 502 });
+    return engineErrorResponse(err, '合成失败');
   }
 }

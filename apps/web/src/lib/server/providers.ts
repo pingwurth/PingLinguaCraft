@@ -1,13 +1,13 @@
 /**
  * AI 能力档案解析（provider_profiles 表 → 引擎可执行的 profile）
  *
- * 职责：按能力（stt/tts/align/translate/llm）解析当前生效档案：
+ * 职责：按能力（stt/tts/align/translate/llm/speech_eval）解析当前生效档案：
  * 显式指定 id > 该能力默认档案 > 该能力第一个档案 > 内置本地默认（仅 stt/tts）。
  * 云端档案的 api_key 只在服务端流转，任何 API 响应都不回传。
  */
 
 import { createHash } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { AICapability } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { providerProfiles } from '@/lib/db/schema';
@@ -101,35 +101,60 @@ export function maskProfile<T extends { apiKey: string | null }>(row: T): Omit<T
 
 /**
  * 表单 apiKey 或按 profileId 回库取已存 Key（编辑模式 Key 不回显；
- * 连通性测试与「获取模型」两个入口共用的兜底规则）
+ * 连通性测试与「获取模型」两个入口共用的兜底规则）。
+ * 回库查询按 userId=1 + capability 双重限定——profileId 由客户端提交，
+ * 不限定能力的话一个被他能力档案 id 指定的请求就能取到任意能力的已存
+ * Key 并随测试/拉模型请求发往客户端指定的端点（凭据越权外发的形状）。
  * @param apiKey 表单现值（空白视同未填）
  * @param profileId 编辑中的档案 id（新增表单为 undefined）
+ * @param capability 该请求所属能力（回库取 Key 的限定条件）
  */
-export function formKeyOrStored(apiKey: string | undefined, profileId: number | undefined): string {
+export function formKeyOrStored(
+  apiKey: string | undefined,
+  profileId: number | undefined,
+  capability: string
+): string {
+  // 能力是回库限定的前提：空/漏传时明确报错，不静默退化为「查不到→空 Key」
+  // （那会让编辑态测试以「鉴权失败」的假象暴露）
+  if (!capability) throw new Error('回库取 Key 需要能力限定参数（capability）');
   const form = apiKey?.trim() ?? '';
   if (form || !profileId) return form;
   const row = getDb()
     .select({ apiKey: providerProfiles.apiKey })
     .from(providerProfiles)
-    .where(eq(providerProfiles.id, profileId))
+    .where(
+      and(
+        eq(providerProfiles.id, profileId),
+        eq(providerProfiles.userId, 1),
+        eq(providerProfiles.capability, capability)
+      )
+    )
     .all()[0];
   return row?.apiKey ?? '';
 }
 
 /**
- * 当前 TTS 档案的缓存指纹（引擎 + 音色 → 短哈希）
+ * 当前 TTS 档案的缓存指纹（类型 + 引擎 + 模型/音色 + 端点 → 短哈希）
  *
  * 版本化音频 URL 的 v 参数数据源：切换 TTS 档案（换引擎或音色）指纹即变，
  * 客户端按新 URL 取音频，不会命中旧音色的不可变缓存。
- * 音色来源按档案形态分两侧：本地档案音色存 model 字段；云端档案 model 是
- * 模型名（默认 qwen-audio-3.0-tts-plus）、音色在 params.voice——两者都必须进哈希，
- * 缺一侧则「只换音色」时指纹不变，immutable 缓存永远回放旧音色。
+ * 进哈希的字段覆盖档案间所有实际差异轴，缺一则两个不同档案撞同一 v、
+ * immutable 缓存互相回放对方的音频：
+ * - kind + 端点：云端/本地档案、不同端点的云端档案之间隔离——仅凭
+ *   engine|model 会撞车（如「未填模型的云端档案」vs「model 也空的 edge
+ *   本地档案」都哈希 "edge||"）
+ * - 音色来源按档案形态分两侧：本地档案音色存 model 字段；云端档案 model
+ *   是模型名（默认 qwen-audio-3.0-tts-plus）、音色在 params.voice——都进哈希
  */
-export function ttsProfileFingerprint(): string {
-  const p = resolveProfile('tts');
+export function ttsProfileFingerprint(profile?: ResolvedProfile | null): string {
+  // 未传档案时自行解析（version 端点等独立调用）；路由内传预解析档案，
+  // 让「指纹闸门」与「合成用档案」读同一快照（各自解析存在跨快照窗口）
+  const p = profile !== undefined ? profile : resolveProfile('tts');
   const cloudVoice = typeof p?.params?.voice === 'string' ? p.params.voice : '';
   return createHash('sha1')
-    .update(`${ttsEngineFromParams(p?.params)}|${p?.model ?? ''}|${cloudVoice}`)
+    .update(
+      `${p?.kind ?? 'local'}|${ttsEngineFromParams(p?.params)}|${p?.model ?? ''}|${cloudVoice}|${p?.endpoint_url ?? ''}`
+    )
     .digest('hex')
     .slice(0, 10);
 }

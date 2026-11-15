@@ -21,7 +21,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { getDb, PINGLC_HOME } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
-import { EngineError, enginePost } from '@/lib/server/engine';
+import { EngineError, enginePost, engineErrorResponse } from '@/lib/server/engine';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
 
 export const runtime = 'nodejs';
@@ -114,9 +114,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       try {
         return NextResponse.json(await scoreBySoe(tmpPath, cue.textEn, soeProfile));
       } catch (err) {
-        // 云端失败不阻断：降级本地近似评分，note 带原因（凭据错误/欠费/网络…）
-        soeFallbackNote =
-          `口语评测服务不可用（${err instanceof EngineError ? err.message : '网络异常'}），已用本地近似评分`;
+        // 仅引擎/服务层失败才降级本地近似评分（note 带原因：凭据错误/欠费/网络…）；
+        // 其余异常（如评分映射代码的 TypeError）原样上抛走 502——静默吞掉会把
+        // 程序缺陷伪装成「服务不可用」，词级/音素级 UI 无声消失且日志无痕
+        if (!(err instanceof EngineError)) throw err;
+        soeFallbackNote = `口语评测服务不可用（${err.message}），已用本地近似评分`;
       }
     }
 
@@ -155,8 +157,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       detail: null,
     } satisfies ShadowScoreDTO);
   } catch (err) {
-    const msg = err instanceof EngineError ? err.message : '评分失败';
-    return NextResponse.json({ error: msg }, { status: 502 });
+    // 502 前先落服务端日志（含栈）：此前程序缺陷（如评分映射 TypeError）只以
+    // 502 呈现、日志无痕，只能靠用户反馈定位
+    console.error('[shadow-score] 评分失败:', err);
+    return engineErrorResponse(err, '评分失败');
   } finally {
     try {
       unlinkSync(tmpPath);

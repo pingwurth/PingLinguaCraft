@@ -101,7 +101,14 @@ export interface ProviderDTO {
 /** 引擎能力明细（与 engine /system/capabilities 对应；web 服务端 engine.ts 亦复用此类型） */
 export interface EngineCapabilities {
   stt: { faster_whisper: boolean; whisperx: boolean };
-  tts: { edge_tts: boolean; kokoro: boolean; kokoro_models: boolean };
+  tts: {
+    edge_tts: boolean;
+    kokoro: boolean;
+    /** 三态而非布尔：仍在跑旧代码的引擎进程不回报该字段（运行时 undefined）。
+     *  消费端须按「undefined=未知」处理（显式 === false 才是未下载），不能写
+     *  !kokoro_models——会对旧引擎误报「未下载」 */
+    kokoro_models?: boolean;
+  };
   align: { whisperx: boolean; mfa_docker: boolean };
   cuda: boolean;
   yt_dlp: boolean;

@@ -20,12 +20,16 @@ import { api, type Collection, type JobDTO } from '@/lib/api';
 /** 导入路径 tab */
 type ImportKind = 'file' | 'link' | 'text';
 
-/** 导入路径页签配置（顶部导航与指引弹窗场景卡共用单源：kind → 显示名/图标） */
-const TABS: ReadonlyArray<{ kind: ImportKind; label: string; icon: string }> = [
-  { kind: 'file', label: '本地文件', icon: 'upload_file' },
-  { kind: 'link', label: '链接导入', icon: 'link' },
-  { kind: 'text', label: '文本转音频', icon: 'text_to_speech' },
-];
+/** 页签元数据（Record 按 ImportKind 穷尽声明：新增 kind 漏配即编译报错；
+ *  显示名/图标单源，顶部导航与指引弹窗场景卡共用） */
+const TAB_META: Record<ImportKind, { label: string; icon: string }> = {
+  file: { label: '本地文件', icon: 'upload_file' },
+  link: { label: '链接导入', icon: 'link' },
+  text: { label: '文本转音频', icon: 'text_to_speech' },
+};
+
+/** 页签渲染顺序（导航条从左到右） */
+const TAB_ORDER: ReadonlyArray<ImportKind> = ['file', 'link', 'text'];
 
 /** 指引弹窗已读记忆键（localStorage：关闭过一次即不再自动弹出） */
 const GUIDE_SEEN_KEY = 'pinglc.import.guideSeen';
@@ -34,7 +38,7 @@ const GUIDE_SEEN_KEY = 'pinglc.import.guideSeen';
  * 工作流程场景数据：num 为场景序号中文数字（随数据走，不按数组下标取——
  * 增删场景不会出现「场景undefined」）；steps 首=手头素材、末=导入结果（中间为
  * 动作步骤）；hint 为站内/站外做法提示（不交叉引用其他场景序号，防乱序失效）；
- * tab 为对应导入路径页签（显示名从 TABS 单源取，弹窗内可一键跳转）
+ * tab 为对应导入路径页签（显示名从 TAB_META 单源取，弹窗内可一键跳转）
  */
 const GUIDE_SCENARIOS: ReadonlyArray<{
   /** 场景序号中文数字（标题「场景X」用） */
@@ -47,7 +51,7 @@ const GUIDE_SCENARIOS: ReadonlyArray<{
   steps: string[];
   /** 站内/站外做法提示 */
   hint: string;
-  /** 对应导入路径 tab（显示名从 TABS 取） */
+  /** 对应导入路径 tab（显示名从 TAB_META 取） */
   tab: ImportKind;
 }> = [
   {
@@ -241,9 +245,9 @@ function ImportWizard() {
         </button>
       </header>
 
-      {/* 路径 tab（页签配置 TABS 单源，与指引弹窗场景卡共用） */}
+      {/* 路径 tab（页签元数据 TAB_META 单源，与指引弹窗场景卡共用；顺序按 TAB_ORDER） */}
       <nav className="deckle mb-5 flex rounded-md border bg-card p-1">
-        {TABS.map(({ kind: key, label, icon }) => (
+        {TAB_ORDER.map((key) => (
           <button
             key={key}
             onClick={() => setKind(key)}
@@ -251,8 +255,8 @@ function ImportWizard() {
               kind === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
             }`}
           >
-            <span className="material-symbols-outlined text-lg">{icon}</span>
-            {label}
+            <span className="material-symbols-outlined text-lg">{TAB_META[key].icon}</span>
+            {TAB_META[key].label}
           </button>
         ))}
       </nav>
@@ -441,13 +445,22 @@ function FlowChain({ steps }: { steps: string[] }) {
 
 /**
  * 在线服务推荐行（语音生成/语音转写两组共用：组名 + 站点链接胶囊，外链带标识图标）
- * @param label 组名（如「语音生成」）
- * @param sites 站点清单：[站点名, 链接]
+ * @param label     组名（如「语音生成」）
+ * @param sites     站点清单：[站点名, 链接]
+ * @param className 组容器外距（首组离小节标题 mt-2，后续组间 mt-1.5，由使用处给定）
  */
-function SiteLinkList({ label, sites }: { label: string; sites: ReadonlyArray<readonly [string, string]> }) {
+function SiteLinkList({
+  label,
+  sites,
+  className,
+}: {
+  label: string;
+  sites: ReadonlyArray<readonly [string, string]>;
+  className: string;
+}) {
   return (
     /* 组容器：组名 + 胶囊换行排布 */
-    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       {/* 组名 */}
       <span className="text-xs text-muted-foreground">{label}</span>
       {/* 站点链接胶囊（新窗口打开，带外链图标） */}
@@ -482,20 +495,56 @@ function SiteLinkList({ label, sites }: { label: string; sites: ReadonlyArray<re
 function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: ImportKind) => void }) {
   /* 弹窗卡引用（打开时聚焦、承担 tabIndex=-1 焦点容器角色） */
   const cardRef = useRef<HTMLDivElement>(null);
-  /* Esc 键关闭（与点遮罩、关闭键等效） */
+  /* 键盘圈定：Esc 关闭（与点遮罩、关闭键等效）；Tab/Shift+Tab 在弹窗卡内的
+     可聚焦元素间循环，焦点不出遮罩——aria-modal 的键盘语义真正落地 */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      // 弹窗卡内可聚焦元素（首尾两个做循环锚点）
+      const focusable = cardRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable || focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (!cardRef.current?.contains(document.activeElement)) {
+        // 焦点在卡外（如刚打开落在卡容器本身）：拉回首个元素
+        e.preventDefault();
+        first.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); // 正向到尾 → 回首
+        first.focus();
+      } else if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); // 逆向到首 → 回尾
+        last.focus();
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  /* 焦点管理 + 背景滚动锁定：挂载即聚焦弹窗卡并锁滚动，卸载时双双还原 */
+  /* 焦点管理 + 背景滚动锁定：挂载即聚焦弹窗卡，卸载还原触发元素焦点；
+     滚动锁同时压 html 与 body（iOS Safari PWA 只锁 body 不可靠），并按
+     滚动条宽度补 padding 防桌面端去滚动条引发的布局跳动 */
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     cardRef.current?.focus();
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevPadRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - html.clientWidth;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
     return () => {
-      document.body.style.overflow = prevOverflow;
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.paddingRight = prevPadRight;
       opener?.focus();
     };
   }, []);
@@ -547,14 +596,14 @@ function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: Import
               <div className="mt-2.5">
                 <FlowChain steps={s.steps} />
               </div>
-              {/* 做法提示 + 对应页签一键跳转（页签名从 TABS 单源取） */}
+              {/* 做法提示 + 对应页签一键跳转（页签名从 TAB_META 单源取） */}
               <div className="mt-2 flex items-end justify-between gap-2">
                 <p className="text-xs leading-relaxed text-muted-foreground">{s.hint}</p>
                 <button
                   onClick={() => onGo(s.tab)}
                   className="shrink-0 rounded border border-primary/40 px-2 py-1 text-xs text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
                 >
-                  去「{TABS.find((t) => t.kind === s.tab)?.label ?? ''}」
+                  去「{TAB_META[s.tab].label}」
                 </button>
               </div>
             </section>
@@ -568,10 +617,10 @@ function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: Import
             <span className="material-symbols-outlined text-lg text-ochre">public</span>
             在线服务推荐
           </h4>
-          {/* 语音生成（TTS）组 */}
-          <SiteLinkList label="语音生成" sites={TTS_SITES} />
+          {/* 语音生成（TTS）组（首组离小节标题稍远） */}
+          <SiteLinkList label="语音生成" sites={TTS_SITES} className="mt-2" />
           {/* 语音转写（STT）组 */}
-          <SiteLinkList label="语音转写" sites={STT_SITES} />
+          <SiteLinkList label="语音转写" sites={STT_SITES} className="mt-1.5" />
           {/* 兼容格式与站内能力提示 */}
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
             转写请导出 SRT / VTT 字幕，与本站导入直接兼容；本站亦内置本地合成与转写，设置页可配云端档案。

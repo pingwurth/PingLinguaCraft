@@ -23,12 +23,11 @@ import uuid
 from urllib.parse import urlencode, urlsplit
 
 import orjson
-from websockets import connect as ws_connect
-from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from ..media import ffmpeg
 from ..media.wav import wav_duration_ms
 from ..settings import CACHES_DIR
+from ..ws_session import WsSession
 
 # SOE 服务地址（档案 endpoint_url 缺省时的兜底；签名原文取其 host+path）
 DEFAULT_ENDPOINT = "wss://soe.cloud.tencent.com/soe/api"
@@ -161,8 +160,10 @@ def normalize_result(raw: str | bytes | dict) -> dict:
     """
     data = orjson.loads(raw) if isinstance(raw, (str, bytes)) else dict(raw or {})
 
-    # 流利度标度归一：实测（2026-11 真机）返回 0~1 比率，而文档示例写 93.7（0~100）。
-    # 两种都可能遇到：≤1 视为比率放大到百分制，>1 认为已是百分制
+    # 流利度标度归一：官方文档（107386 各模式返回示例）的 PronFluency 恒为
+    # 0~1 比率（如 0.8466…），PronAccuracy/PronCompletion 才是 0~100——与
+    # 2026-11 真机实测一致。据此定规则：≤1 一律按比率放大到百分制（文档口径
+    # 下这是唯一合理解释）；>1 仅作防御兼容（中转网关若回百分制原样保留）
     fluency = float(data.get("PronFluency") or 0.0)
     if 0 < fluency <= 1.0:
         fluency *= 100
@@ -260,42 +261,31 @@ async def _run_session(url: str, data: bytes) -> dict:
     """单次 WS 会话：握手 → 整段 binary 上传 → end 信号 → 收结果直到 final=1
 
     消息统一按 JSON 处理（code!=0 抛错；result 保留最后一条；final=1 收尾）。
-    close_timeout 短：final=1 后服务端要求客户端主动断开，不留挂起连接。
-    传输层异常（握手被拒/断连/超时/网络错误）统一包装为 SoeError，
-    避免 FastAPI 层裸 500 掩盖鉴权失败等真实根因。
+    建连/限时收发与传输层异常归一走共享的 WsSession（超时策略与异常捕获
+    顺序——TimeoutError 须先于 OSError 系——在 ws_session.py 单一维护），
+    业务错误仍在本层包装为 SoeError，FastAPI 层不出现裸 500。
     """
     result = None
-    try:
-        async with ws_connect(url, open_timeout=10, close_timeout=5, max_size=8 * 1024 * 1024) as ws:
-            await ws.send(data)  # 录音模式：整段音频一个 binary 帧
-            await ws.send('{"type": "end"}')  # 结束信号（text 帧）
-            while True:
-                raw = await asyncio.wait_for(ws.recv(), timeout=RECV_TIMEOUT_SEC)
-                if isinstance(raw, bytes):
-                    raw = raw.decode("utf-8", "replace")
-                try:
-                    msg = orjson.loads(raw)
-                except orjson.JSONDecodeError as exc:
-                    raise SoeError(f"评测服务返回了无法解析的消息：{str(raw)[:120]}") from exc
-                code = int(msg.get("code") or 0)
-                if code != 0:
-                    raise SoeError(_error_text(code, str(msg.get("message") or "")))
-                if msg.get("result"):
-                    result = msg["result"]  # 同一连接可能多条（此处无中间结果，防御保留）
-                if msg.get("final") == 1:
-                    break
-    except SoeError:
-        raise  # 业务错误/消息异常已带可读文案，原样上抛
-    except asyncio.TimeoutError as exc:
-        # 注意先于 OSError 捕获：Python 3.11+ 里 TimeoutError 是 OSError 子类
-        raise SoeError(f"评测服务响应超时（{RECV_TIMEOUT_SEC:.0f}s），请重试") from exc
-    except InvalidStatus as exc:
-        # WSS 握手被拒（SecretId/SecretKey/地址错误在 HTTP 层即失败，走不到业务错误码）
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-        hint = "：多为 AppId / SecretId / SecretKey 或服务地址有误，请到设置页检查" if status in (401, 403) else ""
-        raise SoeError(f"评测服务拒绝连接（HTTP {status if status is not None else '?'}）{hint}") from exc
-    except (ConnectionClosed, OSError) as exc:
-        raise SoeError(f"评测服务连接失败：{exc}") from exc
+    async with WsSession(
+        url, error=SoeError, label="评测服务", recv_timeout=RECV_TIMEOUT_SEC
+    ) as ws:
+        await ws.send(data)  # 录音模式：整段音频一个 binary 帧
+        await ws.send('{"type": "end"}')  # 结束信号（text 帧）
+        while True:
+            raw = await ws.recv()
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8", "replace")
+            try:
+                msg = orjson.loads(raw)
+            except orjson.JSONDecodeError as exc:
+                raise SoeError(f"评测服务返回了无法解析的消息：{str(raw)[:120]}") from exc
+            code = int(msg.get("code") or 0)
+            if code != 0:
+                raise SoeError(_error_text(code, str(msg.get("message") or "")))
+            if msg.get("result"):
+                result = msg["result"]  # 同一连接可能多条（此处无中间结果，防御保留）
+            if msg.get("final") == 1:
+                break
     if result is None:
         raise SoeError("评测服务未返回结果，请重试")
     return normalize_result(result)

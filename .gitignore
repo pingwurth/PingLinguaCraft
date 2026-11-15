@@ -37,4 +37,7 @@ Thumbs.db
 # ---- 第三方 qwen 技能包的二进制资产（约 80MB 字体/图片，本地保留、不入库；如需入库删除此两行） ----
 .qwen/skills/huashu-design/assets/
 .qwen/skills/design-taste-frontend/assets/
-services/ai-engine/mfa-docker/models/
+# MFA 预下载模型不入库，但目录本身须随仓库存在（.gitkeep 例外）——
+# Dockerfile 的 COPY models/ 依赖该目录，全新克隆缺目录会让 docker build 直接失败
+services/ai-engine/mfa-docker/models/*
+!services/ai-engine/mfa-docker/models/.gitkeep

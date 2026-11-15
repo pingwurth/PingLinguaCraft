@@ -604,7 +604,11 @@ async function importPipeline(jobId: string, materialId: number, payload: Import
       const job = await engineSubmitJob('tts_batch', {
         sentences: cueRows.map((c) => c.textEn),
         out_path: outPath,
-        voice: (profile?.model as string) || undefined,
+        // voice 仅本地档案传（本地档案 model 字段即音色）；云端档案 model 是
+        // 模型名（如 qwen-audio-3.0-tts-plus），作 voice 传会被引擎云端音色
+        // 链的最高优先级 req_voice 采纳——模型名当音色发给云端必合成失败。
+        // 云端音色走 profile.params.voice（引擎侧解析，缺省用默认音色）
+        voice: profile?.kind === 'local' ? ((profile.model as string) || undefined) : undefined,
         profile: profile ? toEngineProfile(profile) : {},
       });
       updateJob(jobId, { engineJobId: job.id });

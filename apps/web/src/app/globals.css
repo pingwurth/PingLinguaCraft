@@ -59,8 +59,8 @@
   /* 赭褐色：文学性元数据、章节标签、译文标题 */
   --ochre: #8c7b65;
 
-  /* 遮罩层：浓墨半透（弹窗/浮层遮罩统一用色，替代裸 black/50） */
-  --scrim: rgb(30 32 34 / 0.5);
+  /* 遮罩层：浓墨半透（由 --foreground 派生，墨色调整自动跟随；弹窗/浮层统一用色） */
+  --scrim: color-mix(in srgb, var(--foreground) 50%, transparent);
 
   /* 圆角：书页裁切的柔和 4px */
   --radius: 0.25rem;
@@ -170,10 +170,6 @@
     opacity: 0.85;
   }
 
-  button.bg-primary:not(:disabled):active {
-    background-color: var(--primary-hover);
-  }
-
   /* 图标基类：span.material-symbols-outlined 内容写图标名（ligature），如 menu_book。
    * 放在 base 层（Tailwind 分层最低优先级）：leading-* / font-bold 等工具类可覆盖
    * line-height / 字重；需要实心图标处用工具类或内联设 'FILL' 1。
@@ -191,6 +187,15 @@
     /* 变体轴默认值（描边 / 0 渐变 / 24 光学尺寸）；wght 交给 font-weight 继承控制 */
     font-variation-settings: 'FILL' 0, 'GRAD' 0, 'opsz' 24;
   }
+}
+
+/* 朱砂主按钮的按压态（印泥按压后的深朱，--primary-hover token 的设计本意）。
+ * 必须放在所有 @layer 之外（未分层样式在级联中胜过任何分层样式）：Tailwind v4
+ * 把 .bg-primary 生成在 utilities 分层，先前本规则放在 @layer base 里——
+ * 无论选择器特异性多高，分层顺序永远让 utilities 的 background-color 获胜，
+ * 按压色从未真正渲染过 */
+button.bg-primary:not(:disabled):active {
+  background-color: var(--primary-hover);
 }
 
 /* ---------------------------------------------------------------------------

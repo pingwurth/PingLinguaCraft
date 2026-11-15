@@ -109,7 +109,14 @@ export async function GET(request: Request) {
       .select({ n: sql<number>`count(*)` })
       .from(srsCards)
       .innerJoin(words, eq(srsCards.itemId, words.id))
-      .where(and(eq(srsCards.itemType, 'word'), lte(srsCards.dueMs, new Date(now)), dueDedupe))
+      .where(
+        and(
+          eq(srsCards.itemType, 'word'),
+          eq(words.userId, 1),
+          lte(srsCards.dueMs, new Date(now)),
+          dueDedupe
+        )
+      )
       .all()[0]!.n;
   const newCount =
     db
@@ -126,7 +133,8 @@ export async function GET(request: Request) {
 
   const limit = parseLimit(params.get('limit'));
 
-  // 到期卡（连词取词与原句），按到期先后（谓词见上方统计段的共用反连接）
+  // 到期卡（连词取词与原句），按到期先后（谓词见上方统计段的共用反连接；
+  // 与统计同口径限定 user 1——预留的 user_id 一旦出现其他值不得混入建队）
   const due: QueueItem[] = db
     .select({
       wordId: words.id,
@@ -139,7 +147,14 @@ export async function GET(request: Request) {
     .from(srsCards)
     .innerJoin(words, eq(srsCards.itemId, words.id))
     .leftJoin(cues, eq(words.originCueId, cues.id))
-    .where(and(eq(srsCards.itemType, 'word'), lte(srsCards.dueMs, new Date(now)), dueDedupe))
+    .where(
+      and(
+        eq(srsCards.itemType, 'word'),
+        eq(words.userId, 1),
+        lte(srsCards.dueMs, new Date(now)),
+        dueDedupe
+      )
+    )
     .orderBy(asc(srsCards.dueMs))
     .limit(limit)
     .all()
@@ -169,29 +184,32 @@ export async function GET(request: Request) {
   // 干扰词池（选择题选项用；按 lemma 去重，同词多本不重复出现）。
   // 均匀取样而非 ORDER BY RANDOM()：后者每次请求都物化并洗牌全部词元
   // （成本随词库增长，而客户端每轮只快照一次）；DISTINCT 内部本就按
-  // lemma 有序，ROW_NUMBER 复用该序做取样，覆盖整个字母区间（不像字母序
-  // 截断那样集中在 a-c 让正确答案一眼可辨），随机相位/窗口保证每次取样的
-  // 集合不同；同轮次的确定性由前端 seededPick 保证。
-  // - 词库 ≥ 2×池容：步长取样（rn % step = phase），候选 ≥ 池容、全区间均匀
-  // - 词库略超池容：步长退化为 1，改随机窗口（OFFSET 抖动起点）
-  const poolTotal =
-    db
-      .select({ n: sql<number>`count(distinct ${words.lemma})` })
-      .from(words)
-      .where(eq(words.userId, 1))
-      .all()[0]!.n;
+  // lemma 有序，ROW_NUMBER 复用该序做取样，随机相位保证每次取样的集合
+  // 不同、覆盖整个字母区间（不像字母序截断那样集中在 a-c 让正确答案一眼
+  // 可辨）；同轮次的确定性由前端 seededPick 保证。
+  // - 词库 > 池容：步长取样（rn % step = phase）把候选压到 < 2×池容，
+  //   候选超出池容时在 JS 端随机抽取——绝不用「ORDER BY lemma LIMIT 池容」
+  //   截断（那会把尾部字母区间的词元永久排除在干扰池外）
+  // - 词库 ≤ 池容：step=1 全量候选，同样 JS 随机抽取
   const POOL_SIZE = 200;
-  const step = Math.max(1, Math.floor(poolTotal / POOL_SIZE));
+  // 复用上面已算好的 totalWords（同一条 count(distinct lemma) 谓词，重复查询
+  // 既浪费又留两处口径漂移的口子）
+  const step = Math.max(1, Math.floor(totalWords / POOL_SIZE));
   const phase = Math.floor(Math.random() * step);
-  const offset = step === 1 ? Math.max(0, Math.floor(Math.random() * (poolTotal - POOL_SIZE))) : 0;
-  const pool = db
+  const candidates = db
     .all<{ lemma: string }>(sql`
       select lemma from (
         select lemma, row_number() over (order by lemma) as rn
         from (select distinct ${words.lemma} as lemma from ${words} where ${words.userId} = 1)
-      ) where rn % ${step} = ${phase} order by lemma limit ${POOL_SIZE} offset ${offset}
+      ) where rn % ${step} = ${phase} order by lemma
     `)
     .map((x) => x.lemma);
+  // Fisher–Yates 洗牌后取前 POOL_SIZE（候选至多 ~2×池容，全字母区间都有份）
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!];
+  }
+  const pool = candidates.slice(0, POOL_SIZE);
 
   return NextResponse.json({ queue: [...due, ...fresh], pool, stats });
 }

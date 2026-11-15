@@ -249,7 +249,8 @@ def test_wav_duration_ms_chunk_walk():
 
 
 class FakeWS:
-    """脚本化 WS 连接：recv 依序回放消息，send 记录待断言"""
+    """脚本化 WS 连接：recv 依序回放消息，send 记录待断言。
+    同时兼容 await connect(...)（WsSession 的建连形态）与连接对象协议"""
 
     def __init__(self, script: list):
         """初始化回放脚本（元素为消息或待抛异常）"""
@@ -257,14 +258,14 @@ class FakeWS:
         self.sent: list = []
         self.closed = False
 
-    async def __aenter__(self):
-        """进入连接上下文：返回自身充当 ws 对象"""
+    def __await__(self):
+        """await 即得连接（WsSession 用 await websockets.connect(...) 建连）"""
+        yield from []
         return self
 
-    async def __aexit__(self, *exc):
-        """退出连接上下文：记录关闭状态，不吞异常"""
+    async def close(self):
+        """记录关闭（WsSession 退出上下文时调用）"""
         self.closed = True
-        return False
 
     async def send(self, payload):
         """记录发送帧（binary 音频 / text 结束信号）供测试断言次序"""
@@ -278,6 +279,13 @@ class FakeWS:
         if isinstance(item, Exception):
             raise item
         return item
+
+
+def _patch_ws(monkeypatch, factory):
+    """打桩共享 WS 脚手架的建连点（app.ws_session 内的 websockets.connect）"""
+    from app import ws_session
+
+    monkeypatch.setattr(ws_session.websockets, "connect", factory)
 
 
 def _patch_media(monkeypatch, tmp_path: Path, *, duration_ms=1000, wav_bytes=None):
@@ -310,7 +318,7 @@ def test_evaluate_happy_path(monkeypatch, tmp_path):
             '{"code":0,"message":"success","voice_id":"v1","final":1}',
         ]
     )
-    monkeypatch.setattr(soe_tencent, "ws_connect", lambda url, **kw: ws)
+    _patch_ws(monkeypatch, lambda url, **kw: ws)
     out = asyncio.run(
         soe_tencent.evaluate(
             "/tmp/a.webm", "hello world",
@@ -330,7 +338,7 @@ def test_evaluate_business_error(monkeypatch, tmp_path):
     """业务错误码（4004 资源包耗尽）：抛 SoeError 且文案可读"""
     _patch_media(monkeypatch, tmp_path)
     ws = FakeWS(['{"code":4004,"message":"package exhausted","voice_id":"v1"}'])
-    monkeypatch.setattr(soe_tencent, "ws_connect", lambda url, **kw: ws)
+    _patch_ws(monkeypatch, lambda url, **kw: ws)
     with pytest.raises(soe_tencent.SoeError, match="资源包耗尽"):
         asyncio.run(
             soe_tencent.evaluate(
@@ -345,7 +353,7 @@ def test_evaluate_no_result(monkeypatch, tmp_path):
     """final=1 但无 result：明确报「未返回结果」"""
     _patch_media(monkeypatch, tmp_path)
     ws = FakeWS(['{"code":0,"final":1}'])
-    monkeypatch.setattr(soe_tencent, "ws_connect", lambda url, **kw: ws)
+    _patch_ws(monkeypatch, lambda url, **kw: ws)
     with pytest.raises(soe_tencent.SoeError, match="未返回结果"):
         asyncio.run(
             soe_tencent.evaluate(
@@ -367,7 +375,7 @@ def test_evaluate_ws_rejected(monkeypatch, tmp_path):
         """替身连接：握手阶段直接抛 InvalidStatus（服务端 401）"""
         raise InvalidStatus(SimpleNamespace(status_code=401))
 
-    monkeypatch.setattr(soe_tencent, "ws_connect", rejected)
+    _patch_ws(monkeypatch, rejected)
     with pytest.raises(soe_tencent.SoeError, match=r"401.*设置页"):
         asyncio.run(
             soe_tencent.evaluate(
@@ -382,7 +390,7 @@ def test_evaluate_ws_timeout(monkeypatch, tmp_path):
     """收结果超时（recv 等待 30s 上限）：包装为 SoeError（提示重试）"""
     _patch_media(monkeypatch, tmp_path)
     ws = FakeWS([TimeoutError()])
-    monkeypatch.setattr(soe_tencent, "ws_connect", lambda url, **kw: ws)
+    _patch_ws(monkeypatch, lambda url, **kw: ws)
     with pytest.raises(soe_tencent.SoeError, match="超时"):
         asyncio.run(
             soe_tencent.evaluate(
@@ -401,8 +409,8 @@ def test_evaluate_ws_network_error(monkeypatch, tmp_path):
         """替身连接：连接阶段抛 OSError（模拟网络不可达/重置）"""
         raise OSError("connection reset by peer")
 
-    monkeypatch.setattr(soe_tencent, "ws_connect", boom)
-    with pytest.raises(soe_tencent.SoeError, match="连接失败"):
+    _patch_ws(monkeypatch, boom)
+    with pytest.raises(soe_tencent.SoeError, match="连接失败") as ei:
         asyncio.run(
             soe_tencent.evaluate(
                 "/tmp/a.webm", "hello",
@@ -410,6 +418,10 @@ def test_evaluate_ws_network_error(monkeypatch, tmp_path):
                 app_id="1", secret_id="i", secret_key="k",
             )
         )
+    # 错误文案不得外泄凭据：连接 URL 的 query 带 secretid/签名/nonce，
+    # 文案只允许出现脱敏后的 scheme://netloc/path
+    msg = str(ei.value)
+    assert "signature" not in msg and "secretid" not in msg and "nonce" not in msg
 
 
 def test_evaluate_too_long_audio(monkeypatch, tmp_path):
@@ -421,7 +433,7 @@ def test_evaluate_too_long_audio(monkeypatch, tmp_path):
         called.append(url)
         raise AssertionError("不应发起 WS 连接")
 
-    monkeypatch.setattr(soe_tencent, "ws_connect", no_connect)
+    _patch_ws(monkeypatch, no_connect)
     with pytest.raises(soe_tencent.SoeError, match="过长"):
         asyncio.run(
             soe_tencent.evaluate(

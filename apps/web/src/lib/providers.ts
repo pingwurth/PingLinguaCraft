@@ -39,3 +39,37 @@ export function ttsEngineOf(p: ProfileLike): 'edge' | 'kokoro' {
   if (p.capability !== 'tts') return 'edge';
   return ttsEngineFromParams(parseParamsJson(p.paramsJson));
 }
+
+/**
+ * 档案能力×类型校验（POST /api/providers 与 PATCH /api/providers/[id] 单一来源；
+ * PATCH 传「合并后的完整档案」判断，防局部更新存入不可用档案）
+ * @param capability 能力（speech_eval 有专用规则）
+ * @param kind 档案类型
+ * @param endpointUrl 云端端点（合并后现值）
+ * @param params 档案附加参数（合并后现值；speech_eval 凭据在此）
+ * @returns 错误文案；null=校验通过
+ */
+export function validateProfile(
+  capability: string,
+  kind: string,
+  endpointUrl: string | null | undefined,
+  params: Record<string, unknown>
+): string | null {
+  if (kind !== 'local' && kind !== 'cloud') return '类型必须为 local/cloud';
+  if (kind === 'cloud' && !endpointUrl?.trim()) return '云端档案必须填写端点 URL';
+  // 云端专属能力（引擎侧硬性要求云端形态，存成 local 即死档案）：与设置页
+  // CAP_RULES 的 cloudOnly 同口径——llm/translate/speech_eval
+  if (capability === 'llm' || capability === 'translate' || capability === 'speech_eval') {
+    if (kind !== 'cloud') return '该能力仅支持云端档案（本地模型走 OpenAI 兼容端点地址）';
+  }
+  if (capability === 'speech_eval') {
+    // 口语评测凭据：appId/secretId 必填且 trim 后判空（空白串不算已填），
+    // SecretKey 可后补；服务地址已由上面的云端分支保证非空
+    const appId = typeof params.appId === 'string' ? params.appId.trim() : '';
+    const secretId = typeof params.secretId === 'string' ? params.secretId.trim() : '';
+    if (!appId || !secretId) {
+      return '口语评测档案必须填写服务地址、appId 与 secretId';
+    }
+  }
+  return null;
+}

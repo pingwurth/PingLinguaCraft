@@ -6,17 +6,15 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { providerProfiles } from '@/lib/db/schema';
-import { parseParamsJson } from '@/lib/providers';
+import { parseParamsJson, validateProfile } from '@/lib/providers';
 
 export const runtime = 'nodejs';
 
 /**
  * PATCH /api/providers/[id] —— 更新档案字段（apiKey 传空串=清除）
  *
- * 校验与 POST 同口径、按「合并后的完整档案」判断（局部更新不能存入不可用
- * 档案）：云端档案端点必填；speech_eval 的服务地址/appId/secretId 必填
- * （SecretKey 可后补）。kind 可修正——旧版 UI 可能把 LLM/翻译档案存成
- * local，编辑流统一改回 cloud 后在此落库。
+ * 校验按「合并后的完整档案」判断（局部更新不能存入不可用档案），规则与
+ * POST 同口径——单一来源在 lib/providers.validateProfile，改规则只动那里。
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -37,28 +35,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!row) return NextResponse.json({ error: '档案不存在' }, { status: 404 });
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  if (body.kind !== undefined) {
-    if (body.kind !== 'local' && body.kind !== 'cloud') {
-      return NextResponse.json({ error: '类型必须为 local/cloud' }, { status: 400 });
-    }
-    patch.kind = body.kind;
-  }
+  // kind 合法性由下方 validateProfile 对「合并后的完整档案」统一判断（单一
+  // 来源——此处不再手写一份同规则校验，防两处静默分叉）
+  if (body.kind !== undefined) patch.kind = body.kind;
   if (body.name !== undefined) patch.name = body.name.trim();
   if (body.endpointUrl !== undefined) patch.endpointUrl = body.endpointUrl.trim() || null;
   if (body.apiKey !== undefined) patch.apiKey = body.apiKey.trim() || null;
   if (body.model !== undefined) patch.model = body.model.trim() || null;
   if (body.params !== undefined) patch.paramsJson = JSON.stringify(body.params);
 
-  // 合并后的完整形态（校验用；未提交的字段沿用库中现值）
+  // 合并后的完整形态（校验用；未提交的字段沿用库中现值）——校验与 POST 同口径
+  // （lib/providers.validateProfile 单一来源：云端端点必填；speech_eval 仅云端
+  // 且 url/appId/secretId 必填。kind 可修正——旧版 UI 可能把 LLM/翻译档案存成
+  // local，编辑流统一改回 cloud 后在此落库）
   const kind = (patch.kind as string) ?? row.kind;
   const endpointUrl = patch.endpointUrl !== undefined ? (patch.endpointUrl as string | null) : row.endpointUrl;
   const mergedParams = body.params !== undefined ? body.params : parseParamsJson(row.paramsJson);
-  if (kind === 'cloud' && !endpointUrl?.trim()) {
-    return NextResponse.json({ error: '云端档案必须填写端点 URL' }, { status: 400 });
-  }
-  if (row.capability === 'speech_eval' && (!endpointUrl?.trim() || !mergedParams.appId || !mergedParams.secretId)) {
-    return NextResponse.json({ error: '口语评测档案必须填写服务地址、appId 与 secretId' }, { status: 400 });
-  }
+  const invalid = validateProfile(row.capability, kind, endpointUrl, mergedParams);
+  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
 
   db.update(providerProfiles)
     .set(patch)

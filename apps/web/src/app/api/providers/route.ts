@@ -1,12 +1,13 @@
 /**
  * AI 档案 API：GET 列表（掩码 Key）/ POST 创建
- * 五能力 × {local | cloud}；api_key 只进不出
+ * 六能力（stt/tts/align/translate/llm/speech_eval）× {local | cloud}；api_key 只进不出
  */
 
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { providerProfiles } from '@/lib/db/schema';
+import { validateProfile } from '@/lib/providers';
 import { maskProfile } from '@/lib/server/providers';
 
 export const runtime = 'nodejs';
@@ -50,20 +51,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `能力必须为 ${[...CAPABILITIES].join('/')}` }, { status: 400 });
   }
   if (!name) return NextResponse.json({ error: '档案名不能为空' }, { status: 400 });
-  if (kind !== 'local' && kind !== 'cloud') {
-    return NextResponse.json({ error: '类型必须为 local/cloud' }, { status: 400 });
-  }
-  if (kind === 'cloud' && !body.endpointUrl?.trim()) {
-    return NextResponse.json({ error: '云端档案必须填写端点 URL' }, { status: 400 });
-  }
-  // 口语评测档案：url→endpointUrl、secretKey→apiKey、provider/appId/secretId→params
-  // （url/appId/secretId 必填，SecretKey 可后补）
-  if (capability === 'speech_eval') {
-    const params = (body.params ?? {}) as Record<string, unknown>;
-    if (!body.endpointUrl?.trim() || !params.appId || !params.secretId) {
-      return NextResponse.json({ error: '口语评测档案必须填写服务地址、appId 与 secretId' }, { status: 400 });
-    }
-  }
+  // 能力×类型校验单一来源（与 PATCH 同口径：云端端点必填、speech_eval 仅云端
+  // 且 url/appId/secretId 必填——凭据映射 url→endpointUrl、secretKey→apiKey）
+  const invalid = validateProfile(capability, kind, body.endpointUrl, (body.params ?? {}) as Record<string, unknown>);
+  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
 
   const db = getDb();
   const now = new Date();

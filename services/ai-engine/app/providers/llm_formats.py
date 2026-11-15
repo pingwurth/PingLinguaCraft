@@ -16,7 +16,9 @@ LLM 多 API 格式适配层：OpenAI Compatible / OpenAI Responses / Anthropic /
 """
 
 import json
+import re
 from typing import Any, AsyncIterator
+from urllib.parse import quote
 
 import httpx
 
@@ -35,6 +37,10 @@ FORMATS = ("openai-compatible", "openai-responses", "anthropic", "gemini")
 # 会被 API 400 拒绝而非钳制——第三方中转端点常仍在服务这批模型）；claude-4
 # 代上限更高不受影响。精听场景的短对话/笔记输出远用不满。
 ANTHROPIC_MAX_TOKENS = 4096
+
+# 模型清单分页拉取的页数上限（anthropic/gemini 每页至多 1000 条；5 页封顶
+# 防呆——超过 5000 个模型的目录属于异常场景，不该无限翻页）
+MODEL_LIST_MAX_PAGES = 5
 
 
 def _fmt(api_format: str | None) -> str:
@@ -68,6 +74,32 @@ def _gemini_headers(api_key: str | None) -> dict[str, str]:
     return h
 
 
+def _anthropic_base(endpoint_url: str) -> str:
+    """规整 Anthropic 端点基址：容忍粘贴完整 API 路径（对话/模型清单共用）
+
+    用户从官方 curl 示例直接复制 https://api.anthropic.com/v1/messages 的
+    情况很常见——剥掉 /v1/messages（与 openai_compat.base_url 剥
+    /chat/completions 同一纪律），否则会拼出 …/v1/messages/v1/messages。
+    """
+    base = base_url(endpoint_url)
+    for suffix in ("/v1/messages", "/messages", "/v1/models", "/models"):
+        base = base.removesuffix(suffix)
+    return base.removesuffix("/v1")
+
+
+def _gemini_base(endpoint_url: str) -> str:
+    """规整 Gemini 端点基址：剥粘贴的 /models 尾巴 + 补版本段（对话/模型清单共用）
+
+    裸域名（https://generativelanguage.googleapis.com）必须带 /v1beta 版本段，
+    否则 …/models/gemini-2.5-pro:generateContent 直接 404——与 Anthropic
+    端点裸域名可用不同，这里缺失版本段时自动补全。
+    """
+    base = base_url(endpoint_url).removesuffix("/models")
+    if not re.search(r"/v\d+(?:beta|alpha)?$", base):
+        base = f"{base}/v1beta"
+    return base
+
+
 def _anthropic_request(
     endpoint_url: str,
     api_key: str | None,
@@ -78,7 +110,7 @@ def _anthropic_request(
     stream: bool,
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     """构造 Anthropic 请求三元组 (url, headers, body)：system 出列、max_tokens 必填"""
-    base = base_url(endpoint_url).removesuffix("/v1")
+    base = _anthropic_base(endpoint_url)
     system, rest = split_system(messages)
     body: dict[str, Any] = {
         "model": model,
@@ -104,7 +136,7 @@ def _gemini_request(
     stream: bool,
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     """构造 Gemini 请求三元组 (url, headers, body)：systemInstruction 独立、assistant→model"""
-    base = base_url(endpoint_url).removesuffix("/models")
+    base = _gemini_base(endpoint_url)
     action = "streamGenerateContent" if stream else "generateContent"
     suffix = "?alt=sse" if stream else ""
     url = f"{base}/models/{model}:{action}{suffix}"
@@ -136,6 +168,7 @@ def _responses_request(
         body["stream"] = True
     if temperature is not None:
         body["temperature"] = temperature
+    # base_url 已剥粘贴的 /responses 尾巴（openai_compat 统一规整），此处统一拼
     return f"{base_url(endpoint_url)}/responses", auth_headers(api_key), body
 
 
@@ -225,30 +258,8 @@ async def chat_json(
     return await openai_compat.chat_json_with_retry(call, messages, temperature=temperature)
 
 
-async def list_models(api_format: str | None, endpoint_url: str, api_key: str | None) -> list[str]:
-    """按格式拉取云端模型清单（设置页「获取模型」按钮；各家鉴权头/路径/字段名不同）
-
-    - openai-compatible / openai-responses：GET /models + Bearer（Responses 同源端点）
-    - anthropic：GET /v1/models + x-api-key → data[].id
-    - gemini：GET /models?pageSize=1000 + x-goog-api-key → models[].name（剥 models/ 前缀）
-    Returns:
-        模型名列表（保持端点返回顺序）
-    Raises:
-        OpenAICompatError: 网络/HTTP/响应结构异常
-    """
-    fmt = _fmt(api_format)
-    if fmt == "openai-compatible":
-        return await openai_compat.list_models(endpoint_url, api_key)
-
-    if fmt == "anthropic":
-        base = base_url(endpoint_url).removesuffix("/v1")
-        url, headers = f"{base}/v1/models?limit=100", _anthropic_headers(api_key)
-    elif fmt == "gemini":
-        base = base_url(endpoint_url).removesuffix("/models")
-        url, headers = f"{base}/models?pageSize=100", _gemini_headers(api_key)
-    else:  # openai-responses：与 OpenAI 兼容同源的 /models 清单
-        url, headers = f"{base_url(endpoint_url)}/models", auth_headers(api_key)
-
+async def _get_json(url: str, headers: dict[str, str], endpoint_url: str) -> dict:
+    """GET → JSON dict（模型清单拉取/翻页共用；网络/HTTP/非 JSON 统一包装）"""
     async with make_client(endpoint_url) as client:
         try:
             r = await client.get(url, headers=headers)
@@ -258,12 +269,67 @@ async def list_models(api_format: str | None, endpoint_url: str, api_key: str | 
         raise OpenAICompatError(f"云端返回 {r.status_code}：{r.text[:300]}")
     try:
         data = r.json()
-        if fmt == "gemini":
-            # Gemini 模型名带 models/ 前缀（models/gemini-3-pro）
-            return [str(m["name"]).removeprefix("models/") for m in data.get("models") or []]
-        return [str(m["id"]) for m in data.get("data") or []]
-    except (ValueError, KeyError, TypeError) as exc:
-        raise OpenAICompatError(f"云端响应结构异常：{r.text[:300]}") from exc
+    except ValueError as exc:
+        raise OpenAICompatError(f"云端响应不是 JSON：{r.text[:200]}") from exc
+    # 结构守卫：模型清单约定为对象（data/models/nextPageToken 等字段），
+    # JSON 数组等异形载荷在此拦截——放过去会在调用方的 .get() 上抛 TypeError
+    if not isinstance(data, dict):
+        raise OpenAICompatError(f"云端响应结构异常：{str(data)[:200]}")
+    return data
+
+
+async def list_models(api_format: str | None, endpoint_url: str, api_key: str | None) -> list[str]:
+    """按格式拉取云端模型清单（设置页「获取模型」按钮；各家鉴权头/路径/字段名不同）
+
+    - openai-compatible / openai-responses：GET /models + Bearer（Responses 同源端点）
+    - anthropic：GET /v1/models?limit=1000 + x-api-key → data[].id；
+      has_more 翻页（after_id=上一页末条，游标 URL 编码）——单页 limit 会把大目录
+      （中转站常见几百个模型）静默截断
+    - gemini：GET /models?pageSize=1000 + x-goog-api-key → models[].name
+      （剥 models/ 前缀）；nextPageToken 翻页
+    翻页都有 MODEL_LIST_MAX_PAGES 上限（防呆，异常目录不无限翻）。
+    Returns:
+        模型名列表（保持端点返回顺序）
+    Raises:
+        OpenAICompatError: 网络/HTTP/响应结构异常
+    """
+    fmt = _fmt(api_format)
+    if fmt == "openai-compatible":
+        return await openai_compat.list_models(endpoint_url, api_key)
+
+    models: list[str] = []
+    if fmt == "anthropic":
+        base, headers = _anthropic_base(endpoint_url), _anthropic_headers(api_key)
+        # 分页游标参数是 after_id（Anthropic 约定）——服务端忽略未知参数，
+        # 传错名会每页都拿回第一页；游标值 URL 编码（模型 id 可含 +/& 等字符）
+        after: str | None = None
+        for _ in range(MODEL_LIST_MAX_PAGES):
+            url = f"{base}/v1/models?limit=1000" + (f"&after_id={quote(after, safe='')}" if after else "")
+            data = await _get_json(url, headers, endpoint_url)
+            page = [str(m.get("id", "")) for m in data.get("data") or []]
+            models.extend(m for m in page if m)
+            if not data.get("has_more") or not page:
+                break
+            after = page[-1]
+        return models
+
+    if fmt == "gemini":
+        base, headers = _gemini_base(endpoint_url), _gemini_headers(api_key)
+        token = ""
+        for _ in range(MODEL_LIST_MAX_PAGES):
+            # pageToken 是不透明字符串，同样 URL 编码（+/= 等字符会破坏 query）
+            url = f"{base}/models?pageSize=1000" + (f"&pageToken={quote(token, safe='')}" if token else "")
+            data = await _get_json(url, headers, endpoint_url)
+            names = [str(m.get("name", "")) for m in data.get("models") or []]
+            models.extend(n.removeprefix("models/") for n in names if n)
+            token = str(data.get("nextPageToken") or "")
+            if not token:
+                break
+        return models
+
+    # openai-responses：与 OpenAI 兼容同源的 /models 清单
+    data = await _get_json(f"{base_url(endpoint_url)}/models", auth_headers(api_key), endpoint_url)
+    return [str(m.get("id", "")) for m in data.get("data") or [] if m.get("id")]
 
 
 # ---------------- 统一入口：流式 ----------------

@@ -8,11 +8,9 @@ Edge-TTS 引擎（联网微软语音，免费、有标准英音声部）
 """
 
 import asyncio
-import hashlib
 from pathlib import Path
 
-from .. import settings
-from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, write_atomic
+from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, tts_cache_path, write_atomic
 
 # 默认英音声部（需求 8：点词朗读默认英音）
 # 注意：en-GB-GeorgeNeural 已被微软下架（NoAudioReceived），现行英音男声为 Ryan
@@ -26,23 +24,18 @@ VOICE_OPTIONS = [
     {"value": "en-GB-MaisieNeural", "label": "Maisie · 英音女声 · 少年"},
 ]
 
-# 内容哈希缓存目录：~/.pinglc/caches/tts/
-_TTS_CACHE_DIR = Path(settings.CACHES_DIR) / "tts"
-
 
 class TTSEngineError(RuntimeError):
     """TTS 合成失败（依赖缺失/网络/拼接异常）"""
 
 
 def cache_path(text: str, voice: str, rate: str) -> Path:
-    """计算缓存文件路径（text+voice+rate 的 sha256）
+    """计算缓存文件路径（"voice|rate|text" 的 sha256 → mp3）
 
     text 先 strip——与 synthesize 的清洗一致（调用方传原始文本也命中同一路径）；
-    公开命名与 tts_kokoro.cache_path 对齐，capabilities 路由复算路径用。
+    哈希与落位走 tts_common.tts_cache_path 单一实现（三路合成共用）。
     """
-    key = hashlib.sha256(f"{voice}|{rate}|{text.strip()}".encode("utf-8")).hexdigest()
-    _TTS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return _TTS_CACHE_DIR / f"{key}.mp3"
+    return tts_cache_path(f"{voice}|{rate}|{text.strip()}", "mp3")
 
 
 async def synthesize(

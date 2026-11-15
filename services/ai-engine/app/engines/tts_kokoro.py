@@ -22,7 +22,6 @@ kokoro 相关的模型、音色、配套文件统一落在 ~/.pinglc/models/koko
   返回每句起止毫秒。
 """
 
-import hashlib
 import os
 import threading
 import wave
@@ -31,7 +30,7 @@ from typing import Callable
 
 from .. import settings
 from ..media.wav import wav_duration_ms
-from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, write_atomic
+from .tts_common import SENTENCE_GAP_SEC, assemble_timeline, tts_cache_path, write_atomic
 
 # kokoro 全部文件的存放目录（模型/音色/配置，一律不散落到别处）
 KOKORO_DIR = Path(settings.MODELS_DIR) / "kokoro"
@@ -126,6 +125,20 @@ def _file_ok(name: str) -> bool:
 def models_ready() -> bool:
     """kokoro 模型是否全部在位（不联网、不抛错，供能力探测与 UI 状态展示）"""
     return all(_file_ok(name) for name in MODEL_FILES)
+
+
+def module_ready() -> bool:
+    """kokoro-onnx 包是否可导入（不加载模型；模型下载前的先决检查）
+
+    未装包时下载 336MB 毫无意义——推理一步就 ImportError，批量合成与模型
+    下载任务都必须先过此检查（「下载几分钟完成后才报未安装」是最差体验）。
+    """
+    try:
+        import kokoro_onnx  # noqa: F401, PLC0415
+
+        return True
+    except ImportError:
+        return False
 
 
 def _download(
@@ -301,15 +314,13 @@ def _encode_wav(samples) -> bytes:
 
 
 def cache_path(text: str, voice: str, speed: float) -> Path:
-    """合成缓存路径（text+voice+speed 的 sha256；kokoro| 前缀与 edge-tts 键空间隔离）
+    """合成缓存路径（"kokoro|voice|speed|text" 的 sha256 → wav；kokoro| 前缀与
+    edge-tts / 云端键空间隔离）
 
     text 先 strip——与 synthesize 的清洗一致：调用方传原始文本（含首尾空白）
-    也算出与合成产物相同的路径。
+    也算出与合成产物相同的路径。哈希与落位走 tts_common.tts_cache_path。
     """
-    key = hashlib.sha256(f"kokoro|{voice}|{speed:.2f}|{text.strip()}".encode("utf-8")).hexdigest()
-    cache_dir = Path(settings.CACHES_DIR) / "tts"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{key}.wav"
+    return tts_cache_path(f"kokoro|{voice}|{speed:.2f}|{text.strip()}", "wav")
 
 
 def _synthesize_cached(text: str, voice: str, speed: float) -> tuple[bytes, Path]:
@@ -360,6 +371,33 @@ def synthesize(text: str, *, voice: str = DEFAULT_VOICE, speed: float = 1.0) -> 
     return _synthesize_cached(text, voice, speed)[0]
 
 
+def _wav_duration_ms_of(path: Path) -> int:
+    """由 WAV 文件头部算时长（wave 模块 open 只读头不载帧数据；解析失败回 0）"""
+    try:
+        with wave.open(str(path), "rb") as w:
+            # 整除对齐 wav_duration_ms 的 floor 语义：命中/未命中两条路径对同一句
+            # 必须给出相同毫秒数，否则首次与重复导入的时间轴会有毫秒级漂移
+            return w.getnframes() * 1000 // w.getframerate()
+    # EOFError：空/截断的缓存文件在 wave 读头阶段抛出（不是 wave.Error 子类）
+    except (wave.Error, EOFError, OSError, ZeroDivisionError):
+        return 0
+
+
+def _synthesize_for_batch(text: str, voice: str, speed: float) -> tuple[bytes | None, Path, int]:
+    """批量合成单句：缓存命中只回 (None, 缓存路径, 时长)
+
+    整批命中时不再把每句 WAV 全量读回内存——此前 500 句的重复导入要白读
+    ~120MB 只为算时长；字节仅在硬链接失败需要实写分片时才回读。
+    Raises:
+        TTSEngineError: 依赖缺失/模型未下载/推理失败（同 _synthesize_cached）
+    """
+    cache = cache_path(text, voice, speed)
+    if cache.is_file():
+        return None, cache, _wav_duration_ms_of(cache)
+    data, cache_after = _synthesize_cached(text, voice, speed)
+    return data, cache_after, wav_duration_ms(data, sample_rate=SAMPLE_RATE)
+
+
 def ensure_synthesized(text: str, *, voice: str = DEFAULT_VOICE, speed: float = 1.0) -> Path:
     """确保合成产物已在缓存就位并返回其路径（缓存命中时不读回字节）
 
@@ -400,20 +438,21 @@ def synthesize_batch(
     work = out_dir / ".tts-parts"
     work.mkdir(exist_ok=True)
 
-    # 逐句合成（kokoro 推理本身串行，此处顺序执行；缓存命中时近零成本）。
-    # 分片硬链接到缓存文件（同盘零拷贝），跨设备等失败再退回实写
+    # 逐句合成（kokoro 推理本身串行，此处顺序执行；缓存命中时近零成本——
+    # 命中态不读回字节，时长由 WAV 头部算得）。分片硬链接到缓存文件（同盘
+    # 零拷贝），跨设备等失败再退回实写（此时才回读字节）
     parts: list[str] = []
     durations: list[int] = []
     for i, text in enumerate(sentences):
-        data, cache = _synthesize_cached(text, voice=voice, speed=speed)
+        data, cache, dur = _synthesize_for_batch(text, voice=voice, speed=speed)
         part = work / f"{i:05d}.wav"
         try:
             os.link(cache, part)
         except OSError:
-            part.write_bytes(data)
+            part.write_bytes(data if data is not None else cache.read_bytes())
         parts.append(str(part))
-        # WAV 分片时长由字节算术求得（免逐句 ffprobe 子进程开销）
-        durations.append(wav_duration_ms(data, sample_rate=SAMPLE_RATE))
+        # WAV 分片时长：未命中由字节算术、命中由文件头（免逐句 ffprobe 子进程）
+        durations.append(dur)
         if on_progress:
             on_progress((i + 1) / (len(sentences) + 1))
 

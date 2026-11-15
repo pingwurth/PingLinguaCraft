@@ -14,19 +14,21 @@
  *   模型与音色存 ~/.pinglc/models/kokoro/，下载先查本地缺啥补啥）
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, type EngineInfo, type ProviderDTO } from '@/lib/api';
 import { ApiError, type EngineCapabilities, type JobDTO, type TtsVoiceOptions } from '@pinglc/core';
 import { parseParamsJson, ttsEngineOf } from '@/lib/providers';
 import { resetTtsVersion } from '@/lib/ttsUrl';
 
-/** LLM 的 API 格式（取代 local/cloud 区分；引擎 llm_formats.py 按此分发） */
-const API_FORMATS: Array<{ value: string; label: string }> = [
-  { value: 'openai-compatible', label: 'OpenAI Compatible（GLM/DeepSeek/vLLM/LM Studio…）' },
-  { value: 'openai-responses', label: 'OpenAI Responses' },
-  { value: 'anthropic', label: 'Anthropic（Claude）' },
-  { value: 'gemini', label: 'Google（Gemini）' },
+/** LLM 的 API 格式（取代 local/cloud 区分；引擎 llm_formats.py 按此分发）。
+ *  short=机器可读短名（档案行副文案用）——不从 label 切括号取，改文案措辞
+ *  不会静默破坏副文案的数据侧 */
+const API_FORMATS: Array<{ value: string; label: string; short: string }> = [
+  { value: 'openai-compatible', label: 'OpenAI Compatible（GLM/DeepSeek/vLLM/LM Studio…）', short: 'OpenAI Compatible' },
+  { value: 'openai-responses', label: 'OpenAI Responses', short: 'Responses' },
+  { value: 'anthropic', label: 'Anthropic（Claude）', short: 'Anthropic' },
+  { value: 'gemini', label: 'Google（Gemini）', short: 'Gemini' },
 ];
 
 /** 口语评测服务商（评测凭据：provider/url/appId/secretId/secretKey） */
@@ -199,6 +201,19 @@ const CAP_LABEL: Record<string, string> = Object.fromEntries(
   Object.entries(CAP_RULES).map(([k, v]) => [k, v.label])
 );
 
+/**
+ * TTS 音色下拉 placeholder：引擎下发的默认音色名 +「（默认）」。
+ * defaults 用可选链取——代理路由原样透传引擎响应，引擎未重启到新版（旧
+ * {edge,kokoro} 形态、无 defaults 字段）时只退化为「默认音色」占位，
+ * 不崩设置页（版本错配窗口内表单仍可用；下拉选项数组本就 ?? [] 兜底）
+ * @param engine 引擎形态（edge/kokoro=本地双引擎，cloud=云端阿里云）
+ * @param data   /api/engine/tts-voices 响应（加载中/失败为 undefined）
+ */
+function ttsVoicePlaceholder(engine: 'edge' | 'kokoro' | 'cloud', data: TtsVoiceOptions | undefined): string {
+  const v = data?.defaults?.[engine];
+  return v ? `${v}（默认）` : '默认音色';
+}
+
 /** kind 归一：cloudOnly 能力一律 cloud（能力切换与遗留 local 行编辑共用此规则） */
 function normalizedKind(capability: string, kind: 'cloud' | 'local'): 'cloud' | 'local' {
   return CAP_RULES[capability]?.cloudOnly ? 'cloud' : kind;
@@ -341,8 +356,8 @@ export default function SettingsPage() {
       }),
   });
 
-  /* 云端模型清单（「获取模型」按档案 API 格式拉端点模型列表；表单 Key 留空时服务端按档案 id 回库取） */
-  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  /* 云端模型清单（「获取模型」按档案 API 格式拉端点模型列表；表单 Key 留空时服务端按档案 id 回库取）。
+     结果直接读 mutation.data——不再镜像进 useState（两份来源需成对重置，漏一处即旧清单残留） */
   const fetchModels = useMutation({
     mutationFn: (d: Draft) =>
       api<{ models: string[] }>('/api/providers/models', {
@@ -351,17 +366,17 @@ export default function SettingsPage() {
           endpointUrl: d.endpointUrl,
           apiKey: d.apiKey || undefined,
           profileId: d.id,
+          // 能力随表单提交：服务端回库取 Key 按能力限定（Key 只进不出，防跨能力越权取用）
+          capability: d.capability,
           // LLM 档案按 API 格式分发（anthropic/gemini 的鉴权头与字段名不同）
           apiFormat: d.capability === 'llm' ? d.apiFormat : undefined,
         }),
       }),
-    onSuccess: (r) => setFetchedModels(r.models),
   });
 
   /** 重置表单附属结果（测试结论 + 模型清单）：凡切换档案、变更端点/能力/类型/API 格式、
    *  关闭表单的入口都调用——mutation 状态挂在组件上不随 draft 变，不重置就会残留显示 */
   const resetAux = () => {
-    setFetchedModels([]);
     test.reset();
     fetchModels.reset();
   };
@@ -389,50 +404,64 @@ export default function SettingsPage() {
           : draft.capability === 'stt'
             ? WHISPER_SPECS
             : []
-      : fetchedModels.map((m) => ({ value: m }));
+      : (fetchModels.data?.models ?? []).map((m) => ({ value: m }));
 
   /* kokoro 模型下载任务（走通用 jobs 管线：web 任务行 + 引擎队列执行；
-     本地优先，在位文件自动跳过；web/引擎重启由 recovery 续传） */
-  const [modelJob, setModelJob] = useState<JobDTO | null>(null);
+     本地优先，在位文件自动跳过；web/引擎重启由 recovery 续传）。
+     只记任务 id——进度快照由下方 useQuery 轮询取权威值（此前 onSuccess 手拼
+     9 字段 JobDTO 占位，1 秒后就被首次轮询整体覆盖） */
+  const [modelJobId, setModelJobId] = useState<string | null>(null);
   const startDownload = useMutation({
     mutationFn: () => api<{ jobId: string }>('/api/engine/models/kokoro', { method: 'POST' }),
-    onSuccess: (r) =>
-      setModelJob({
-        id: r.jobId,
-        type: 'model_download',
-        status: 'queued',
-        progress: 0,
-        message: '准备下载…',
-        error: null,
-        materialId: null,
-        cueId: null,
-      }),
+    onSuccess: (r) => setModelJobId(r.jobId),
   });
 
-  /* 下载任务进度轮询（通用 /api/jobs/:id；终态即停；成功后刷新引擎能力翻转「已就绪」徽标。
-     404=任务行不存在 → 终态报错引导重试；连续失败超上限也终止，绝不 1Hz 永久空转） */
-  useEffect(() => {
-    if (!modelJob || (modelJob.status !== 'queued' && modelJob.status !== 'running')) return;
-    let misses = 0;
-    const timer = setInterval(async () => {
+  /* 下载任务进度轮询（通用 /api/jobs/:id）：useQuery 声明式 refetchInterval——
+     手写 setInterval 会随每次 setModelJob 重建定时器、misses 失败上限被任何
+     无关渲染归零；此处活态（queued/running）1s 一拉、终态即停。404=任务行
+     不存在 → 映射为 failed 终态引导重试；瞬时网络错误由默认 retry 兜底，
+     连续失败达上限（failureCount≥10，成功即清零）即停轮询并进入 error 态
+     显示提示——绝不 1Hz 永久空转（data 保留旧快照不参与停判，停判看失败计数） */
+  const modelJob = useQuery({
+    queryKey: ['job', modelJobId],
+    enabled: !!modelJobId,
+    queryFn: async (): Promise<JobDTO> => {
       try {
-        const r = await api<{ job: JobDTO }>(`/api/jobs/${modelJob.id}`);
-        setModelJob(r.job);
-        misses = 0;
-        if (r.job.status === 'succeeded') void engine.refetch();
+        const r = await api<{ job: JobDTO }>(`/api/jobs/${modelJobId}`);
+        return r.job;
       } catch (err) {
+        // 任务行不存在（数据异常）→ 映射为 failed 终态，轮询随之停止
         if (err instanceof ApiError && err.status === 404) {
-          setModelJob({ ...modelJob, status: 'failed', error: '下载任务不存在（数据异常），请重新点击下载' });
-          return;
+          return {
+            id: modelJobId!,
+            type: 'model_download',
+            status: 'failed',
+            progress: 0,
+            message: null,
+            error: '下载任务不存在（数据异常），请重新点击下载',
+            materialId: null,
+            cueId: null,
+          };
         }
-        /* 瞬时抖动：下一轮再试；连续失败达上限即终止（引擎/服务不可达） */
-        if (++misses >= 10) {
-          setModelJob({ ...modelJob, status: 'failed', error: '进度查询持续失败（服务不可达），请稍后重试' });
-        }
+        throw err;
       }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [modelJob, engine]);
+    },
+    refetchInterval: (q) => {
+      const st = q.state.data?.status;
+      // fetchFailureCount：连续失败计数（成功即清零）——达到上限停轮询，
+      // 防「data 保留旧活态快照」导致服务不可达时 1Hz 空转
+      return (st === 'queued' || st === 'running') && q.state.fetchFailureCount < 10 ? 1000 : false;
+    },
+  });
+
+  /* 下载成功后刷新引擎能力（翻转「已就绪」徽标；按状态变更触发一次）。
+     依赖只挂 refetch（react-query 引用稳定）——挂整个 engine 结果对象会随
+     isFetching 每次翻转拿到新引用：succeeded 后 refetch → isFetching 翻转 →
+     effect 重跑 → 再 refetch 的自激循环 */
+  const refetchEngine = engine.refetch;
+  useEffect(() => {
+    if (modelJob.data?.status === 'succeeded') void refetchEngine();
+  }, [modelJob.data?.status, refetchEngine]);
 
   /** 档案表单（新增=列表上方；编辑=在被编辑档案行的原位置就地渲染；同一 JSX 两处复用） */
   const renderProfileForm = () => {
@@ -551,20 +580,19 @@ export default function SettingsPage() {
             />
           )}
         </label>
-        {/* 口语评测：专用凭据字段（url→endpointUrl、SecretKey→apiKey、其余入 params） */}
+        {/* 口语评测：专用凭据字段（url→endpointUrl、SecretKey→apiKey、其余入 params）。
+            服务地址/SecretKey 用与通用云端表单共用的 UrlKeyFields，差异只在文案 */}
         {draft.capability === 'speech_eval' ? (
           <>
-            {/* 服务地址 */}
-            <label className="flex flex-col gap-1 md:col-span-2">
-              <span className="text-xs text-muted-foreground">服务地址 URL</span>
-              <input
-                value={draft.endpointUrl}
-                onChange={(e) => setDraft({ ...draft, endpointUrl: e.target.value })}
-                placeholder="wss://soe.cloud.tencent.com/soe/api"
-                required
-                className="rounded border border-input bg-background px-2 py-1.5"
-              />
-            </label>
+            <UrlKeyFields
+              urlLabel="服务地址 URL"
+              urlPlaceholder="wss://soe.cloud.tencent.com/soe/api"
+              keyLabel="SecretKey（只存本机）"
+              keyPlaceholder={draft.id && draft.hasKey ? '留空保持原 Key' : '凭据密钥'}
+              draft={draft}
+              setDraft={setDraft}
+              onUrlChange={resetAux}
+            />
             {/* 苛刻指数（1.0 宽松~4.0 严格；随 params.scoreCoeff 传引擎） */}
             <label className="flex flex-col gap-1">
               <span className="text-xs text-muted-foreground">评分苛刻度</span>
@@ -578,17 +606,6 @@ export default function SettingsPage() {
                 <option value="3">较严</option>
                 <option value="4">严格</option>
               </select>
-            </label>
-            {/* SecretKey（敏感凭据，走 apiKey 字段：只进不出） */}
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">SecretKey（只存本机）</span>
-              <input
-                value={draft.apiKey}
-                onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-                type="password"
-                placeholder={draft.id && draft.hasKey ? '留空保持原 Key' : '凭据密钥'}
-                className="rounded border border-input bg-background px-2 py-1.5"
-              />
             </label>
             {/* appId */}
             <label className="flex flex-col gap-1">
@@ -614,32 +631,16 @@ export default function SettingsPage() {
         ) : (
           draft.kind === 'cloud' && (
             <>
-              {/* 端点 */}
-              <label className="flex flex-col gap-1 md:col-span-2">
-                <span className="text-xs text-muted-foreground">端点 URL（…/v1）</span>
-                <input
-                  value={draft.endpointUrl}
-                  onChange={(e) => {
-                    setDraft({ ...draft, endpointUrl: e.target.value });
-                    // 端点变更后旧清单与旧测试结果失效
-                    resetAux();
-                  }}
-                  placeholder={draft.capability === 'translate' ? 'http://localhost:1234/v1' : 'https://open.bigmodel.cn/api/paas/v4'}
-                  required
-                  className="rounded border border-input bg-background px-2 py-1.5"
-                />
-              </label>
-              {/* API Key */}
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">API Key（只存本机）</span>
-                <input
-                  value={draft.apiKey}
-                  onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-                  type="password"
-                  placeholder={draft.id ? (draft.hasKey ? '留空保持原 Key' : 'sk-…') : 'sk-…'}
-                  className="rounded border border-input bg-background px-2 py-1.5"
-                />
-              </label>
+              {/* 端点 + API Key（与口语评测凭据组共用 UrlKeyFields） */}
+              <UrlKeyFields
+                urlLabel="端点 URL（…/v1）"
+                urlPlaceholder={draft.capability === 'translate' ? 'http://localhost:1234/v1' : 'https://open.bigmodel.cn/api/paas/v4'}
+                keyLabel="API Key（只存本机）"
+                keyPlaceholder={draft.id && draft.hasKey ? '留空保持原 Key' : 'sk-…'}
+                draft={draft}
+                setDraft={setDraft}
+                onUrlChange={resetAux}
+              />
               {/* 端点路径（仅 STT 云端）：阿里云等原生 API 的专属接口路径，OpenAI 兼容端点无需填写。
                   TTS 云端不显示——地址由端点 host 推导（WebSocket），params 不再存 apiPath */}
               {draft.capability === 'stt' && (
@@ -675,7 +676,11 @@ export default function SettingsPage() {
                 className="rounded border border-input bg-background px-2 py-1.5"
               >
                 <option value="edge">edge-tts（联网 · 微软）</option>
-                <option value="kokoro">kokoro（本地离线）</option>
+                {/* 未安装也列出但标注（对齐 alignEngineOptions 的做法）：装好（uv sync
+                    --extra tts）后能力探测自动去掉标注；超前选中属超前配置，调用时引擎如实报错 */}
+                <option value="kokoro">
+                  {caps?.tts.kokoro ? 'kokoro（本地离线）' : 'kokoro（未安装：uv sync --extra tts）'}
+                </option>
               </select>
             </label>
             {/* 音色（可输入下拉：清单与默认值均来自引擎 /tts/voices，亦可手输清单外音色） */}
@@ -685,11 +690,7 @@ export default function SettingsPage() {
                 value={draft.model}
                 onChange={(v) => setDraft({ ...draft, model: v })}
                 options={(draft.engine === 'kokoro' ? ttsVoices.data?.kokoro : ttsVoices.data?.edge) ?? []}
-                placeholder={
-                  ttsVoices.data
-                    ? `${draft.engine === 'kokoro' ? ttsVoices.data.defaults.kokoro : ttsVoices.data.defaults.edge}（默认）`
-                    : '默认音色'
-                }
+                placeholder={ttsVoicePlaceholder(draft.engine, ttsVoices.data)}
               />
             </label>
           </>
@@ -756,7 +757,7 @@ export default function SettingsPage() {
               value={draft.cloudVoice}
               onChange={(v) => setDraft({ ...draft, cloudVoice: v })}
               options={ttsVoices.data?.cloud ?? []}
-              placeholder={ttsVoices.data ? `${ttsVoices.data.defaults.cloud}（默认）` : '默认音色'}
+              placeholder={ttsVoicePlaceholder('cloud', ttsVoices.data)}
             />
           </label>
         )}
@@ -863,18 +864,18 @@ export default function SettingsPage() {
             undefined 视为未知，不误报「未下载」 */}
         {caps?.tts.kokoro && caps.tts.kokoro_models === false && (
           <div className="mt-3 rounded-md border border-dashed px-3 py-2 text-xs">
-            {modelJob && (modelJob.status === 'queued' || modelJob.status === 'running') ? (
+            {modelJob.data && (modelJob.data.status === 'queued' || modelJob.data.status === 'running') ? (
               <div>
                 {/* 下载进度（引擎任务回传文案 + 百分比） */}
                 <div className="flex items-center justify-between text-muted-foreground">
-                  <span>{modelJob.message ?? '准备下载…'}</span>
-                  <span>{Math.round(modelJob.progress * 100)}%</span>
+                  <span>{modelJob.data.message ?? '准备下载…'}</span>
+                  <span>{Math.round(modelJob.data.progress * 100)}%</span>
                 </div>
                 {/* 进度条 */}
                 <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border">
                   <div
                     className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${Math.round(modelJob.progress * 100)}%` }}
+                    style={{ width: `${Math.round(modelJob.data.progress * 100)}%` }}
                   />
                 </div>
               </div>
@@ -885,13 +886,28 @@ export default function SettingsPage() {
                 </span>
                 <button
                   onClick={() => startDownload.mutate()}
-                  disabled={startDownload.isPending}
+                  disabled={
+                    startDownload.isPending ||
+                    modelJob.data?.status === 'queued' ||
+                    modelJob.data?.status === 'running'
+                  }
                   className="rounded bg-primary px-2.5 py-1 text-primary-foreground disabled:opacity-40"
                 >
                   {startDownload.isPending ? '提交中…' : '下载模型'}
                 </button>
-                {modelJob?.status === 'failed' && (
-                  <span className="text-destructive">下载失败：{modelJob.error}</span>
+                {/* 任务创建失败（POST /api/engine/models/kokoro 抛错）：不显示的话
+                    按钮静默恢复可用，用户无从知道下载任务根本没建 */}
+                {startDownload.isError && (
+                  <span className="text-destructive">
+                    下载任务创建失败：{((startDownload.error as Error | null)?.message ?? '').slice(0, 80)}
+                  </span>
+                )}
+                {modelJob.data?.status === 'failed' && (
+                  <span className="text-destructive">下载失败：{modelJob.data.error}</span>
+                )}
+                {/* 进度轮询持续失败（服务不可达超重试上限）：任务本身可能仍在跑 */}
+                {modelJob.isError && (
+                  <span className="text-destructive">进度查询失败（服务不可达），可稍后回来查看</span>
                 )}
               </div>
             )}
@@ -1010,6 +1026,63 @@ interface ComboOption {
   label?: string;
 }
 
+/** 端点 + 密钥字段组（云端档案与口语评测凭据共用）：URL 占双列宽、密码框单列。
+ *  此前两处各持 ~30 行拷贝且已漂移（口语评测的 URL 变更不重置附属结果）——
+ *  现在布局与「留空保持原 Key」语义只存一份，差异全在调用点的文案 props。 */
+function UrlKeyFields({
+  urlLabel,
+  urlPlaceholder,
+  keyLabel,
+  keyPlaceholder,
+  draft,
+  setDraft,
+  onUrlChange,
+}: {
+  /** 端点/服务地址输入框标签 */
+  urlLabel: string;
+  /** 端点输入框占位示例 */
+  urlPlaceholder: string;
+  /** 密钥输入框标签 */
+  keyLabel: string;
+  /** 密钥占位文案（编辑态已配 Key 时调用方传「留空保持原 Key」） */
+  keyPlaceholder: string;
+  /** 表单状态（读写 endpointUrl/apiKey 两个字段） */
+  draft: Draft;
+  setDraft: Dispatch<SetStateAction<Draft | null>>;
+  /** URL 变更时的附加动作（两处调用点都传 resetAux：端点变了旧测试结论/模型清单即失效） */
+  onUrlChange: () => void;
+}) {
+  return (
+    <>
+      {/* 端点/服务地址（双列宽；变更时由调用方的 onUrlChange 重置附属结果） */}
+      <label className="flex flex-col gap-1 md:col-span-2">
+        <span className="text-xs text-muted-foreground">{urlLabel}</span>
+        <input
+          value={draft.endpointUrl}
+          onChange={(e) => {
+            setDraft({ ...draft, endpointUrl: e.target.value });
+            onUrlChange();
+          }}
+          placeholder={urlPlaceholder}
+          required
+          className="rounded border border-input bg-background px-2 py-1.5"
+        />
+      </label>
+      {/* 密钥（敏感凭据，走 apiKey 字段：只进不出，编辑留空=保持原值） */}
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-muted-foreground">{keyLabel}</span>
+        <input
+          value={draft.apiKey}
+          onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
+          type="password"
+          placeholder={keyPlaceholder}
+          className="rounded border border-input bg-background px-2 py-1.5"
+        />
+      </label>
+    </>
+  );
+}
+
 /**
  * 可输入下拉（combobox）：点击输入框或右侧箭头展开全量选项，点击选中；亦可手输清单外值
  *
@@ -1115,11 +1188,11 @@ function sublineOf(p: ProviderDTO): string {
     const params = parseParamsJson(p.paramsJson);
     return `${p.endpointUrl ?? ''} · ${String(params.appId ?? '')}${p.hasKey ? ' · 🔑' : ''}`;
   }
-  // LLM：API 格式 · 端点 · 模型（格式标签取下拉 label 的括号前段）
+  // LLM：API 格式 · 端点 · 模型（格式短名取 API_FORMATS.short，与展示文案解耦）
   if (p.capability === 'llm' && p.kind === 'cloud') {
     const fmt = parseParamsJson(p.paramsJson).apiFormat;
-    const label = API_FORMATS.find((f) => f.value === fmt)?.label ?? API_FORMATS[0]!.label;
-    return `${label.split('（')[0]} · ${p.endpointUrl ?? ''} · ${p.model ?? ''}${p.hasKey ? ' · 🔑' : ' · 无Key'}`;
+    const short = API_FORMATS.find((f) => f.value === fmt)?.short ?? API_FORMATS[0]!.short;
+    return `${short} · ${p.endpointUrl ?? ''} · ${p.model ?? ''}${p.hasKey ? ' · 🔑' : ' · 无Key'}`;
   }
   if (p.kind === 'cloud') {
     // 云端 TTS：模型 · 音色（音色存 paramsJson.voice，缺省=引擎默认）

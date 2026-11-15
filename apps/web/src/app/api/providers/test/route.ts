@@ -24,8 +24,15 @@ export async function POST(request: Request) {
     params?: Record<string, unknown>;
     profileId?: number;
   };
-  // Key 优先用表单值；编辑模式留空时按档案 id 回库取（Key 只进不出，接口永不回传）
-  const apiKey = formKeyOrStored(body.apiKey, body.profileId);
+  // 能力先收敛到本路由支持的集合（llm/translate）：回库取 Key 的能力限定
+  // 不吃任意客户端字符串；能力非法直接 400，而不是带着它去查 Key
+  const capability = body.capability ?? '';
+  if (capability !== 'llm' && capability !== 'translate') {
+    return NextResponse.json({ error: '该能力暂不支持在线测试' }, { status: 400 });
+  }
+  // Key 优先用表单值；编辑模式留空时按档案 id 回库取（Key 只进不出，接口永不回传；
+  // 回库限定同能力——profileId 由客户端提交，跨能力取 Key 属凭据越权形状）
+  const apiKey = formKeyOrStored(body.apiKey, body.profileId, capability);
   const profile = {
     kind: 'cloud' as const,
     endpoint_url: body.endpointUrl,
@@ -35,7 +42,7 @@ export async function POST(request: Request) {
   };
   const t0 = Date.now();
   try {
-    if (body.capability === 'llm') {
+    if (capability === 'llm') {
       const { content } = await enginePost<{ content: string | null }>('/llm/chat', {
         profile,
         user: '请只回复两个字：在线',
@@ -46,7 +53,7 @@ export async function POST(request: Request) {
         detail: `模型回复「${(content ?? '').slice(0, 20)}」（${Date.now() - t0}ms）`,
       });
     }
-    if (body.capability === 'translate') {
+    if (capability === 'translate') {
       const { translations } = await enginePost<{ translations: string[] }>('/translate', {
         texts: ['Stay hungry, stay foolish.'],
         profile,
@@ -57,6 +64,7 @@ export async function POST(request: Request) {
         detail: `译文「${translations[0] ?? ''}」（${Date.now() - t0}ms）`,
       });
     }
+    // 能力已在入口收敛为 llm/translate，此处不会到达
     return NextResponse.json({ error: '该能力暂不支持在线测试' }, { status: 400 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : '测试失败';

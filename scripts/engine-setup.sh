@@ -66,7 +66,41 @@ if [[ "$MODE" == "--all" ]]; then
         if [[ -s "$dest" ]]; then continue; fi
         mkdir -p "$(dirname "$dest")"
         echo "下载 MFA 模型 $rel …"
-        curl -fsSL --retry 3 --retry-delay 2 -C - -o "$dest" "$url"
+        # 与 kokoro 下载器同纪律：先落 .part 再原子改名——中断的半截文件绝不能
+        # 留在最终路径（下一轮 -s 在位检查会把它当完整文件跳过，残缺模型被
+        # 无错烘进镜像）；.part 存在时 -C - 断点续传而非从头再来
+        part="$dest.part"
+        resume=()
+        [[ -f "$part" ]] && resume=(-C -)
+        if ! curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+          ${resume[@]+"${resume[@]}"} -o "$part" "$url"; then
+          # 续传死角兜底：.part 已是完整文件（上轮下载成功、mv 前被打断）时
+          # 服务器回 416，重跑永远失败——整删后全量重下一次
+          echo "续传失败（可能已完整），改全量重下：$rel"
+          rm -f "$part"
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "$part" "$url"
+        fi
+        # 完整性校验：curl 退出码只拦「传输截断」，代理/中间层回 200 短响应
+        # （HTML 错误页/限流页）需要内容层校验——zip 用 zipfile 全量 CRC 测，
+        # dict（纯文本）查头部不含 HTML 标记
+        case "$rel" in
+          *.zip)
+            # python3 缺席时跳过内容校验（curl 退出码与大小检查仍生效）
+            if command -v python3 >/dev/null 2>&1; then
+              python3 -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).testzip()" "$part" \
+                || { echo "校验失败（zip 不完整）：$rel" >&2; rm -f "$part"; exit 1; }
+            fi
+            ;;
+          *.dict)
+            if grep -q "<" <(head -c 512 "$part"); then
+              echo "校验失败（疑似 HTML 错误页）：$rel" >&2
+              rm -f "$part"
+              exit 1
+            fi
+            ;;
+        esac
+        [[ -s "$part" ]] || { echo "下载失败：$rel（产物为空）" >&2; exit 1; }
+        mv -f "$part" "$dest"
       done
       docker build -t pinglc-mfa:latest "$ENGINE_DIR/mfa-docker"
     else

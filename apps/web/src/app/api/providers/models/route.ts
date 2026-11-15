@@ -11,8 +11,12 @@ import { formKeyOrStored } from '@/lib/server/providers';
 
 export const runtime = 'nodejs';
 
+/** 允许回库取 Key 的能力白名单（模型清单 UX 实际服务的能力）；
+ *  speech_eval 的 SecretKey 绝不进模型清单链路 */
+const KEY_LOOKUP_CAPABILITIES = new Set(['llm', 'translate', 'stt', 'tts']);
+
 /**
- * POST —— Body: { endpointUrl, apiKey?, profileId?, apiFormat? }
+ * POST —— Body: { endpointUrl, apiKey?, profileId?, capability?, apiFormat? }
  * 返回 { models: string[] }（保持端点返回顺序）
  */
 export async function POST(request: Request) {
@@ -20,6 +24,8 @@ export async function POST(request: Request) {
     endpointUrl?: string;
     apiKey?: string;
     profileId?: number;
+    /** 档案所属能力（回库取 Key 的能力限定；缺省按 llm） */
+    capability?: string;
     /** LLM 档案的 API 格式（缺省=OpenAI 兼容方言） */
     apiFormat?: string;
   };
@@ -27,8 +33,13 @@ export async function POST(request: Request) {
   if (!endpointUrl) {
     return NextResponse.json({ error: '端点 URL 不能为空' }, { status: 400 });
   }
-  // Key 优先用表单值；编辑模式留空时按档案 id 回库取（Key 只进不出，接口永不回传）
-  const apiKey = formKeyOrStored(body.apiKey, body.profileId);
+  // Key 优先用表单值；编辑模式留空时按档案 id 回库取（Key 只进不出，接口永不回传）。
+  // 回库按能力白名单限定——白名单外的能力（如 speech_eval）只用表单现值，
+  // 杜绝借本路由取他能力档案已存 Key 的越权形状
+  const capability = body.capability ?? 'llm';
+  const apiKey = KEY_LOOKUP_CAPABILITIES.has(capability)
+    ? formKeyOrStored(body.apiKey, body.profileId, capability)
+    : (body.apiKey?.trim() ?? '');
   try {
     const { models } = await enginePost<{ models: string[] }>('/llm/models', {
       endpoint_url: endpointUrl,

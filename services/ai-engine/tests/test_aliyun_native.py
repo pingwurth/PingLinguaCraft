@@ -120,3 +120,23 @@ def test_voice_options_invariants():
     for v in aliyun_native.VOICE_OPTIONS:
         assert v["value"] == v["value"].strip()
         assert v["label"].strip()
+
+
+def test_cache_path_endpoint_sensitivity(isolated):
+    """云端缓存键含端点 host：不同端点的档案（同 model+voice）互不命中缓存，
+    同端点尾斜杠差异不改变键位；与无端点的旧键也不撞"""
+    a = aliyun_native.cache_path("hello", "m", "v", "https://a.example.com")
+    b = aliyun_native.cache_path("hello", "m", "v", "https://b.example.com")
+    assert a != b
+    assert a == aliyun_native.cache_path("hello", "m", "v", "https://a.example.com/")
+    assert a != aliyun_native.cache_path("hello", "m", "v", "")
+    # 键空间隔离不变量：与本地引擎（kokoro|/edge 无前缀）不共享文件名
+    assert a.name.endswith(".mp3")
+
+
+def test_synthesize_no_api_path_param():
+    """TTS 合成签名已无 api_path（死参数已删）：按关键字调用不应接受它"""
+    import inspect
+
+    params = inspect.signature(aliyun_native.synthesize).parameters
+    assert "api_path" not in params
