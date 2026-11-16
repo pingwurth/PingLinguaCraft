@@ -7,7 +7,10 @@
  * words/srs/favorites 承载学习资产；jobs/provider_profiles 支撑任务管线与 AI 能力路由。
  */
 
-import { sqliteTable, text, integer, real, blob, index, uniqueIndex, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import {
+  sqliteTable, text, integer, real, blob, index, uniqueIndex, primaryKey, check,
+} from 'drizzle-orm/sqlite-core';
 
 /** 通用约定：主键自增 id；created_at/updated_at 为 epoch 毫秒 */
 const timestamps = {
@@ -183,7 +186,9 @@ export const srsCards = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     userId: integer('user_id').notNull().default(1),
-    /** 复习对象类型（当前仅 word，预留 phrase/cue） */
+    /** 复习对象类型：CHECK 锁定 'word'——itemId 硬外键指向 words.id，若放开
+     *  写入其他类型，id 撞上 words 行会静默链到错误单词（数据损坏）或撞外键
+     *  500。扩展 phrase/cue 是 schema 重构（拆列或去 FK），届时以新迁移解锁 */
     itemType: text('item_type').notNull().default('word'),
     itemId: integer('item_id')
       .notNull()
@@ -201,6 +206,8 @@ export const srsCards = sqliteTable(
   (t) => [
     uniqueIndex('uq_srs_item').on(t.itemType, t.itemId),
     index('idx_srs_due').on(t.dueMs),
+    // 多态陷阱锁死：item_type 与 words FK 语义一致性的机器保障（见上注释）
+    check('ck_srs_item_word', sql`${t.itemType} = 'word'`),
   ]
 );
 

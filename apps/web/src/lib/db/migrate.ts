@@ -269,6 +269,7 @@ function cleanDanglingRefs(sqlite: Database.Database): void {
       sweep('favorites', 'category_id', 'favorite_categories', 'id'),
       sweep('recordings', 'cue_id', 'cues', 'id'),
       sweep('recordings', 'material_id', 'materials', 'id'),
+      sweep('srs_cards', 'item_id', 'words', 'id'),
     ]
       .filter(Boolean)
       .join('\n') || 'SELECT 1;'
