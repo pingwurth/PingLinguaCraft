@@ -78,6 +78,21 @@ function AssistantDrawer() {
   const [quote, setQuote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  /* 流式中止器：组件真正卸载（应用拆链）时中止在飞请求，防卸载后 setState */
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
+  /* 在飞 reader 引用：异常跳出读取循环时在 finally 里释放底层连接 */
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  /* 桌面判定：matchMedia 在渲染期读会产生服务端/客户端水合不一致，
+   * 改为挂载后订阅（顺带响应视口跨断点变化） */
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   /* 会话列表 */
   const threads = useQuery({
@@ -86,14 +101,20 @@ function AssistantDrawer() {
     enabled: open && showThreads,
   });
 
-  /* 会话消息装载 */
+  /* 会话消息装载（失败就地可见——调用方全是 void，抛出即未处理 rejection） */
   const loadThread = async (id: number | null) => {
     setThreadId(id);
     setMessages([]);
     setShowThreads(false);
     if (id) {
-      const r = await api<{ messages: Msg[] }>(`/api/ai/threads/${id}`);
-      setMessages(r.messages);
+      try {
+        const r = await api<{ messages: Msg[] }>(`/api/ai/threads/${id}`);
+        setMessages(r.messages);
+      } catch (err) {
+        setMessages([
+          { id: `e-${Date.now()}`, role: 'assistant', contentMd: `⚠️ 会话装载失败：${err instanceof Error ? err.message : '未知错误'}` },
+        ]);
+      }
     }
   };
 
@@ -123,17 +144,21 @@ function AssistantDrawer() {
     setMessages((prev) => [...prev, userMsg]);
     const activeQuote = quote;
     setQuote(null);
+    const ac = new AbortController();
+    abortRef.current = ac;
     try {
       const resp = await fetch('/api/ai/tutor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ threadId, content, quote: activeQuote }),
+        signal: ac.signal,
       });
       if (!resp.ok || !resp.body) {
         const data = await resp.json().catch(() => ({ error: '请求失败' }));
         throw new Error((data as { error?: string }).error ?? '请求失败');
       }
       const reader = resp.body.getReader();
+      readerRef.current = reader;
       const decoder = new TextDecoder();
       let buf = '';
       let assistant = '';
@@ -162,11 +187,16 @@ function AssistantDrawer() {
       }
       setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', contentMd: assistant || '（空回复）' }]);
     } catch (err) {
+      // 中止（组件卸载）不算失败：部分已收到的内容照常成条，不再向已卸载组件置态
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setMessages((prev) => [
         ...prev,
         { id: `e-${Date.now()}`, role: 'assistant', contentMd: `⚠️ ${err instanceof Error ? err.message : '对话失败'}` },
       ]);
     } finally {
+      // 异常路径释放 reader（服务端 evt.error 直接 throw 跳出循环，底层连接悬到 GC）
+      void readerRef.current?.cancel().catch(() => undefined);
+      readerRef.current = null;
       setStreaming(false);
       setStreamText('');
       void qc.invalidateQueries({ queryKey: ['ai-threads'] });
@@ -215,7 +245,7 @@ function AssistantDrawer() {
         className={`deckle absolute flex flex-col border bg-background ${
           'inset-x-0 bottom-0 h-[90dvh] rounded-t-xl' /* 需求 15：移动 90% 屏高 */
         } max-md:pb-safe md:inset-y-0 md:right-0 md:left-auto md:h-dvh md:w-px md:rounded-none md:border-l-2 md:border-r-0 md:border-t-0 md:border-b-0`}
-        style={typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches ? { width: drawerWidth } : undefined}
+        style={isDesktop ? { width: drawerWidth } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 桌面拖宽把手 */}

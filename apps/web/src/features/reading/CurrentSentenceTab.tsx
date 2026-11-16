@@ -29,12 +29,16 @@ export function CurrentSentenceTab({ cue, materialId }: { cue: CueDTO | null; ma
   const [toast, setToast] = useState('');
   const [wordPopover, setWordPopover] = useState<{ word: string; x: number; y: number } | null>(null);
 
-  // 笔记状态跟随激活句切换（首次进入编辑态时装载）
+  // 笔记状态跟随激活句切换（首次进入编辑态时装载）——effect 而非渲染期置态：
+  // 渲染期 setState 在 React 严格模式/并发渲染下行为未定义，且激活句变化时
+  // 会在渲染中途覆盖用户正在编辑的 note
   const notePreview = cue?.noteMd ?? '';
-  if (cue && noteEdit && noteLoadedFor !== cue.id) {
-    setNote(cue.noteMd ?? '');
-    setNoteLoadedFor(cue.id);
-  }
+  useEffect(() => {
+    if (cue && noteEdit && noteLoadedFor !== cue.id) {
+      setNote(cue.noteMd ?? '');
+      setNoteLoadedFor(cue.id);
+    }
+  }, [cue, noteEdit, noteLoadedFor]);
 
   /** 词列表（保留标点上下文中的词，点击命中朗读） */
   const words = useMemo(() => (cue ? extractWords(cue.textEn) : []), [cue]);
@@ -103,6 +107,11 @@ export function CurrentSentenceTab({ cue, materialId }: { cue: CueDTO | null; ma
       setLevelReady(true);
       setLevelOpen(artifactId);
     },
+    // 生成失败必须可见（此前 void 调用吞掉 rejection：按钮转圈 90s 后无声回到原点）
+    onError: (err: Error) => {
+      setToast(`关卡生成失败：${err.message}`);
+      setTimeout(() => setToast(''), 2500);
+    },
   });
   /** 查询已有关卡（跟随激活句切换重置） */
   useEffect(() => {
@@ -157,7 +166,7 @@ export function CurrentSentenceTab({ cue, materialId }: { cue: CueDTO | null; ma
         {words.map((w, i) => (
           <span
             key={i}
-            className="cursor-pointer rounded-sm px-[1px] transition-colors hover:bg-[rgba(185,28,28,0.12)]"
+            className="cursor-pointer rounded-sm px-[1px] transition-colors hover:bg-primary/10"
             onClick={(e) => {
               // 需求 8：点词先停止播放（真实媒体暂停），再朗读该词
               window.dispatchEvent(new CustomEvent('pinglc:pause'));

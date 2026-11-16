@@ -33,8 +33,27 @@ export function ShadowingTab({ cues }: { cues: CueDTO[] }) {
   const qc = useQueryClient();
   const [index, setIndex] = useState(() => Math.max(0, activeCueIndex));
   const cue = cues[index];
-  const [lastBlobUrl, setLastBlobUrl] = useState<string | null>(null);
+  const [lastBlobUrl, setLastBlobUrlState] = useState<string | null>(null);
+  /* blob URL 生命周期单一出口：更新先回收旧值（重录不泄漏），卸载兜底回收 */
+  const lastBlobUrlRef = useRef<string | null>(null);
+  const setLastBlobUrl = (url: string | null) => {
+    if (lastBlobUrlRef.current) URL.revokeObjectURL(lastBlobUrlRef.current);
+    lastBlobUrlRef.current = url;
+    setLastBlobUrlState(url);
+  };
   const playbackRef = useRef<HTMLAudioElement | null>(null);
+
+  /* 句序跟随播放器（初始值取 activeCueIndex 的既有意图补全）并随 cues 收敛：
+     旧实现只在首渲染取一次，播放器切句后本页不跟；cues 变短时残留越界下标
+     会静默渲染「暂无句段」，看起来像材料没内容 */
+  useEffect(() => {
+    const clamped = Math.min(Math.max(0, activeCueIndex), Math.max(0, cues.length - 1));
+    setIndex((i) => (i === clamped ? i : clamped));
+  }, [activeCueIndex, cues.length]);
+  /* 卸载回收最后的回放 URL */
+  useEffect(() => () => {
+    if (lastBlobUrlRef.current) URL.revokeObjectURL(lastBlobUrlRef.current);
+  }, []);
 
   /* 录音归属句锁定：录音开始时记下句 id——录音期间用户换句，
      完成的音频仍归属录音时那一句（否则错存到别的句子的历史里） */
@@ -64,7 +83,7 @@ export function ShadowingTab({ cues }: { cues: CueDTO[] }) {
   });
   const recorder = useRecorder({
     onDone: (r) => {
-      // 本地即时回放 URL（未上传成功也可先听）
+      // 本地即时回放 URL（未上传成功也可先听）；经 setLastBlobUrl 更新以回收旧值
       setLastBlobUrl(URL.createObjectURL(r.blob));
       const targetId = recordCueIdRef.current ?? cue?.id;
       if (targetId) upload.mutate({ cueId: targetId, blob: r.blob, durationMs: r.durationMs, mime: r.mime });
@@ -95,10 +114,7 @@ export function ShadowingTab({ cues }: { cues: CueDTO[] }) {
   /* 切句清理：回收回放 URL；结束进行中的录音（录完仍归属录音时的句子） */
   useEffect(() => {
     if (recorder.state === 'recording') recorder.stop();
-    setLastBlobUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return null;
-    });
+    setLastBlobUrl(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
 

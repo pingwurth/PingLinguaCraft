@@ -7,7 +7,7 @@
  * 成绩规则：完成全部仿写即 100（创作型玩法不按对错计分，重在完成与反馈）。
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
 import type { CueDTO } from '@/lib/api';
@@ -32,6 +32,16 @@ export function ScenarioMode({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 换句下标（解构为基本值供 effect 依赖；run 每次渲染都是新对象）
+  const { current: runCurrent } = run;
+  // 换句即清作答与点评：「再来一轮」不清本地态时，旧 feedback 会让结算后重开
+  // 直接渲染上一轮的「我的仿写 + AI 批阅」面板并隐藏输入框，无法重新仿写
+  useEffect(() => {
+    setText('');
+    setFeedback(null);
+    setError(null);
+  }, [runCurrent]);
+
   /** 提交仿写 → AI 点评 */
   const submit = async () => {
     if (!cue || !text.trim() || busy) return;
@@ -51,15 +61,14 @@ export function ScenarioMode({
   };
 
   const next = () => {
-    setText('');
-    setFeedback(null);
     run.advance(100); // 完成即满分（创作型）
     if (run.current + 1 >= cues.length) {
-      void fetch(`/api/materials/${materialId}/challenge`, {
+      // 经 api() 统一错误契约，失败告警不静默（结算视图不渲染 children，
+      // setError 不可见，控制台告警是此时唯一可见通道）
+      void api(`/api/materials/${materialId}/challenge`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'scenario', score: 100 }),
-      }).catch(() => undefined);
+      }).catch((err: unknown) => console.warn('闯关成绩上报失败（不影响本轮）', err));
     }
   };
 

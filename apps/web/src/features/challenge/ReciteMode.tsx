@@ -7,8 +7,9 @@
  * diffSentence 判分 ≥80 过关，可无限重试（过关得分封顶递减）；跳过得 40。
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { diffSentence, extractWords } from '@pinglc/core';
+import { api } from '@/lib/api';
 import type { CueDTO } from '@/lib/api';
 import { ChallengeShell, useChallengeRun } from './ChallengeShell';
 
@@ -30,6 +31,15 @@ export function ReciteMode({
   const [result, setResult] = useState<ReturnType<typeof diffSentence> | null>(null);
   const [attempts, setAttempts] = useState(0);
 
+  // 换句下标（解构为基本值供 effect 依赖；run 每次渲染都是新对象）
+  const { current: runCurrent } = run;
+  // 换句即清作答态（「再来一轮」restart 只重置状态机，本地作答须随之清理）
+  useEffect(() => {
+    setTyped('');
+    setResult(null);
+    setAttempts(0);
+  }, [runCurrent]);
+
   /** 首字母提示（如 "Stay hungry" → "S h"） */
   const hint = useMemo(() => {
     if (!cue) return '';
@@ -39,17 +49,14 @@ export function ReciteMode({
   }, [cue]);
 
   const next = (score: number) => {
-    setTyped('');
-    setResult(null);
-    setAttempts(0);
     run.advance(score);
     if (run.current + 1 >= cues.length) {
       const total = [...run.scores, score];
-      void fetch(`/api/materials/${materialId}/challenge`, {
+      // 经 api() 统一错误契约，失败告警不静默（结算视图不渲染 children）
+      void api(`/api/materials/${materialId}/challenge`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'recite', score: Math.round(total.reduce((a, b) => a + b, 0) / total.length) }),
-      }).catch(() => undefined);
+      }).catch((err: unknown) => console.warn('闯关成绩上报失败（不影响本轮）', err));
     }
   };
 

@@ -6,9 +6,10 @@
  * 逐句：听句（可重听）→ 默写 → diffSentence 词级判分；得分即本句成绩。
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { diffSentence } from '@pinglc/core';
 import { playSentenceOnce } from '@/features/practice/playUtils';
+import { api } from '@/lib/api';
 import type { CueDTO } from '@/lib/api';
 import { ChallengeShell, useChallengeRun } from './ChallengeShell';
 
@@ -29,17 +30,23 @@ export function DictationMode({
   const [typed, setTyped] = useState('');
   const [result, setResult] = useState<ReturnType<typeof diffSentence> | null>(null);
 
-  const next = (score: number) => {
+  // 换句下标（解构为基本值供 effect 依赖；run 每次渲染都是新对象）
+  const { current: runCurrent } = run;
+  // 换句即清作答态（「再来一轮」restart 只重置状态机，本地作答须随之清理）
+  useEffect(() => {
     setTyped('');
     setResult(null);
+  }, [runCurrent]);
+
+  const next = (score: number) => {
     run.advance(score);
     if (run.current + 1 >= cues.length) {
       const total = [...run.scores, score];
-      void fetch(`/api/materials/${materialId}/challenge`, {
+      // 经 api() 统一错误契约，失败告警不静默（结算视图不渲染 children）
+      void api(`/api/materials/${materialId}/challenge`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'dictation', score: Math.round(total.reduce((a, b) => a + b, 0) / total.length) }),
-      }).catch(() => undefined);
+      }).catch((err: unknown) => console.warn('闯关成绩上报失败（不影响本轮）', err));
     }
   };
 

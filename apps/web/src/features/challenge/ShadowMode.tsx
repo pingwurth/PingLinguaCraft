@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 import type { ShadowScoreDTO, SpeechEvalWord } from '@pinglc/core';
+import { api } from '@/lib/api';
 import type { CueDTO } from '@/lib/api';
 import { useRecorder } from '@/features/practice/useRecorder';
 import { playSentenceOnce, stopPlayback } from '@/features/practice/playUtils';
@@ -75,11 +76,12 @@ export function ShadowMode({
   });
 
   const startRecording = () => {
+    if (!cue) return;
     setResult(null);
     if (mode === 'shadowing') {
-      // 影子跟读：原句播放与录音同步开始
-      playSentenceOnce(cue!.startMs, cue!.endMs);
-      void recorder.start();
+      // 影子跟读：先等录音就绪（首次还需过权限框，耗时不定）再起播——旧实现
+      // 播放先跑、录音晚几百毫秒，句首必错位、评分白扣准确度
+      void recorder.start().then(() => playSentenceOnce(cue.startMs, cue.endMs));
     } else {
       void recorder.start();
     }
@@ -92,11 +94,11 @@ export function ShadowMode({
     run.advance(score);
     if (run.current + 1 >= cues.length) {
       const total = [...run.scores, score];
-      void fetch(`/api/materials/${materialId}/challenge`, {
+      // 经 api() 统一错误契约，失败告警不静默（结算视图不渲染 children）
+      void api(`/api/materials/${materialId}/challenge`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode, score: Math.round(total.reduce((a, b) => a + b, 0) / total.length) }),
-      }).catch(() => undefined);
+      }).catch((err: unknown) => console.warn('闯关成绩上报失败（不影响本轮）', err));
     }
   };
 

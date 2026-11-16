@@ -288,15 +288,18 @@ export function QuizTab({ materialId }: { materialId: number }) {
                 {qaChecked === undefined ? (
                   <div className="mt-3 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">对照后自评：</span>
+                    {/* 提交中禁用双按钮：连点会重复 POST，成功后的 qaChecked 才是幂等闸 */}
                     <button
                       onClick={() => result && selfCheck.mutate({ attemptId: result.attemptId, correct: true })}
-                      className="rounded bg-secondary px-3 py-1 text-xs text-secondary-foreground"
+                      disabled={selfCheck.isPending}
+                      className="rounded bg-secondary px-3 py-1 text-xs text-secondary-foreground disabled:opacity-40"
                     >
                       我掌握了
                     </button>
                     <button
                       onClick={() => result && selfCheck.mutate({ attemptId: result.attemptId, correct: false })}
-                      className="rounded border border-border px-3 py-1 text-xs"
+                      disabled={selfCheck.isPending}
+                      className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40"
                     >
                       还没掌握
                     </button>

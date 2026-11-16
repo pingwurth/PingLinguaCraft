@@ -168,10 +168,14 @@ function ImportWizard() {
     void qc.invalidateQueries({ queryKey: ['collections'] });
   };
 
-  /* 提交后自动跳转到播放页（任务完成时） */
-  if (result && job.data?.job.status === 'succeeded') {
-    router.push(`/material/${result.materialId}`);
-  }
+  /* 提交后自动跳转到播放页（任务完成时）——effect 而非渲染期副作用：
+   * 渲染期 router.push 在任何一次重渲染（轮询刷新/StrictMode 双渲染）都会
+   * 重复执行，可能重复导航/路由闪烁 */
+  useEffect(() => {
+    if (result && job.data?.job.status === 'succeeded') {
+      router.push(`/material/${result.materialId}`);
+    }
+  }, [result, job.data?.job.status, router]);
 
   /* 三种提交 */
   const upload = useMutation({
@@ -333,7 +337,7 @@ function ImportWizard() {
             className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
           />
           <label className="mt-3 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={wantVideo} onChange={(e) => setWantVideo(e.target.checked)} className="size-4 accent-[#b91c1c]" />
+            <input type="checkbox" checked={wantVideo} onChange={(e) => setWantVideo(e.target.checked)} className="size-4 accent-primary" />
             下载视频（取消则仅下载音频，更快）
           </label>
           <p className="mt-2 text-xs text-muted-foreground">

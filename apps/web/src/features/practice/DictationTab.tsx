@@ -62,18 +62,28 @@ export function DictationTab({ cues }: { cues: CueDTO[] }) {
     setDiff(null);
   };
 
+  /** 原文词表（单次分词，供校验与着色共用——旧实现每词重算 O(n²)） */
+  const targetWords = useMemo(() => (cue ? extractWords(cue.textEn) : []), [cue]);
+
+  /** 拼句校验（用户已选词序 vs 原文词序，大小写宽容；换句瞬间索引错位不崩） */
+  const assemblyCorrect =
+    cue != null &&
+    picked.length === targetWords.length &&
+    picked.every((ti, i) => (tiles[ti] ?? '').toLowerCase() === (targetWords[i] ?? '').toLowerCase());
+
+  /** 拼装槽词块样式：整体正确绿；否则逐位对错红绿（空值兜底替代裸断言） */
+  const slotClass = (ti: number, pos: number): string => {
+    if (!checked) return '';
+    if (assemblyCorrect) return 'border-secondary text-secondary';
+    return (targetWords[pos] ?? '').toLowerCase() === (tiles[ti] ?? '').toLowerCase()
+      ? 'border-secondary text-secondary'
+      : 'border-destructive text-destructive';
+  };
+
   /** 听当前句 */
   const listen = () => {
     if (cue) playSentenceOnce(cue.startMs, cue.endMs);
   };
-
-  /** 拼句校验（用户已选词序 vs 原文词序，大小写宽容） */
-  const assemblyCorrect =
-    cue != null &&
-    picked.length === extractWords(cue.textEn).length &&
-    picked
-      .map((ti) => tiles[ti])
-      .every((w, i) => w.toLowerCase() === extractWords(cue.textEn)[i]!.toLowerCase());
 
   if (!cue) {
     return <div className="py-16 text-center text-sm text-muted-foreground">暂无句段</div>;
@@ -139,15 +149,7 @@ export function DictationTab({ cues }: { cues: CueDTO[] }) {
                 onClick={() => {
                   if (!checked) setPicked(picked.filter((_, p) => p !== pos));
                 }}
-                className={`rounded bg-background px-2.5 py-1.5 font-serif text-sm deckle border ${
-                  checked
-                    ? assemblyCorrect
-                      ? 'border-secondary text-secondary'
-                      : extractWords(cue.textEn)[pos]?.toLowerCase() === tiles[ti]!.toLowerCase()
-                      ? 'border-secondary text-secondary'
-                      : 'border-destructive text-destructive'
-                    : ''
-                }`}
+                className={`rounded bg-background px-2.5 py-1.5 font-serif text-sm deckle border ${slotClass(ti, pos)}`}
               >
                 {tiles[ti]}
               </button>

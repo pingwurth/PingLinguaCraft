@@ -63,8 +63,34 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
   };
 
   /* —— 玩法运行中 —— */
-  if (activeMode && cuesQuery.data) {
-    const cues = cuesQuery.data.cues;
+  if (activeMode) {
+    // 装载/失败/空句段分支：此前仅当 data 就绪才进玩法视图，装载期回落玩法
+    // 面板（点击看似「没反应」），失败或空句段时无退出按钮可离开
+    const cues = cuesQuery.data?.cues;
+    if (cuesQuery.isLoading) {
+      return (
+        <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-8">
+          <p className="py-16 text-center text-sm text-muted-foreground">句段装载中…</p>
+        </div>
+      );
+    }
+    if (!cues || cues.length === 0) {
+      return (
+        <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-8">
+          {/* 退出按钮：失败态必须能离开，否则用户被卡死在玩法分支 */}
+          <button
+            onClick={onFinished}
+            className="mb-3 flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            退出玩法
+          </button>
+          <p className="py-16 text-center text-sm text-destructive">
+            {cuesQuery.isError ? `句段装载失败：${cuesQuery.error.message}` : '本材料暂无句段，无法闯关'}
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-8">
         {/* 播放通道：听写/跟读玩法的「听原句」依赖（本页不挂 Player） */}

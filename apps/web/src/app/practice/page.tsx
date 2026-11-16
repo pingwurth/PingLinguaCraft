@@ -146,7 +146,13 @@ export default function PracticePage() {
               </p>
             ) : (
               (recentWrong.data ?? []).map((w, i) => {
-                const q = JSON.parse(w.questionJson) as { stem?: string; sentence?: string; question?: string };
+                // 渲染期 JSON.parse 逐条防护：单行脏数据（历史手工改动/截断）不再炸整页
+                let q: { stem?: string; sentence?: string; question?: string } = {};
+                try {
+                  q = JSON.parse(w.questionJson) as typeof q;
+                } catch {
+                  q = {};
+                }
                 return (
                   <Link
                     key={i}
@@ -157,7 +163,8 @@ export default function PracticePage() {
                       <span className="mr-1 text-ochre">[{w.type === 'choice' ? '选择' : w.type === 'cloze' ? '填空' : '问答'}]</span>
                       {q.stem ?? q.sentence ?? q.question}
                     </p>
-                    {w.userAnswer && <p className="mt-1 text-destructive">你的作答：{w.userAnswer === 'self-ok' ? '（未掌握标记）' : w.userAnswer}</p>}
+                    {/* self-ok = 问答题自评「我掌握了」（QuizTab 同款语义），非未掌握 */}
+                    {w.userAnswer && <p className="mt-1 text-destructive">你的作答：{w.userAnswer === 'self-ok' ? '（自评已掌握）' : w.userAnswer}</p>}
                   </Link>
                 );
               })

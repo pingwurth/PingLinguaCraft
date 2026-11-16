@@ -28,6 +28,9 @@ const Ctx = createContext<AssistantContextValue | null>(null);
 
 /** 抽屉宽度持久化键 */
 const WIDTH_KEY = 'pinglc.assistant.width';
+/** 抽屉宽度钳制范围（单一来源：拖拽钳制与挂载校正共用，防两处口径漂移） */
+const WIDTH_MIN = 240;
+const WIDTH_MAX = 640;
 
 /**
  * 侍读 Provider（挂在根布局，包住 AppShell）
@@ -40,7 +43,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [drawerWidth, setDrawerWidthState] = useState(320);
 
   const setDrawerWidth = useCallback((w: number) => {
-    const clamped = Math.round(Math.min(640, Math.max(240, w)));
+    const clamped = Math.round(Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, w)));
     setDrawerWidthState(clamped);
     try {
       localStorage.setItem(WIDTH_KEY, String(clamped));
@@ -56,16 +59,18 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
 
   const clearPendingAsk = useCallback(() => setPendingAsk(null), []);
 
-  // 挂载后校正宽度：localStorage 记忆优先，否则取视口 1/6（需求 15），钳制在 240~640
+  // 挂载后校正宽度：localStorage 记忆优先，否则取视口 1/6（需求 15）。
+  // 下限与 setDrawerWidth 同源 WIDTH_MIN——旧实现这里写 280、拖拽写 240，
+  // 240~279 的记忆宽度刷新后被静默放大，表现为「记忆值失效/尺寸跳动」
   useEffect(() => {
     let w = Math.round(window.innerWidth / 6);
     try {
       const v = Number(localStorage.getItem(WIDTH_KEY));
-      if (v >= 240 && v <= 640) w = v;
+      if (v >= WIDTH_MIN && v <= WIDTH_MAX) w = v;
     } catch {
       /* 无 localStorage 环境 */
     }
-    setDrawerWidthState(Math.min(640, Math.max(280, w)));
+    setDrawerWidthState(Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, w)));
   }, []);
 
   return (

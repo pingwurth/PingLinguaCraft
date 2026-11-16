@@ -78,34 +78,31 @@ export function ChallengeShell({
 
 /**
  * 句推进 Hook：玩法通用状态机（当前句 / 完成 / 成绩累计）
+ *
+ * current/finished 由 scores.length 派生而非独立 state：advance 从渲染闭包
+ * 读 current 的旧实现里，双击或异步回调双推会让两次调用看到同一快照——
+ * 跳句、重复计分或错误置 finished。派生 + 完成后拒追加，双推天然无害。
  * @param total 总句数
  * @returns 状态与推进函数
  */
 export function useChallengeRun(total: number) {
-  const [current, setCurrent] = useState(0);
-  const [finished, setFinished] = useState(false);
-  /** 逐句得分（0~100） */
+  /** 逐句得分（0~100）；长度即已推进句数（唯一真值源） */
   const [scores, setScores] = useState<number[]>([]);
 
-  /** 记录本句得分并推进；最后一句触发完成 */
+  const finished = scores.length >= total;
+  /** 当前句下标：未完成时 = 已推进数；完成后收敛在末句（结算视图不索引 cues） */
+  const current = Math.min(scores.length, Math.max(0, total - 1));
+
+  /** 记录本句得分并推进；完成后拒绝追加（双推/重放的幂等护栏） */
   const advance = (score: number) => {
-    setScores((prev) => [...prev, score]);
-    if (current + 1 >= total) {
-      setFinished(true);
-    } else {
-      setCurrent((c) => c + 1);
-    }
+    setScores((prev) => (prev.length >= total ? prev : [...prev, score]));
   };
 
   /** 平均分（完成时结算用） */
   const average = () =>
     scores.length === 0 ? 0 : Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 
-  const restart = () => {
-    setCurrent(0);
-    setFinished(false);
-    setScores([]);
-  };
+  const restart = () => setScores([]);
 
   return { current, finished, scores, advance, average, restart };
 }
