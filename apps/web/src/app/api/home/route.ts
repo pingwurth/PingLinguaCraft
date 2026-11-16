@@ -23,6 +23,9 @@ import type {
 
 export const runtime = 'nodejs';
 
+/** 最近活跃时间表达式：学习时间与材料更新时间取大（select 与 orderBy 共用一份，防两处口径漂移） */
+const activityAtExpr = sql<number>`max(coalesce(${learningProgress.updatedAt}, 0), ${materials.updatedAt})`;
+
 /**
  * 位图 popcount：数 listened_mask（逐句听过位图，bit i = 第 i 句听过）的置位数
  * @param buf 位图 BLOB（better-sqlite3 返回 Buffer；空为 null）
@@ -167,7 +170,7 @@ export async function GET() {
       collectionId: collections.id,
       collectionName: collections.name,
       maxCueIndex: learningProgress.maxCueIndex,
-      activityAt: sql<number>`max(coalesce(${learningProgress.updatedAt}, 0), ${materials.updatedAt})`,
+      activityAt: activityAtExpr,
     })
     .from(materials)
     .innerJoin(collections, eq(collections.id, materials.collectionId))
@@ -176,7 +179,7 @@ export async function GET() {
       and(eq(learningProgress.materialId, materials.id), eq(learningProgress.userId, 1))
     )
     .where(and(eq(materials.userId, 1), isNull(materials.deletedAt)))
-    .orderBy(sql`max(coalesce(${learningProgress.updatedAt}, 0), ${materials.updatedAt}) desc`)
+    .orderBy(desc(activityAtExpr))
     .limit(5)
     .all();
 

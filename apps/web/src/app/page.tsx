@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { SOURCE_META } from '@/lib/material-meta';
 import type { HomeCollection, HomeData } from '@/features/home/types';
 
 /** 轻筛选档位：全部卷帙 / 最近研习 / 未开卷 */
@@ -56,14 +57,6 @@ function fmtRelative(ms: number): string {
 function fmtInt(n: number): string {
   return n.toLocaleString('zh-CN');
 }
-
-/** 来源类型 → 图标名（流动动向条目用；未知类型回退耳机） */
-const SOURCE_ICON: Record<string, string> = {
-  video: 'smart_display',
-  audio: 'headphones',
-  text: 'text_snippet',
-  link: 'link',
-};
 
 /** 字幕状态 → 展示文案 */
 const STATUS_TEXT: Record<string, string> = {
@@ -168,7 +161,7 @@ export default function HomePage() {
         <>
           {/* ===== 页头（移动版，仿 _12）：竖条标题 + 收录戳记 + 引文 ===== */}
           <header className="mb-5 md:hidden">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 {/* 朱砂竖条（书签绦带意象） */}
                 <span aria-hidden className="inline-block h-4 w-1.5 rounded-sm bg-primary" />
@@ -300,8 +293,14 @@ export default function HomePage() {
                 </span>
               </button>
             </div>
-            <div className="flex items-center gap-2">
-              {/* 链接输入（带前置链接图标） */}
+            {/* 链接输入 + 萃取：form 化让 Enter 等效点击萃取 */}
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitQuickImport();
+              }}
+            >
               <div className="relative flex-1">
                 <span className="material-symbols-outlined pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-lg text-muted-foreground">
                   link
@@ -313,13 +312,14 @@ export default function HomePage() {
                     setImportError(null);
                   }}
                   type="url"
+                  aria-label="音视频链接"
                   placeholder="粘贴音视频链接 (Bilibili/YouTube/Podcast)…"
                   className="deckle w-full rounded-sm border border-input bg-background py-2 pl-9 pr-3 text-[13px] placeholder:text-muted-foreground/60"
                 />
               </div>
               {/* 萃取按钮：就地提交链接导入 */}
               <button
-                onClick={submitQuickImport}
+                type="submit"
                 disabled={quickImport.isPending}
                 className="flex shrink-0 items-center gap-1 rounded-sm bg-primary px-3.5 py-2 text-xs tracking-wider text-primary-foreground disabled:opacity-50"
               >
@@ -328,7 +328,7 @@ export default function HomePage() {
                 </span>
                 {quickImport.isPending ? '解析中…' : '萃取'}
               </button>
-            </div>
+            </form>
             {/* 提交错误（失败可见） */}
             {importError && <p className="mt-2 text-xs text-destructive">{importError}</p>}
             {/* 展开项：拟归卷 + 本地文件引导 */}
@@ -340,6 +340,7 @@ export default function HomePage() {
                   <select
                     value={importCollectionId || collections[0]?.id || 0}
                     onChange={(e) => setImportCollectionId(Number(e.target.value))}
+                    aria-label="拟归入材料集"
                     className="deckle min-w-0 flex-1 truncate rounded-sm border border-input bg-background px-2.5 py-1 text-xs"
                   >
                     {collections.length === 0 && <option value={0}>尚无卷帙——请先立卷</option>}
@@ -439,10 +440,10 @@ export default function HomePage() {
                     className="flex flex-col justify-between gap-2 rounded-sm p-4 transition-colors hover:bg-accent sm:flex-row sm:items-center"
                   >
                     <div className="flex min-w-0 items-center gap-3">
-                      {/* 来源图标块 */}
+                      {/* 来源图标块（映射与集详情页共用单源） */}
                       <span className="flex size-12 shrink-0 items-center justify-center rounded-sm bg-muted text-primary">
                         <span className="material-symbols-outlined text-2xl">
-                          {SOURCE_ICON[m.sourceType] ?? 'headphones'}
+                          {(SOURCE_META[m.sourceType] ?? SOURCE_META.audio!).icon}
                         </span>
                       </span>
                       <div className="min-w-0">

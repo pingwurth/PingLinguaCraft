@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { use, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Collection, type JobDTO, type MaterialListItem } from '@/lib/api';
+import { SOURCE_META } from '@/lib/material-meta';
 
 /** ms → mm:ss */
 function fmtMs(ms: number | null): string {
@@ -20,13 +21,7 @@ function fmtMs(ms: number | null): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/** 来源类型 → 图标与中文 */
-const SOURCE_META: Record<string, { icon: string; label: string }> = {
-  video: { icon: 'movie', label: '视频' },
-  audio: { icon: 'headphones', label: '音频' },
-  text: { icon: 'text_snippet', label: '文本' },
-  link: { icon: 'link', label: '链接' },
-};
+/** 来源类型 → 图标与中文：见 lib/material-meta（与首页流动动向共用单源） */
 
 /**
  * 材料集详情页
