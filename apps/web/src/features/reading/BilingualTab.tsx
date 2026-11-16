@@ -3,16 +3,25 @@
 /**
  * 「双语精读」标签页（需求 7/9 + 设计稿 _2/_4 字幕工坊）
  *
- * - 字幕跟随播放进度滚动（激活句居中 + 朱砂左边线）
+ * - 字幕跟随播放进度滚动（激活句居中 + 朱砂左边线）：句列表为独立滚动容器，
+ *   跟播只滚容器不动页面；用户滚轮/触摸浏览期间自动让位，停手片刻恢复跟随
  * - 逐条工坊操作：编辑原文/译文/时间（±100ms 步进）、单句重译（中英互译）、
  *   单句重 STT、下方插入、删除
  * - 卷级操作：导入字幕（整体替换）、导出（srt/vtt × en/zh/双语）、整卷重译、整卷重 STT
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePlayer } from '@/features/player/store';
 import { api, type CueDTO, type JobDTO, type MaterialDetail } from '@/lib/api';
+
+/**
+ * 用户浏览让位窗口（毫秒）：字幕区内滚轮/触摸浏览期间跟播滚动暂停，
+ * 停手该时长后自动恢复跟随。截止时间戳存模块级单例而非 state——
+ * wheel 高频写入不该逐帧触发渲染，React 状态只保留一个样式开关。
+ */
+const FOLLOW_HOLD_MS = 2500;
+const followHoldUntil = { at: 0 };
 
 /**
  * 双语精读标签页
@@ -26,12 +35,59 @@ export function BilingualTab({ cues, material }: { cues: CueDTO[]; material: Mat
   const [follow, setFollow] = useState(true);
   const qc = useQueryClient();
 
-  /* 跟播滚动：激活句居中 */
+  /* follow/editingId 的 ref 镜像：滚动函数被切句 effect 与让位回弹计时器
+     共用，后者闭包里的 React state 会过期，统一读 ref 取最新值 */
+  const followRef = useRef(follow);
+  followRef.current = follow;
+  const editingRef = useRef<number | null>(editingId);
+  editingRef.current = editingId;
+
+  /** 跟播滚动：激活句在列表容器内居中（scrollIntoView 会连滚页面等全部
+   *  可滚祖先、把整页顶飞，故改为容器内 scrollTo） */
+  const scrollActiveIntoView = useCallback(() => {
+    const idx = usePlayer.getState().activeCueIndex;
+    if (!followRef.current || editingRef.current !== null || idx < 0) return;
+    const c = listRef.current;
+    const el = c?.querySelector<HTMLElement>(`[data-cue-idx="${idx}"]`);
+    if (!c || !el) return;
+    const cRect = c.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const delta = eRect.top - cRect.top - (c.clientHeight - el.clientHeight) / 2;
+    c.scrollTo({ top: c.scrollTop + delta, behavior: 'smooth' });
+  }, []);
+
+  /* 切句跟播：激活句/开关/编辑态变化时滚动；用户浏览让位期内
+     （滚轮/触摸操作后 FOLLOW_HOLD_MS 内）切句不强制滚动 */
   useEffect(() => {
-    if (!follow || editingId !== null || activeCueIndex < 0) return;
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-cue-idx="${activeCueIndex}"]`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activeCueIndex, follow, editingId]);
+    if (Date.now() < followHoldUntil.at) return; // 用户正在浏览：让位
+    scrollActiveIntoView();
+  }, [activeCueIndex, follow, editingId, scrollActiveIntoView]);
+
+  /* 浏览让位：字幕区 wheel/触摸 → 暂停跟播并起恢复计时；state 仅用于按钮样式 */
+  const [followHeld, setFollowHeld] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const c = listRef.current;
+    if (!c) return;
+    const hold = () => {
+      followHoldUntil.at = Date.now() + FOLLOW_HOLD_MS;
+      setFollowHeld(true);
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+      holdTimer.current = setTimeout(() => {
+        setFollowHeld(false);
+        // 让位结束：主动回弹定位当前句——不能等下一次切句触发（单句循环/
+        // 暂停时 activeCueIndex 恒定，effect 不再重跑，不回弹就永不恢复）
+        scrollActiveIntoView();
+      }, FOLLOW_HOLD_MS);
+    };
+    c.addEventListener('wheel', hold, { passive: true });
+    c.addEventListener('touchmove', hold, { passive: true });
+    return () => {
+      c.removeEventListener('wheel', hold);
+      c.removeEventListener('touchmove', hold);
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+    };
+  }, [scrollActiveIntoView]);
 
   /* 活跃任务（卷级重译/重 STT 的进度显示） */
   const activeJobs = useQuery({
@@ -48,6 +104,11 @@ export function BilingualTab({ cues, material }: { cues: CueDTO[]; material: Mat
     void activeJobs.refetch();
   };
 
+  /** 句段操作失败的统一提示：低频操作用 alert（错误文案来自 api() 统一契约），
+   *  此前五个 mutation 只有 onSuccess——删除/插入/重译失败界面毫无反馈，用户
+   *  误以为成功 */
+  const opAlert = (label: string) => (err: Error) => alert(`${label}失败：${err.message}`);
+
   /** 单句重译 */
   const retranslate = useMutation({
     mutationFn: (v: { id: number; direction: 'en2zh' | 'zh2en' }) =>
@@ -56,18 +117,21 @@ export function BilingualTab({ cues, material }: { cues: CueDTO[]; material: Mat
         body: JSON.stringify({ direction: v.direction }),
       }),
     onSuccess: refresh,
+    onError: opAlert('重新翻译'),
   });
 
   /** 单句重 STT（任务） */
   const resttCue = useMutation({
     mutationFn: (id: number) => api(`/api/cues/${id}/restt`, { method: 'POST', body: '{}' }),
     onSuccess: refresh,
+    onError: opAlert('重听转写'),
   });
 
   /** 删除句段 */
   const removeCue = useMutation({
     mutationFn: (id: number) => api(`/api/cues/${id}`, { method: 'DELETE' }),
     onSuccess: refresh,
+    onError: opAlert('删除句段'),
   });
 
   /** 下方插入 */
@@ -78,6 +142,7 @@ export function BilingualTab({ cues, material }: { cues: CueDTO[]; material: Mat
         body: JSON.stringify({ afterIndex }),
       }),
     onSuccess: refresh,
+    onError: opAlert('插入句段'),
   });
 
   /** 卷级操作 */
@@ -88,6 +153,7 @@ export function BilingualTab({ cues, material }: { cues: CueDTO[]; material: Mat
         body: JSON.stringify({ force: v.force }),
       }),
     onSuccess: refresh,
+    onError: opAlert('卷级操作'),
   });
 
   return (
@@ -95,12 +161,13 @@ export function BilingualTab({ cues, material }: { cues: CueDTO[]; material: Mat
     <div className="flex flex-col py-2">
       {/* 卷级工具条 */}
       <div className="deckle sticky top-0 z-10 -mx-1 mb-2 flex flex-wrap items-center gap-2 border-b bg-background/95 px-1 pb-2 pt-1 backdrop-blur">
-        {/* 跟播开关 */}
+        {/* 跟播开关（浏览让位期间半透明示意：跟播仍开，停手片刻自动追上） */}
         <button
           onClick={() => setFollow((v) => !v)}
-          className={`flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs ${
+          title={followHeld ? '浏览中，跟播暂让位；停手片刻自动恢复跟随' : '跟播：激活句自动居中'}
+          className={`flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs transition-opacity ${
             follow ? 'text-primary' : 'text-muted-foreground'
-          }`}
+          } ${follow && followHeld ? 'opacity-50' : ''}`}
         >
           <span className="material-symbols-outlined text-sm">{follow ? 'lock' : 'lock_open'}</span>
           跟播
@@ -179,8 +246,12 @@ export function BilingualTab({ cues, material }: { cues: CueDTO[]; material: Mat
         </div>
       )}
 
-      {/* 句列表 */}
-      <div ref={listRef} className="flex flex-col gap-1.5">
+      {/* 句列表：独立滚动容器（跟播只滚此区不动页面；overscroll-contain 防滚到头
+          链式带动整页；细滚动条贴合纸墨风——Firefox thin / WebKit 窄轨圆角） */}
+      <div
+        ref={listRef}
+        className="flex max-h-[65dvh] flex-col gap-1.5 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border"
+      >
         {cues.map((cue) => (
           <CueRow
             key={cue.id}
@@ -232,6 +303,7 @@ function CueRow({
   const [start, setStart] = useState(cue.startMs);
   const [end, setEnd] = useState(cue.endMs);
   const [dirty, setDirty] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (editing) {
@@ -240,15 +312,23 @@ function CueRow({
       setStart(cue.startMs);
       setEnd(cue.endMs);
       setDirty(false);
+      setSaveError(null);
     }
   }, [editing, cue]);
 
-  /** 保存编辑 */
+  /** 保存编辑（失败就地提示且不退出编辑态——用户输入不丢；此前 void 调用把
+   *  rejection 变成未处理 Promise，行停在编辑态却无任何提示） */
   const save = async () => {
-    await api(`/api/cues/${cue.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ textEn: en, textZh: zh, startMs: start, endMs: end }),
-    });
+    try {
+      await api(`/api/cues/${cue.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ textEn: en, textZh: zh, startMs: start, endMs: end }),
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : '保存失败');
+      return;
+    }
+    setSaveError(null);
     onEdit();
     onDone();
   };
@@ -284,14 +364,18 @@ function CueRow({
           <button
             className="rounded border border-border px-2 py-1"
             onClick={() => {
-              const s = usePlayer.getState();
-              s.setCurrentTimeMs(start); // 视觉反馈；真实 seek 由 Player 内部处理
+              // 真实跳播走 pinglc:seek（与常规态点正文跳播同通道，Player 内执行
+              // currentTime 设置）——旧实现只 setCurrentTimeMs 更新 store 显示，
+              // 进度条视觉跳动而音频不动，是「假试听」
+              window.dispatchEvent(new CustomEvent('pinglc:seek', { detail: start }));
               onEdit();
             }}
           >
             试听
           </button>
         </div>
+        {/* 保存失败就地提示（不退出编辑态） */}
+        {saveError && <p className="mb-2 text-xs text-destructive">{saveError}</p>}
         {/* 操作排 */}
         <div className="flex flex-wrap gap-2 text-xs">
           <button className="rounded bg-primary px-3 py-1.5 text-primary-foreground" onClick={() => void save()} disabled={!dirty}>
