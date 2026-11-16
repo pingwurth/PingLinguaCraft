@@ -293,8 +293,11 @@ export default function HomePage() {
                 </span>
               </button>
             </div>
-            {/* 链接输入 + 萃取：form 化让 Enter 等效点击萃取 */}
+            {/* 链接输入 + 萃取：form 化让 Enter 等效点击萃取；
+             * noValidate 关掉 type=url 原生校验——缺 scheme 的半截链接
+             * （如 bilibili.com/xxx）由应用统一中文口径提示，不弹浏览器气泡 */}
             <form
+              noValidate
               className="flex items-center gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
