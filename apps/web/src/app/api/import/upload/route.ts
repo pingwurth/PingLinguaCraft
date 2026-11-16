@@ -1,11 +1,19 @@
 /**
  * 本地文件导入 API：POST /api/import/upload（multipart）
  * 音频/视频文件 + 可选字幕文件（有字幕免 STT）+ 归属材料集
+ *
+ * 内存纪律：媒体文件经 file.stream() 管道写盘（不二次全量进内存、不阻塞
+ * 事件循环）；Content-Length 前置闸在解析前拒绝超限请求。已知余留：
+ * request.formData() 在 Node 侧本身将整个 multipart 缓存在内存一份——
+ * 2GB 上限对应约 2GB 峰值 RSS，单用户局域网可接受；更大文件走链接导入。
  */
 
 import { NextResponse } from 'next/server';
-import { writeFileSync } from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as NodeWebReadableStream } from 'node:stream/web';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
@@ -21,6 +29,12 @@ const MAX_SIZE = 2 * 1024 * 1024 * 1024;
  * POST —— multipart: file(必), subtitle(可选 srt/vtt), collectionId(必), title?
  */
 export async function POST(request: Request) {
+  // 前置体积闸（Content-Length 含 multipart 开销，放 1MiB 余量）：在 formData
+  // 解析之前拒绝，注定超限的请求不再把整个 body 白白读进内存
+  const declared = Number(request.headers.get('content-length') ?? 0);
+  if (declared > MAX_SIZE + 1024 * 1024) {
+    return NextResponse.json({ error: '文件超过 2GB，请改用链接导入' }, { status: 413 });
+  }
   const form = await request.formData();
   const file = form.get('file') as File | null;
   const subtitle = form.get('subtitle') as File | null;
@@ -65,13 +79,27 @@ export async function POST(request: Request) {
     .all();
   const materialId = inserted[0]!.id;
 
-  // 落媒体文件
+  // 落媒体文件：file.stream() 管道写盘——旧实现 Buffer.from(arrayBuffer())
+  // 把整份文件二次复制进内存且 writeFileSync 同步写阻塞事件循环（2GB 文件
+  // 卡死全部请求几十秒）；流式写增量落盘，内存占用≈单块缓冲
   const dir = materialDir(collectionId, materialId);
   const origExt = file.name.includes('.') ? file.name.split('.').pop()! : '';
   const ext = extFromMime(file.type, origExt);
   const mediaAbs = join(dir, `original.${ext}`);
-  const buf = Buffer.from(await file.arrayBuffer());
-  writeFileSync(mediaAbs, buf);
+  try {
+    await pipeline(
+      Readable.fromWeb(file.stream() as unknown as NodeWebReadableStream<Uint8Array>),
+      createWriteStream(mediaAbs),
+    );
+  } catch (err) {
+    // 落盘失败补偿：删掉刚建的材料行（此时尚无 cues/媒体引用，删行无级联面），
+    // 避免留下「processing 却无文件」的孤儿材料；错误信息可读化
+    db.delete(materials).where(eq(materials.id, materialId)).run();
+    return NextResponse.json(
+      { error: `媒体文件写入失败：${err instanceof Error ? err.message : String(err)}` },
+      { status: 500 },
+    );
+  }
 
   // 可选字幕文件读入（管线里解析落库，免 STT）
   let subtitleText: string | undefined;
