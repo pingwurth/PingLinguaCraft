@@ -7,6 +7,8 @@
  * - 控制条：桌面 mouseEnter 显示、mouseLeave 1s 后渐隐；移动点按切换、播放中 3s 自动隐藏
  * - 播放控制：播放/暂停、±5s、上下句、进度条（拖拽/A-B 高亮/缓冲区）、倍速、音量、
  *   单句循环、A-B 打点、整集循环、字幕模式切换
+ * - 键盘（桌面）：空格播放/暂停、←/→ ±5s、Shift+←/→ 上下句、↑/↓ 音量、
+ *   L 单句循环、A 打点
  * - 点词朗读：pendingSpeak 消费（新 Audio 播 /api/media/tts）
  * - 进度上报：5s 防抖 + pagehide → PUT /api/materials/[id]/progress（位图 listened_mask）
  */
@@ -14,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './store';
 import { useMediaClock } from './useMediaClock';
+import { useProgressReporter } from './useProgressReporter';
 import type { CueDTO, MaterialDetail } from '@/lib/api';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
 
@@ -66,6 +69,11 @@ export function Player({
 
   useEffect(() => setCues(cues), [cues, setCues]);
 
+  // 进播放页强制关闭字幕（store 是模块单例，上次会话/上个材料手动开启的状态不跨材料延续）
+  useEffect(() => {
+    usePlayer.setState({ subtitleMode: 'off' });
+  }, []);
+
   /* ---------- 媒体元素属性同步 ---------- */
   useEffect(() => {
     const m = mediaRef.current;
@@ -77,6 +85,10 @@ export function Player({
     m.volume = volume;
     m.muted = muted;
   }, [rate, volume, muted]);
+
+  /* 未消化的定位值：详情/进度先到、音频元数据后到时续播 effect 扑空（duration
+     仍 NaN），暂存到 loadedmetadata 补跳——否则续播与 ?t= 深链都可能停在 0 */
+  const pendingSeekRef = useRef(0);
 
   /* ---------- 整集循环（ended 事件）---------- */
   useEffect(() => {
@@ -94,7 +106,14 @@ export function Player({
     const onPause = () => usePlayer.getState().setPlaying(false);
     const onMeta = () => {
       const d = m.duration;
-      if (Number.isFinite(d)) usePlayer.getState().setDurationMs(d * 1000);
+      if (Number.isFinite(d)) {
+        usePlayer.getState().setDurationMs(d * 1000);
+        // 元数据就绪后补跳暂存的定位值（详情先到、元数据后到的竞态）
+        if (pendingSeekRef.current > 500) {
+          m.currentTime = pendingSeekRef.current / 1000;
+          pendingSeekRef.current = 0;
+        }
+      }
     };
     m.addEventListener('ended', onEnded);
     m.addEventListener('play', onPlay);
@@ -111,8 +130,12 @@ export function Player({
   /* ---------- 续播定位 ---------- */
   useEffect(() => {
     const m = mediaRef.current;
-    if (m && initialPositionMs > 500 && Number.isFinite(m.duration)) {
+    if (!m || initialPositionMs <= 500) return;
+    if (Number.isFinite(m.duration)) {
+      pendingSeekRef.current = 0;
       m.currentTime = initialPositionMs / 1000;
+    } else {
+      pendingSeekRef.current = initialPositionMs;
     }
   }, [initialPositionMs]);
 
@@ -198,6 +221,14 @@ export function Player({
       const m = mediaRef.current;
       const s = usePlayer.getState();
       if (!m) return;
+      // Shift+←/→：上/下一句（工坊与精读的句级导航）。必须先于下方 switch 判定：
+      // e.key 不携带修饰键（箭头键按住 Shift 后 key 仍是 'ArrowLeft'/'ArrowRight'），
+      // 先进 switch 会被 ±5s 的 case 截胡，句级导航永远轮不到
+      if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        seekSentence(e.key === 'ArrowLeft' ? -1 : 1);
+        return;
+      }
       switch (e.key) {
         case ' ':
           e.preventDefault();
@@ -234,21 +265,6 @@ export function Player({
           }
           break;
         }
-        case 'ArrowLeftShift':
-        case 'ArrowRightShift':
-          break;
-        default:
-          if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-            // 上/下一句（工坊与精读的句级导航）
-            const dir = e.key === 'ArrowLeft' ? -1 : 1;
-            const st = usePlayer.getState();
-            const target = Math.min(st.cues.length - 1, Math.max(0, st.activeCueIndex + dir));
-            const cue = st.cues[target];
-            if (cue && m) {
-              m.currentTime = cue.startMs / 1000 + 0.01;
-              void m.play().catch(() => undefined);
-            }
-          }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -264,53 +280,8 @@ export function Player({
     usePlayer.getState().clearPendingSpeak();
   }, [pendingSpeak]);
 
-  /* ---------- 进度上报（5s 防抖 + pagehide；位图逐句标记）---------- */
-  const listenedRef = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    listenedRef.current = new Set();
-    let lastReport = 0;
-    const report = (final = false) => {
-      const m = mediaRef.current;
-      const s = usePlayer.getState();
-      if (!m || s.cues.length === 0) return;
-      const now = Date.now();
-      if (!final && now - lastReport < 5000) return;
-      lastReport = now;
-      // 位图序列化
-      const total = s.cues.length;
-      const buf = new Uint8Array(Math.ceil(total / 8));
-      listenedRef.current.forEach((i) => {
-        buf[i >> 3] |= 1 << i % 8;
-      });
-      // 转标准 base64
-      let bin = '';
-      buf.forEach((b) => (bin += String.fromCharCode(b)));
-      const mask = btoa(bin);
-      void fetch(`/api/materials/${material.id}/progress`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lastPositionMs: m.currentTime * 1000,
-          maxCueIndex: s.activeCueIndex,
-          listenedMask: mask,
-          listenedThrough: listenedRef.current.size >= total,
-        }),
-        keepalive: final,
-      }).catch(() => undefined);
-    };
-    // 激活句变化时记入已听集合（秒级去抖由 rAF 频率天然保证）
-    const unsub = usePlayer.subscribe((state) => {
-      if (state.activeCueIndex >= 0) listenedRef.current.add(state.activeCueIndex);
-      if (Date.now() - lastReport >= 5000) report();
-    });
-    const onHide = () => report(true);
-    window.addEventListener('pagehide', onHide);
-    return () => {
-      unsub();
-      window.removeEventListener('pagehide', onHide);
-      report(true);
-    };
-  }, [material.id]);
+  /* ---------- 进度上报（5s 防抖 + pagehide；位图逐句标记，与语流页共用）---------- */
+  useProgressReporter(material.id);
 
   /* ---------- 进度条拖拽 ---------- */
   const duration = durationMs || 1;
@@ -546,12 +517,25 @@ export function Player({
     </div>
   );
 
-  /** 跳到上/下一句 */
+  /** 跳到上/下一句（控制条按钮与 Shift+←/→ 共用；单句循环下循环目标随新句迁移） */
   function seekSentence(dir: 1 | -1): void {
     const m = mediaRef.current;
     const s = usePlayer.getState();
     if (!m) return;
-    const target = Math.min(s.cues.length - 1, Math.max(0, s.activeCueIndex + dir));
+    let base = s.activeCueIndex;
+    if (base < 0) {
+      // 播放位置在句间间隙/材料首尾（激活句 -1）：以「起点不晚于当前位置的
+      // 最后一句」为基准。单句循环跟随播放位置后，拖进度条可停进间隙/片尾，
+      // 此时从 -1 直接 ±1 会错跳（如拖到片尾点「下一句」蹦回首句）
+      const t = m.currentTime * 1000;
+      for (let k = s.cues.length - 1; k >= 0; k--) {
+        if (s.cues[k]!.startMs <= t) {
+          base = k;
+          break;
+        }
+      }
+    }
+    const target = Math.min(s.cues.length - 1, Math.max(0, base + dir));
     const cue = s.cues[target];
     if (cue) {
       m.currentTime = cue.startMs / 1000 + 0.01;

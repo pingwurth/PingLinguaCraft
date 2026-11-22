@@ -44,6 +44,23 @@ pid_matches() { # $1=PID  $2=扩展正则（如 'uvicorn|next|pnpm'）
   [[ -n "$cmd" && "$cmd" =~ $2 ]]
 }
 
+# ---- 进程的可读描述：PID + 命令行截断（用于端口占用告警，帮用户认出占用者）----
+# 读 /proc/<pid>/cmdline 取前 80 字符；非 Linux 无 procfs 时退化为仅 PID。
+# 与 pid_matches 同族，均依赖 procfs，可移植性口径一致
+pid_desc() { # $1=PID
+  local cmd=""
+  if [[ -d /proc ]]; then
+    # 尾部 sed 裁剪：改写过进程标题的进程（如 next-server）cmdline 以 null 填充，
+    # tr 转空格后会拖一长串尾随空白
+    cmd="$(tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | cut -c1-80 | sed 's/[[:space:]]*$//')"
+  fi
+  if [[ -n "$cmd" ]]; then
+    echo "PID $1（$cmd）"
+  else
+    echo "PID $1"
+  fi
+}
+
 # ---- 取进程所在进程组 ID（PGID）；进程不在时输出空串 ----
 pgid_of() { # $1=PID
   ps -o pgid= -p "$1" 2>/dev/null | tr -d '[:space:]' || true
@@ -94,16 +111,15 @@ wait_http() { # $1=探测 URL  $2=最长等待秒数
 #       否则 pid 文件永远不出现，调用方的回收逻辑找不到目标，进程成孤儿。
 spawn_group() { # $1=pid文件 $2=日志文件 $3...=完整命令
   local pidfile="$1" logfile="$2"; shift 2
+  # 无条件删除残留 pid 文件要放在 setsid 可用性检查之前：macOS 等无 setsid 的环境
+  # 在清理前就 return 1，旧 pid 文件留存会让调用方 EXIT trap 的回收逻辑读到旧 PID
+  # （PID 被复用时甚至误杀无关进程组）。调用方在 spawn 前已自行确认旧服务不在
+  # （端口/pid 探活），rm -f 失败也不该中断脚本——新进程马上会重写该文件
+  rm -f "$pidfile" || true
   if ! command -v setsid >/dev/null 2>&1; then
     echo "[lib] 未安装 setsid（util-linux），无法以独立进程组启动——请安装后重试" >&2
     return 1
   fi
-  # 无条件删除残留 pid 文件后再 spawn：不只清「进程已死」的——旧 PID 被无关进程
-  # 复用时文件同样失效（3s 落盘检测会读到旧内容假成功、调用方误杀无关进程组）。
-  # 直接 rm -f 而非经 alive_pid 探活清理：调用方在 spawn 前已自行确认旧服务不在
-  # （端口/pid 探活），此处 rm -f 失败也不该中断脚本（alive_pid 内部的 rm 失败在
-  # set -e 下会静默中止整个调用方脚本）——新进程马上会重写该文件
-  rm -f "$pidfile" || true
   : >"$logfile" # 清空旧日志，每次启动一个新文件
   setsid bash -c 'echo $$ > "$1"; shift; exec "$@" >>"$0" 2>&1' \
     "$logfile" "$pidfile" "$@" &

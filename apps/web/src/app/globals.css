@@ -64,6 +64,40 @@
 
   /* 圆角：书页裁切的柔和 4px */
   --radius: 0.25rem;
+
+  /* ---------------------------------------------------------------------------
+   * 案头壳稿色板（docs/ui/stitch_.../linguacraft_16）——桌面侧栏/顶栏专用
+   * Material 3 surface 容器族（冷调灰阶）+ 深朱印泥 + 竹青。与上方暖纸 token 并存：
+   * 仅壳层组件（AppShell 侧栏 / TopBar 顶栏）消费本组 token，页面主体仍走暖纸 token。
+   * ------------------------------------------------------------------------ */
+  /* 案头桌面底（顶栏毛玻璃基色） */
+  --surface: #f9f9fc;
+  /* 容器族五阶（低→高）：侧栏底 / 悬停染底 / 按钮底 / 活动态染底；lowest 为纯白（进度条槽底、浮层面板） */
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f3f3f6;
+  --surface-container: #eeeef0;
+  --surface-container-high: #e8e8ea;
+  --surface-container-highest: #e2e2e5;
+  /* 容器族上的前景：浓墨主文本 / 赭褐次级文本 */
+  --on-surface: #1a1c1e;
+  --on-surface-variant: #5b403d;
+  /* 深朱印泥（壳层主红，比全局朱砂 #B91C1C 沉一档：印章方/头像/进度条） */
+  --shell-seal: #93000b;
+  /* 壳层竹青（状态灯、chip 强调值） */
+  --shell-bamboo: #456818;
+  /* 深黛靛蓝（封面质地第四色「经阁重彩 · 渊深」；深底，配白系前景） */
+  --shell-indigo: #3b4a66;
+  /* 宣纸洒金（封面质地第二色「澄泥微光 · 古穆」；暖米宣纸底） */
+  --shell-xuan: #f5dfc5;
+  /* —— 藏经阁页稿（linguacraft_10）补充色 ——
+   * outline：弱化标签/注脚赭褐；outline-variant：虚线描边（新建占位卡）；
+   * primary-fixed：浅朱印（悬停圆底 / 提示药丸半透底）；
+   * tertiary-container 族：封面卷签第三色（褐印） */
+  --outline: #8f6f6c;
+  --outline-variant: #e4beb9;
+  --primary-fixed: #ffdad6;
+  --tertiary-container: #6b5c47;
+  --on-tertiary-container: #ead5bc;
 }
 
 /* ---------------------------------------------------------------------------
@@ -92,6 +126,25 @@
   --color-ochre: var(--ochre);
   --color-scrim: var(--scrim);
 
+  /* 案头壳稿色板（仅壳层组件消费，见 ：root 内注释） */
+  --color-surface: var(--surface);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-shell-seal: var(--shell-seal);
+  --color-shell-bamboo: var(--shell-bamboo);
+  --color-shell-indigo: var(--shell-indigo);
+  --color-shell-xuan: var(--shell-xuan);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-primary-fixed: var(--primary-fixed);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+
   /* 圆角 token（shadcn 组件读取 --radius 派生值） */
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
@@ -103,6 +156,44 @@
 
   /* 动画：控制条渐隐等过渡 */
   --animate-fade: fade 0.3s ease;
+}
+
+/* ---------------------------------------------------------------------------
+ * 案头壳稿字阶（linguacraft_16 type roles，壳层组件专用）
+ * 与设计稿 Tailwind 配置逐项对齐（字号/行高/字距/字重捆绑为角色类）：
+ * - headline-sm：品牌主标（衬线 Newsreader 由 font-serif 显式指定）
+ * - label-sm / label-md：小号标签（Inter，字距加宽）
+ * - body-md / body-sm：导航条目与检索输入正文（400 默认字重，不捆绑以省令牌）
+ * 生成 text-headline-sm / text-label-sm 等工具类（行高/字距/字重随类生效）
+ * ------------------------------------------------------------------------- */
+@theme {
+  --text-headline-sm: 22px;
+  --text-headline-sm--line-height: 30px;
+  --text-headline-sm--font-weight: 500;
+  --text-label-sm: 11px;
+  --text-label-sm--line-height: 14px;
+  --text-label-sm--letter-spacing: 0.05em;
+  --text-label-sm--font-weight: 600;
+  --text-label-md: 12px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--letter-spacing: 0.02em;
+  --text-label-md--font-weight: 500;
+  --text-body-md: 15px;
+  --text-body-md--line-height: 24px;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 20px;
+  /* —— 藏经阁页稿（linguacraft_10）大字阶与标题角色 —— */
+  --text-title-sm: 15px;
+  --text-title-sm--line-height: 22px;
+  --text-title-sm--font-weight: 600;
+  --text-headline-md: 28px;
+  --text-headline-md--line-height: 36px;
+  --text-headline-lg: 36px;
+  --text-headline-lg--line-height: 44px;
+  --text-headline-lg--letter-spacing: -0.015em;
+  --text-headline-xl: 48px;
+  --text-headline-xl--line-height: 56px;
+  --text-headline-xl--letter-spacing: -0.02em;
 }
 
 /* 渐隐动画关键帧（播放器控制条等） */

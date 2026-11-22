@@ -26,10 +26,20 @@ type TabKey = 'current' | 'bilingual' | 'dictation' | 'shadowing' | 'quiz';
 /**
  * 播放页
  * @param props.params 路由参数（材料 id）
+ * @param props.searchParams 查询参数（t：深链定位毫秒值，研习手册「去原声」等外部入口用）
  */
-export default function MaterialPage({ params }: { params: Promise<{ id: string }> }) {
+export default function MaterialPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = use(params);
+  const sp = use(searchParams);
   const materialId = Number(id);
+  /* 深链定位：?t= 毫秒（优先于续播位置——外部入口明确指定了落点） */
+  const deepLinkMs = Number(Array.isArray(sp.t) ? sp.t[0] : sp.t) || 0;
   const [tab, setTab] = useState<TabKey>('current');
   // 激活句订阅（仅取 activeCueIndex，粒度最小化）
   const activeCueIndex = usePlayer((s) => s.activeCueIndex);
@@ -114,7 +124,7 @@ export default function MaterialPage({ params }: { params: Promise<{ id: string 
         <Player
           material={material}
           cues={cues}
-          initialPositionMs={progress?.lastPositionMs ?? 0}
+          initialPositionMs={deepLinkMs > 0 ? deepLinkMs : (progress?.lastPositionMs ?? 0)}
         />
       </div>
 

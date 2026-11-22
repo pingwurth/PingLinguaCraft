@@ -1,732 +1,685 @@
 'use client';
 
 /**
- * 首页 —— 藏经阁（需求 19：导入材料汇聚地；设计稿 _12 移动 / _10 桌面）
+ * 首页 —— 案头今研（结构参照设计稿 首页/code.html：卷首抬头 + 卷内材料列表）
  *
- * - 续研书签（移动）：最近停留的材料 + 停留句引文 + 进度 + 即刻续研
- * - 快速导入（移动）：粘贴链接就地萃取（复用 /api/import/link），展开可选拟归卷；
- *   本地文件 / 文本导入引导去 /import 向导
- * - 统计卡网格 + 流转动向（桌面）：卷帙/材料/句段/生词四卡与最近活跃材料
- * - 集卷卡列表（双端）：封面活字印模 + 研读进度 + 轻筛选（全部/最近研习/未开卷；
- *   现库无分类维度，设计稿的分类 pills 降级为基于进度数据的三档）
- * - 另辟新卷：内联建卷表单（失败可见）
- * 数据：GET /api/home 一次聚合（类型见 features/home/types.ts）
+ * 首页不再是藏经阁全库（移至 /library，由侧栏「藏经阁库」条目进入），而是聚焦
+ * 「今研之卷」：自动选中最近研习的材料集（与续研书签同源同口径的 lastStudiedAt
+ * 最大卷；全库未开卷时回落库序首卷），给出一屏可续研的工作台——
+ * - 卷首抬头卡：面包屑（藏经阁 / 卷名 + 私享藏本）+ 卷名 + 题记引文 +
+ *   韵数徽记（在卷材料 / 卷册总长 / 经卷句藏 / 最近研习）+ 导入/入卷动作 +
+ *   卷册修研总度缎带（进度 + 续研书签「第 N 句」即刻续研）；
+ *   卡角以卷面印文（或卷名首字）作淡朱水印
+ * - 检索与筛选工具栏：卷内标题轻检索 + 研习状态筛选（全部/研习中/已完卷/未开卷，
+ *   客户端过滤，不另起请求）
+ * - 卷内材料列表：逐篇韵数四格（章回句数 / 去重词藏 / 校订状态 / 研读进度）+
+ *   状态动作（继续精读 / 开启首研 / 复读温习 / 查看失败原因）+ 移出本卷（软删）；
+ *   处理中材料内联任务进度（轮询 /api/jobs）；研习中/已完卷卡片左缘落色条
+ * - 底部研习小笺：语流听席 / 静思复习 / 研习手册快捷入口
+ * 入口约定：首页不入导航菜单，统一由左上角品牌区（Logo）进入。
+ * 数据：GET /api/home（与壳层共享 ['home'] 查询缓存，零额外聚合请求）+
+ * GET /api/collections/[id]/materials（每条材料附位图口径 progress，core 契约）。
  */
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { SOURCE_META } from '@/lib/material-meta';
-import type { HomeCollection, HomeData } from '@/features/home/types';
+import { parseCollectionCover } from '@pinglc/core';
+import { api, type JobDTO, type MaterialListItem } from '@/lib/api';
+import { SOURCE_META, subtitleStatusMeta } from '@/lib/material-meta';
+import { fmtDuration, fmtMs, fmtRelative, progressTone } from '@/lib/format';
+import type { HomeCollection, HomeData, HomeResumePoint } from '@/features/home/types';
 
-/** 轻筛选档位：全部卷帙 / 最近研习 / 未开卷 */
-type Filter = 'all' | 'recent' | 'fresh';
+/** 研习状态档位（材料粒度）：研习中（0<p<100）/ 已完卷（≥100）/ 待启卷（0） */
+type StudyState = 'studying' | 'done' | 'fresh';
 
-/**
- * ms → 「x 小时 y 分」展示
- * @param ms 毫秒时长
- */
-function fmtDuration(ms: number): string {
-  const min = Math.round(ms / 60000);
-  if (min < 60) return `${min} 分`;
-  return `${Math.floor(min / 60)} 时 ${min % 60} 分`;
-}
+/** 筛选档位：全部 + 三种研习状态 */
+type StudyFilter = 'all' | StudyState;
 
 /**
- * epoch ms → 相对时间（刚刚 / N分钟前 / N小时前 / N天前 / M月D日）
- * @param ms epoch 毫秒
+ * 材料 → 研习状态档位（位图口径进度 ≥100 视为已完卷，>0 视为研习中，否则待启卷）
+ * @param m 材料条目（progress 为 null 即从未研习 → 待启卷）
  */
-function fmtRelative(ms: number): string {
-  const min = Math.floor((Date.now() - ms) / 60000);
-  if (min < 1) return '刚刚';
-  if (min < 60) return `${min}分钟前`;
-  const hour = Math.floor(min / 60);
-  if (hour < 24) return `${hour}小时前`;
-  const day = Math.floor(hour / 24);
-  if (day < 7) return `${day}天前`;
-  const d = new Date(ms);
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+function studyState(m: MaterialListItem): StudyState {
+  const pct = m.progress?.progressPct ?? 0;
+  return pct >= 100 ? 'done' : pct > 0 ? 'studying' : 'fresh';
 }
 
-/**
- * 整数千分位展示（统计卡大数）
- * @param n 整数
- */
-function fmtInt(n: number): string {
-  return n.toLocaleString('zh-CN');
-}
-
-/** 字幕状态 → 展示文案 */
-const STATUS_TEXT: Record<string, string> = {
-  ready: '双语已就绪',
-  processing: '解析中',
-  failed: '解析失败',
-  none: '待处理',
+/** 研习状态 → 卷内签文案与色调（研习中深朱 / 已完卷竹青 / 待启卷赭褐弱化） */
+const STATE_META: Record<StudyState, { label: string; tone: string }> = {
+  studying: { label: '正在研习', tone: 'text-shell-seal' },
+  done: { label: '已完卷', tone: 'text-shell-bamboo' },
+  fresh: { label: '待启卷', tone: 'text-outline' },
 };
 
 /**
- * 首页组件：藏经阁
+ * 首页组件：案头今研（聚焦最近研习的材料集）
  */
 export default function HomePage() {
   const qc = useQueryClient();
-  const router = useRouter();
-  /* 建卷表单状态 */
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
-  const [createError, setCreateError] = useState<string | null>(null);
-  /* 轻筛选档位 */
-  const [filter, setFilter] = useState<Filter>('all');
-  /* 快速导入：链接输入 / 拟归卷 / 展开态 / 提交错误 */
-  const [linkUrl, setLinkUrl] = useState('');
-  const [importCollectionId, setImportCollectionId] = useState(0);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
+  /* 卷内轻检索关键词 + 研习状态筛选档位（均客户端过滤） */
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<StudyFilter>('all');
 
-  /* 首页聚合数据（一次请求供全页） */
+  /* 首页聚合（与壳层共享 ['home'] 缓存：卷列表/统计/续研书签一次到位） */
   const home = useQuery({ queryKey: ['home'], queryFn: () => api<HomeData>('/api/home') });
+  const collections = useMemo(() => home.data?.collections ?? [], [home.data]);
 
-  const data = home.data;
-  // memo 兜底空数组：保证 useMemo(筛选) 依赖引用稳定（未加载时不产生新数组）
-  const collections = useMemo(() => data?.collections ?? [], [data]);
-  const recentCount = collections.filter((c) => c.lastStudiedAt != null).length;
-  const freshCount = collections.filter((c) => c.progressPct === 0).length;
+  /* 今研之卷选取：lastStudiedAt 最大的卷（与续研书签同源 learningProgress.updatedAt，
+   * 同口径必同卷）；全库从未开卷时按库序回落首卷 */
+  const focus = useMemo(() => {
+    if (collections.length === 0) return null;
+    let best: HomeCollection = collections[0]!;
+    for (const c of collections) {
+      if ((c.lastStudiedAt ?? 0) > (best.lastStudiedAt ?? 0)) best = c;
+    }
+    return best;
+  }, [collections]);
+  const focusId = focus?.id ?? null;
 
-  /* 建卷（成功后失效首页聚合缓存刷新列表） */
-  const create = useMutation({
-    mutationFn: () =>
-      api<{ id: number }>('/api/collections', {
-        method: 'POST',
-        body: JSON.stringify({ name }),
-      }),
-    onSuccess: () => {
-      setCreating(false);
-      setName('');
-      setCreateError(null);
-      void qc.invalidateQueries({ queryKey: ['home'] });
+  /* 卷内材料（pageSize 顶格 100：首页定位速览；更多材料由「入卷查阅」分页承接），
+   * 处理中存在时轮询刷新字幕状态 */
+  const list = useQuery({
+    queryKey: ['focus-materials', focusId],
+    queryFn: () => {
+      if (focusId === null) throw new Error('未选定今研之卷');
+      return api<{ materials: MaterialListItem[]; total: number }>(
+        `/api/collections/${focusId}/materials?page=1&pageSize=100`
+      );
     },
-    // 创建失败必须可见（静默复位会让用户无从得知失败原因）
-    onError: (err) => setCreateError(err.message),
+    enabled: focusId !== null,
+    refetchInterval: (q) =>
+      q.state.data?.materials.some((m) => m.subtitleStatus === 'processing') ? 2500 : false,
+  });
+  const materials = useMemo(() => list.data?.materials ?? [], [list.data]);
+
+  /* 续研书签（归属今研之卷时才在缎带展示；卷不符静默降级为「尚未开卷」注记） */
+  const resume: HomeResumePoint | null =
+    home.data?.resume && home.data.resume.collectionId === focusId ? home.data.resume : null;
+
+  /* 移出本卷（软删除可恢复；DELETE /api/materials/[id]）：
+   * 成功后失效首页聚合/今研卷列表/集详情（materialCount 等随之刷新） */
+  const removeMaterial = useMutation({
+    mutationFn: (id: number) => api(`/api/materials/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['home'] });
+      void qc.invalidateQueries({ queryKey: ['focus-materials'] });
+      void qc.invalidateQueries({ queryKey: ['collection'] });
+    },
+    // 删除失败必须可见（静默时用户以为已移出，重进才知材料还在）
+    onError: (err) => alert(`移出失败：${err.message}`),
   });
 
-  /* 快速导入：就地提交链接导入；202 后进材料页（页内 ProcessingPanel 展示解析进度） */
-  const quickImport = useMutation({
-    mutationFn: (collectionId: number) =>
-      api<{ materialId: number; jobId: string }>('/api/import/link', {
-        method: 'POST',
-        body: JSON.stringify({ url: linkUrl.trim(), collectionId }),
-      }),
-    onSuccess: (r) => router.push(`/material/${r.materialId}`),
-    onError: (err) => setImportError(err.message),
-  });
-
-  /** 提交快速导入：未选卷取第一卷；空链接/无卷先拦截提示 */
-  const submitQuickImport = () => {
-    if (!linkUrl.trim()) {
-      setImportError('请先粘贴音视频链接');
-      return;
+  /**
+   * 移出前确认（原生 confirm，与设置页删除同款；软删保留库内数据但应用内
+   * 暂无恢复入口，文案不承诺可恢复）
+   * @param m 待移出材料
+   */
+  const confirmRemoveMaterial = (m: MaterialListItem) => {
+    if (confirm(`将「${m.title}」移出本卷？（软删除：媒体与研习进度保留在库中）`)) {
+      removeMaterial.mutate(m.id);
     }
-    const cid = importCollectionId || collections[0]?.id;
-    if (!cid) {
-      setImportError('请先另辟新卷，再导入材料');
-      return;
-    }
-    setImportError(null);
-    quickImport.mutate(cid);
   };
 
-  /* 轻筛选：全部 / 最近研习（按最近研习时间降序）/ 未开卷（进度 0） */
-  const filtered = useMemo<HomeCollection[]>(() => {
-    if (filter === 'recent') {
-      return collections
-        .filter((c) => c.lastStudiedAt != null)
-        .sort((a, b) => (b.lastStudiedAt ?? 0) - (a.lastStudiedAt ?? 0));
-    }
-    if (filter === 'fresh') return collections.filter((c) => c.progressPct === 0);
-    return collections;
-  }, [collections, filter]);
+  /* 筛选档位计数（基于全量卷内材料，与筛选结果无关，供药丸角标） */
+  const counts = useMemo(() => {
+    const c: Record<StudyFilter, number> = { all: materials.length, studying: 0, done: 0, fresh: 0 };
+    for (const m of materials) c[studyState(m)] += 1;
+    return c;
+  }, [materials]);
+
+  /* 卷内轻筛：标题关键词（大小写不敏感）+ 研习状态档位 */
+  const filtered = useMemo(() => {
+    const kw = query.trim().toLowerCase();
+    return materials.filter((m) => {
+      if (kw !== '' && !m.title.toLowerCase().includes(kw)) return false;
+      return filter === 'all' || studyState(m) === filter;
+    });
+  }, [materials, query, filter]);
+
+  /* 水印字：卷面印文优先，未配置则取卷名首字（全空兜底「文」） */
+  const watermark =
+    (focus ? parseCollectionCover(focus.cover)?.seal : '') ||
+    (focus ? (Array.from(focus.name)[0] ?? '') : '') ||
+    '文';
 
   return (
-    /* 页面容器：外边距遵循设计系统 */
-    <div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-10 md:py-10">
+    /* 页面容器：与藏经阁同款 bg-surface 冷灰页底；移动 px-5，桌面 px-10 */
+    <div className="w-full bg-surface px-5 py-6 md:px-10 md:py-10 md:pb-16">
       {home.isLoading ? (
-        <p className="py-16 text-center text-sm text-muted-foreground">装载中…</p>
+        /* 聚合数据装载中 */
+        <p className="py-16 text-center text-body-sm text-on-surface-variant">装载中…</p>
       ) : home.isError ? (
         /* 查询失败 ≠ 空库：落到空态会误导用户以为数据丢失 */
-        <p className="py-16 text-center text-sm text-destructive">
-          藏经阁装载失败：{home.error.message}
+        <p className="py-16 text-center text-body-sm text-destructive">
+          首页装载失败：{home.error.message}
         </p>
-      ) : data ? (
-        <>
-          {/* ===== 页头（移动版，仿 _12）：竖条标题 + 收录戳记 + 引文 ===== */}
-          <header className="mb-5 md:hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                {/* 朱砂竖条（书签绦带意象） */}
-                <span aria-hidden className="inline-block h-4 w-1.5 rounded-sm bg-primary" />
-                <h2 className="font-serif text-2xl tracking-wide">藏经阁</h2>
-                <span className="pl-0.5 text-[11px] tracking-widest text-muted-foreground">
-                  材料汇聚
-                </span>
-              </div>
-              {/* 朱砂戳记：收录规模 */}
-              <span className="flex shrink-0 items-center gap-1 rounded-sm bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tracking-wider text-primary">
-                <span className="material-symbols-outlined text-[13px]">history_edu</span>
-                已收录 {data.stats.collectionCount} 集 · {data.stats.materialCount} 篇
-              </span>
-            </div>
-            {/* 文人引文 */}
-            <p className="mt-2 font-serif text-xl italic tracking-tight text-muted-foreground">
-              「墨香生卷帙，语韵入深林。」
-            </p>
-          </header>
-
-          {/* ===== 页头（桌面版，仿 _10）：卷首抬头 + 快捷动作组 ===== */}
-          <header className="mb-10 hidden md:block">
-            <div className="flex flex-wrap items-end justify-between gap-6">
-              <div className="max-w-2xl">
-                {/* 卷首小签 */}
-                <span className="rounded-full bg-muted px-3 py-0.5 text-[11px] uppercase tracking-widest text-muted-foreground">
-                  藏经阁 · 聚纳百卷
-                </span>
-                {/* 大标题与引文 */}
-                <h2 className="mt-3 font-serif text-4xl tracking-tight">藏经阁 · 材料汇聚文库</h2>
-                <p className="mt-2 font-serif text-lg italic text-muted-foreground">
-                  「学自己想学的 · 纳四海音视频，化案头研磨卷。」
-                </p>
-              </div>
-              {/* 快捷动作组 */}
-              <div className="flex flex-wrap items-center gap-3">
-                <Link
-                  href="/import"
-                  className="deckle flex items-center gap-2 rounded-md border bg-card px-4 py-2.5 text-sm transition-colors hover:bg-accent"
-                >
-                  <span className="material-symbols-outlined text-lg text-primary">
-                    cloud_download
-                  </span>
-                  导入影音 / 文献
-                </Link>
-                <button
-                  onClick={() => setCreating((v) => !v)}
-                  className="flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm text-primary-foreground transition-colors hover:bg-primary-hover"
-                >
-                  <span className="material-symbols-outlined text-lg">bookmark_add</span>
-                  另辟新案 · 新建材料集
-                </button>
-              </div>
-            </div>
-          </header>
-
-          {/* ===== 续研书签（移动，仿 _12）：最近停留 + 即刻续研 ===== */}
-          {data.resume ? (
-            <section className="deckle mb-4 rounded-md border bg-card p-4 md:hidden">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-secondary">
-                  <span className="material-symbols-outlined animate-pulse text-base">
-                    timelapse
-                  </span>
-                  续研书签 · 最近停留
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {fmtRelative(data.resume.updatedAt)}
-                </span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate font-serif text-base">{data.resume.materialTitle}</h3>
-                  <p className="mt-0.5 line-clamp-1 text-[13px] text-muted-foreground">
-                    已精读至{' '}
-                    <span className="font-semibold text-primary">
-                      第 {data.resume.maxCueIndex + 1} 句
-                    </span>{' '}
-                    / 共 {data.resume.cueCount} 句
-                    {data.resume.lastCueText && <> · 「{data.resume.lastCueText}」</>}
-                  </p>
-                </div>
-                {/* 即刻续研：回播放页（播放器自动续播最近停留点） */}
-                <Link
-                  href={`/material/${data.resume.materialId}`}
-                  className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs tracking-widest text-primary-foreground"
-                >
-                  <span className="material-symbols-outlined text-sm">play_arrow</span>
-                  即刻续研
-                </Link>
-              </div>
-              {/* 精微进度条 */}
-              <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-secondary"
-                  style={{ width: `${data.resume.progressPct}%` }}
-                />
-              </div>
-            </section>
-          ) : null}
-
-          {/* ===== 快速导入（移动，仿 _12）：链接就地萃取 ===== */}
-          <section className="deckle mb-6 rounded-md border bg-muted/50 p-4 md:hidden">
-            <div className="mb-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {/* 朱砂小印：导入能力标识 */}
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-primary text-primary-foreground">
-                  <span className="material-symbols-outlined text-base">add_link</span>
-                </span>
-                <div>
-                  <h3 className="text-sm font-semibold leading-tight">导入新音频 / 视频</h3>
-                  <p className="text-[11px] text-muted-foreground">
-                    解析 YouTube、播客、TED 或本地长篇材料
-                  </p>
-                </div>
-              </div>
-              {/* 展开/收起高级项（拟归卷 / 本地文件） */}
-              <button
-                onClick={() => setImportOpen((v) => !v)}
-                aria-label={importOpen ? '收起导入选项' : '展开导入选项'}
-                className="p-1 text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <span
-                  className={`material-symbols-outlined text-xl transition-transform ${
-                    importOpen ? 'rotate-180' : ''
-                  }`}
-                >
-                  expand_more
-                </span>
-              </button>
-            </div>
-            {/* 链接输入 + 萃取：form 化让 Enter 等效点击萃取；
-             * noValidate 关掉 type=url 原生校验——缺 scheme 的半截链接
-             * （如 bilibili.com/xxx）由应用统一中文口径提示，不弹浏览器气泡 */}
-            <form
-              noValidate
-              className="flex items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                submitQuickImport();
-              }}
+      ) : !focus ? (
+        /* ===== 空库引导：书斋虚位以待（立卷在藏经阁，导入可直达） ===== */
+        <section className="flex flex-col items-center justify-center rounded-[8px] border border-dashed border-outline-variant/60 bg-surface-container-lowest/50 px-6 py-16 text-center">
+          <span className="material-symbols-outlined mb-3 text-4xl text-outline">local_library</span>
+          <p className="font-serif text-lg text-on-surface">书斋虚位以待</p>
+          <p className="mt-1 max-w-sm text-body-sm text-on-surface-variant">
+            先到藏经阁立一卷，再导入音视频自动生成字幕，或导入文本自动生成音频——案头今研之卷会随研习自动落座于此。
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/library"
+              className="flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-white transition-colors hover:bg-primary"
             >
-              <div className="relative flex-1">
-                <span className="material-symbols-outlined pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-lg text-muted-foreground">
-                  link
-                </span>
-                <input
-                  value={linkUrl}
-                  onChange={(e) => {
-                    setLinkUrl(e.target.value);
-                    setImportError(null);
-                  }}
-                  type="url"
-                  aria-label="音视频链接"
-                  placeholder="粘贴音视频链接 (Bilibili/YouTube/Podcast)…"
-                  className="deckle w-full rounded-sm border border-input bg-background py-2 pl-9 pr-3 text-[13px] placeholder:text-muted-foreground/60"
-                />
-              </div>
-              {/* 萃取按钮：就地提交链接导入 */}
-              <button
-                type="submit"
-                disabled={quickImport.isPending}
-                className="flex shrink-0 items-center gap-1 rounded-sm bg-primary px-3.5 py-2 text-xs tracking-wider text-primary-foreground disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined text-base">
-                  {quickImport.isPending ? 'hourglass_empty' : 'draw'}
-                </span>
-                {quickImport.isPending ? '解析中…' : '萃取'}
-              </button>
-            </form>
-            {/* 提交错误（失败可见） */}
-            {importError && <p className="mt-2 text-xs text-destructive">{importError}</p>}
-            {/* 展开项：拟归卷 + 本地文件引导 */}
-            {importOpen && (
-              <div className="mt-3 space-y-2 border-t border-border pt-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="shrink-0 text-xs text-muted-foreground">拟归入材料集：</span>
-                  {/* 拟归卷选择：默认取第一卷 */}
-                  <select
-                    value={importCollectionId || collections[0]?.id || 0}
-                    onChange={(e) => setImportCollectionId(Number(e.target.value))}
-                    aria-label="拟归入材料集"
-                    className="deckle min-w-0 flex-1 truncate rounded-sm border border-input bg-background px-2.5 py-1 text-xs"
-                  >
-                    {collections.length === 0 && <option value={0}>尚无卷帙——请先立卷</option>}
-                    {collections.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        《{c.name}》
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-muted-foreground">本地典籍文件：</span>
-                  {/* 本地文件 / 文本走导入向导（表单复杂，不在首页内联） */}
-                  <Link href="/import" className="flex items-center gap-1 text-xs text-secondary">
-                    <span className="material-symbols-outlined text-[15px]">upload_file</span>
-                    前往导入向导（MP3 / MP4 / SRT / 文本）
-                  </Link>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* ===== 统计卡网格（桌面，仿 _10）：四格纸墨韵数 ===== */}
-          <section className="mb-8 hidden grid-cols-2 gap-4 md:grid lg:grid-cols-4">
-            {[
-              {
-                icon: 'collections_bookmark',
-                label: '收录卷集',
-                value: String(data.stats.collectionCount),
-                unit: '个材料集',
-                sub: `共 ${data.stats.materialCount} 篇材料`,
-                subIcon: 'trending_up',
-              },
-              {
-                icon: 'movie',
-                label: '入阁音视频材料',
-                value: String(data.stats.materialCount),
-                unit: '部典籍',
-                sub: `累计 ${fmtDuration(data.stats.totalDurationMs)}`,
-                subIcon: 'headphones',
-              },
-              {
-                icon: 'history_edu',
-                label: '已研句段',
-                value: fmtInt(data.stats.studiedSentenceCount),
-                unit: '句研磨',
-                sub: '双语字幕逐句听过累计',
-                subIcon: 'check_circle',
-              },
-              {
-                icon: 'brush',
-                label: '研墨生词典藏',
-                value: fmtInt(data.stats.wordCount),
-                unit: '雅词入册',
-                sub: '词藏全部收录',
-                subIcon: 'local_fire_department',
-              },
-            ].map((s) => (
-              /* 单张统计卡：纸卡 + 角标圆章 */
-              <div key={s.label} className="deckle relative overflow-hidden rounded-md border bg-card p-5">
-                <span
-                  aria-hidden
-                  className="absolute right-3 top-3 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground"
-                >
-                  <span className="material-symbols-outlined text-xl">{s.icon}</span>
-                </span>
-                <span className="text-[11px] uppercase tracking-widest text-ochre">{s.label}</span>
-                <p className="mt-2 font-serif text-3xl">
-                  {s.value} <span className="text-sm text-muted-foreground">{s.unit}</span>
-                </p>
-                <p className="mt-3 flex items-center gap-1 text-xs text-secondary">
-                  <span className="material-symbols-outlined text-sm">{s.subIcon}</span>
-                  {s.sub}
-                </p>
-              </div>
-            ))}
-          </section>
-
-          {/* ===== 流转动向（桌面，仿 _10）：最近活跃材料 ===== */}
-          <section className="mb-10 hidden md:block">
-            <div className="mb-3 flex items-center gap-2">
-              {/* 朱砂圆点：区段标识 */}
-              <span aria-hidden className="size-2.5 rounded-full bg-primary" />
-              <h3 className="font-serif text-xl">流动动向 · 最新入阁文献</h3>
-              <span className="text-xs text-ochre">待研读或正在研习中</span>
+              <span className="material-symbols-outlined text-lg">create_new_folder</span>
+              去藏经阁立卷
+            </Link>
+            <Link
+              href="/import"
+              className="flex items-center gap-1.5 rounded-sm bg-surface-container px-4 py-2 text-title-sm text-on-surface transition-colors hover:bg-surface-container-high"
+            >
+              <span className="material-symbols-outlined text-lg">library_add</span>
+              直接导入材料
+            </Link>
+          </div>
+        </section>
+      ) : (
+        <>
+          {/* ===== ① 卷首抬头卡：面包屑 + 卷名/题记/韵数徽记 + 动作组 + 修研总度缎带 ===== */}
+          <section className="relative mb-6 overflow-hidden rounded-[8px] bg-surface-container-low p-5 shadow-sm md:p-8">
+            {/* 淡朱水印：卷面印文/卷名首字（纯装饰，右上沉底，不挡内容） */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -bottom-10 -right-4 select-none text-shell-seal opacity-[0.05]"
+            >
+              <span className="font-serif text-[160px] leading-none">{watermark}</span>
             </div>
-            <div className="deckle flex flex-col gap-1 rounded-md border bg-card p-2">
-              {data.recent.length === 0 ? (
-                <p className="p-6 text-center text-sm text-muted-foreground">
-                  尚无入阁材料——先导入一篇试试。
-                </p>
-              ) : (
-                data.recent.map((m) => (
+            {/* 面包屑：藏经阁（/library）→ 今研卷名；「私享藏本」为单用户自托管注记 */}
+            <nav
+              aria-label="所在位置"
+              className="relative mb-4 flex items-center gap-2 text-label-md text-on-surface-variant"
+            >
+              <Link
+                href="/library"
+                className="flex items-center gap-1 transition-colors hover:text-shell-seal"
+              >
+                <span className="material-symbols-outlined text-base">shelves</span>
+                <span>藏经阁</span>
+              </Link>
+              <span aria-hidden className="text-outline/50">/</span>
+              <span className="truncate text-title-sm tracking-wide text-on-surface">
+                {focus.name}
+              </span>
+              <span className="shrink-0 rounded-xl bg-surface-container px-2 py-0.5 text-[11px] text-on-surface-variant">
+                私享藏本
+              </span>
+            </nav>
+            {/* 主区：左（卷名/题记/徽记）8 栅格 + 右（动作组）4 栅格 */}
+            <div className="relative grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+              <div className="flex flex-col gap-2 lg:col-span-8">
+                {/* 卷名行：深朱竖条 + 衬线大标（移动 28px / 桌面 36px） */}
+                <div className="flex items-center gap-2">
+                  <span aria-hidden className="inline-block h-8 w-2.5 shrink-0 rounded-sm bg-shell-seal" />
+                  <h1 className="font-serif text-headline-md font-normal tracking-tight text-on-surface md:text-headline-lg">
+                    {focus.name}
+                  </h1>
+                </div>
+                {/* 题记引文（可空）：压印底 + 衬线斜体 */}
+                {focus.description && (
+                  <p className="rounded-sm bg-surface-container-lowest/60 px-3 py-2 font-serif text-base italic leading-relaxed text-on-surface-variant">
+                    「{focus.description}」
+                  </p>
+                )}
+                {/* 韵数徽记行：在卷材料 / 卷册总长 / 经卷句藏（带梯级）/ 最近研习 */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-body-sm text-on-surface-variant">
+                  <span className="flex items-center gap-1.5 rounded-sm bg-surface-container px-2 py-1">
+                    <span aria-hidden className="material-symbols-outlined text-[18px] text-outline">
+                      collections_bookmark
+                    </span>
+                    <span>
+                      在卷材料：
+                      <strong className="text-title-sm text-on-surface">{focus.materialCount} 篇</strong>
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1.5 rounded-sm bg-surface-container px-2 py-1">
+                    <span aria-hidden className="material-symbols-outlined text-[18px] text-outline">
+                      schedule
+                    </span>
+                    <span>
+                      卷册总长：
+                      <strong className="text-title-sm text-on-surface">
+                        {focus.totalDurationMs > 0 ? fmtDuration(focus.totalDurationMs) : '尚未导入'}
+                      </strong>
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1.5 rounded-sm bg-surface-container px-2 py-1">
+                    <span aria-hidden className="material-symbols-outlined text-[18px] text-shell-bamboo">
+                      translate
+                    </span>
+                    <span>
+                      经卷句藏：
+                      <strong className="text-title-sm text-shell-bamboo">{focus.sentenceCount} 句</strong>
+                      {focus.cefrLevel && (
+                        <span className="text-outline">（梯级 {focus.cefrLevel}）</span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1.5 rounded-sm bg-surface-container px-2 py-1">
+                    <span aria-hidden className="material-symbols-outlined text-[18px] text-outline">
+                      calendar_today
+                    </span>
+                    <span>
+                      最近研习：
+                      <strong className="text-title-sm text-on-surface">
+                        {focus.lastStudiedAt ? fmtRelative(focus.lastStudiedAt) : '未开卷'}
+                      </strong>
+                    </span>
+                  </span>
+                </div>
+              </div>
+              {/* 动作组：导入到本卷（主）/ 入卷查阅（次；编辑装帧与删除在详情页页头） */}
+              <div className="relative flex flex-col items-stretch justify-end gap-2 lg:col-span-4 lg:items-end">
+                <Link
+                  href={`/import?collectionId=${focus.id}`}
+                  className="flex items-center justify-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2.5 text-label-md text-white shadow-sm transition-colors hover:bg-primary"
+                >
+                  <span className="material-symbols-outlined text-[18px]">add_box</span>
+                  导入新材料到此集
+                </Link>
+                <Link
+                  href={`/collection/${focus.id}`}
+                  className="flex items-center justify-center gap-1.5 rounded-sm bg-surface-container px-4 py-2.5 text-label-md text-on-surface transition-colors hover:bg-surface-container-high"
+                >
+                  <span className="material-symbols-outlined text-[18px]">checklist</span>
+                  入卷查阅 · 编辑装帧
+                </Link>
+              </div>
+            </div>
+            {/* 修研总度缎带：贴卡底通栏（负 margin 吃掉内边距）+ 半染底 */}
+            <div className="relative -mx-5 -mb-5 mt-6 flex flex-col gap-3 bg-surface-container/60 px-5 py-3 sm:flex-row sm:items-center sm:justify-between md:-mx-8 md:-mb-8 md:px-8">
+              {/* 左：卷册修研总度进度条 + 百分比 */}
+              <div className="flex items-center gap-3">
+                <span className="shrink-0 uppercase tracking-wider text-label-sm text-outline">
+                  卷册修研总度
+                </span>
+                <div className="h-2 w-40 overflow-hidden rounded-full bg-surface-container-highest">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      focus.progressPct > 0 ? progressTone(focus.progressPct) : ''
+                    }`}
+                    style={{ width: `${focus.progressPct}%` }}
+                  />
+                </div>
+                <span className="text-title-sm text-shell-bamboo">{focus.progressPct}%</span>
+              </div>
+              {/* 右：续研书签（材料/句位/即刻续研）或未开卷注记 */}
+              {resume ? (
+                <div className="flex items-center gap-3">
+                  <span className="min-w-0 text-label-sm text-on-surface-variant">
+                    上次研习{' '}
+                    <span className="text-on-surface">{resume.materialTitle}</span> · 第{' '}
+                    <span className="font-semibold text-shell-seal">{resume.maxCueIndex + 1}</span> 句
+                    / 共 {resume.cueCount} 句
+                  </span>
                   <Link
-                    key={m.materialId}
-                    href={`/material/${m.materialId}`}
-                    className="flex flex-col justify-between gap-2 rounded-sm p-4 transition-colors hover:bg-accent sm:flex-row sm:items-center"
+                    href={`/material/${resume.materialId}`}
+                    className="flex shrink-0 items-center gap-1 rounded-sm bg-shell-seal px-3 py-1.5 text-label-md text-white transition-colors hover:bg-primary"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      {/* 来源图标块（映射与集详情页共用单源） */}
-                      <span className="flex size-12 shrink-0 items-center justify-center rounded-sm bg-muted text-primary">
-                        <span className="material-symbols-outlined text-2xl">
-                          {(SOURCE_META[m.sourceType] ?? SOURCE_META.audio!).icon}
-                        </span>
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-sm font-semibold">{m.title}</span>
-                          {/* 所属集签 */}
-                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            所属：《{m.collectionName}》
-                          </span>
-                        </div>
-                        {/* 元数据行：时长 / 句词数 / 校订状态 */}
-                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-ochre">
-                          {m.mediaDurationMs != null && (
-                            <span className="flex items-center gap-1">
-                              <span className="material-symbols-outlined text-sm">schedule</span>
-                              {fmtDuration(m.mediaDurationMs)}
-                            </span>
-                          )}
-                          {m.sentenceCount != null && (
-                            <span className="flex items-center gap-1">
-                              <span className="material-symbols-outlined text-sm">
-                                record_voice_over
-                              </span>
-                              {m.sentenceCount} 句
-                              {m.uniqueWordCount != null && <> / {fmtInt(m.uniqueWordCount)} 词</>}
-                            </span>
-                          )}
-                          <span
-                            className={`flex items-center gap-1 ${
-                              m.subtitleStatus === 'ready'
-                                ? 'text-secondary'
-                                : m.subtitleStatus === 'failed'
-                                  ? 'text-destructive'
-                                  : 'text-ochre'
-                            }`}
-                          >
-                            <span className="material-symbols-outlined text-sm">
-                              {m.subtitleStatus === 'ready' ? 'done_all' : 'autorenew'}
-                            </span>
-                            {STATUS_TEXT[m.subtitleStatus] ?? m.subtitleStatus}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3 self-end sm:self-center">
-                      {/* 研读进度（移动窄屏隐藏，集卷页可见） */}
-                      <span className="hidden flex-col items-end sm:flex">
-                        <span className="text-[11px] text-ochre">研读进度</span>
-                        <span
-                          className={`text-sm font-medium ${
-                            m.progressPct > 0 ? 'text-secondary' : 'text-muted-foreground'
-                          }`}
-                        >
-                          {m.progressPct > 0 ? `${m.progressPct}%` : '未开卷'}
-                        </span>
-                      </span>
-                      <span className="flex items-center gap-1 rounded-sm bg-muted px-3 py-1.5 text-sm">
-                        <span className="material-symbols-outlined text-base">menu_book</span>
-                        进入精读
-                      </span>
-                    </div>
+                    <span aria-hidden className="material-symbols-outlined text-base">
+                      play_arrow
+                    </span>
+                    即刻续研
                   </Link>
-                ))
+                </div>
+              ) : (
+                <span className="flex items-center gap-1.5 text-label-sm text-outline">
+                  <span aria-hidden className="size-2 rounded-full bg-outline/50" />
+                  尚未开卷 · 从第一篇开始
+                </span>
               )}
             </div>
           </section>
 
-          {/* ===== 集卷区段头 + 轻筛选药丸 ===== */}
-          <section className="mb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[17px] text-primary">shelves</span>
-                <h3 className="font-serif text-lg">典籍集卷</h3>
-              </div>
-              {/* 拟定新集（移动入口；桌面在页头按钮与网格尾卡） */}
-              <button
-                onClick={() => setCreating((v) => !v)}
-                className="flex items-center gap-1 px-1.5 py-1 text-xs text-primary transition-colors hover:text-primary-hover md:hidden"
+          {/* ===== ② 检索与筛选工具栏：卷内标题检索 + 研习状态药丸 ===== */}
+          <section className="mb-4 flex flex-col gap-3 rounded-[8px] bg-surface-container-lowest p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+            {/* 卷内检索输入（客户端过滤，Enter 无表单语义） */}
+            <div className="relative max-w-lg flex-1">
+              <span
+                aria-hidden
+                className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-outline"
               >
-                <span className="material-symbols-outlined text-[15px]">create_new_folder</span>
-                拟定新集
-              </button>
+                search
+              </span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="检索卷内材料标题…"
+                aria-label="卷内材料检索"
+                className="w-full rounded-sm bg-surface-container-low py-2 pl-9 pr-3 text-body-sm text-on-surface placeholder:text-outline focus:bg-surface-container focus:outline-none focus:ring-1 focus:ring-shell-seal"
+              />
             </div>
-            {/* 过滤药丸：全部 / 最近研习 / 未开卷（无卷时不渲染） */}
-            {collections.length > 0 && (
-              <div className="mt-2 flex items-center gap-2 overflow-x-auto py-1">
-                {(
-                  [
-                    { key: 'all', label: `全部卷帙 (${collections.length})` },
-                    { key: 'recent', label: `最近研习 (${recentCount})` },
-                    { key: 'fresh', label: `未开卷 (${freshCount})` },
-                  ] as Array<{ key: Filter; label: string }>
-                ).map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => setFilter(p.key)}
-                    className={`shrink-0 rounded-full px-3 py-1 text-xs tracking-wider transition-colors ${
-                      filter === p.key
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* 研习状态药丸：活动态白底染深朱（计数角标随全量材料实时变化） */}
+            <div className="flex items-center gap-1 overflow-x-auto rounded-[8px] bg-surface-container-low p-0.5 text-label-md text-on-surface-variant">
+              {(
+                [
+                  { key: 'all', label: `全部 (${counts.all})` },
+                  { key: 'studying', label: `研习中 (${counts.studying})` },
+                  { key: 'done', label: `已完卷 (${counts.done})` },
+                  { key: 'fresh', label: `待启卷 (${counts.fresh})` },
+                ] as Array<{ key: StudyFilter; label: string }>
+              ).map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setFilter(p.key)}
+                  aria-pressed={filter === p.key}
+                  className={`shrink-0 rounded-sm px-3 py-1 transition-colors ${
+                    filter === p.key
+                      ? 'bg-surface-container-lowest font-semibold text-shell-seal shadow-sm'
+                      : 'hover:text-on-surface'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </section>
 
-          {/* 新建卷内联表单（双端共用；失败提示可见） */}
-          {creating && (
-            <form
-              className="deckle mb-6 flex gap-2 rounded-md border bg-card p-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (name.trim()) create.mutate();
-              }}
-            >
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="卷名（如：乔布斯典籍演说）"
-                autoFocus
-                className="flex-1 rounded-sm border border-input bg-background px-3 py-2 text-sm"
-              />
-              <button
-                type="submit"
-                disabled={!name.trim() || create.isPending}
-                className="rounded-sm bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
-              >
-                立卷
-              </button>
-            </form>
-          )}
-          {createError && <p className="mb-6 text-xs text-destructive">{createError}</p>}
-
-          {/* ===== 集卷卡列表 ===== */}
-          {filtered.length === 0 ? (
-            collections.length === 0 ? (
-              /* 空库引导：立卷起点 */
-              <section className="deckle flex flex-col items-center justify-center rounded-md border border-dashed bg-card/50 px-6 py-16 text-center">
-                <span className="material-symbols-outlined mb-3 text-4xl text-ochre">
-                  library_books
-                </span>
-                <p className="font-serif text-lg">尚无卷帙，虚位以待</p>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                  先立一卷，再导入音视频自动生成字幕，或导入文本自动生成音频。
-                </p>
-                <button
-                  onClick={() => setCreating(true)}
-                  className="mt-4 flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
-                >
-                  <span className="material-symbols-outlined text-lg">create_new_folder</span>
-                  另辟新卷
-                </button>
-              </section>
-            ) : (
-              /* 筛选档位空态（非空库） */
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                此档位暂无卷帙。
+          {/* ===== ③ 卷内材料列表：空态三分（装载失败 / 此卷尚空 / 检索无果） ===== */}
+          {list.isLoading ? (
+            <p className="py-16 text-center text-body-sm text-on-surface-variant">
+              卷内材料装载中…
+            </p>
+          ) : list.isError ? (
+            <p className="py-16 text-center text-body-sm text-destructive">
+              卷内材料装载失败：{list.error.message}
+            </p>
+          ) : materials.length === 0 ? (
+            <section className="flex flex-col items-center justify-center rounded-[8px] border border-dashed border-outline-variant/60 bg-surface-container-lowest/50 px-6 py-16 text-center">
+              <span className="material-symbols-outlined mb-3 text-4xl text-outline">
+                import_contacts
+              </span>
+              <p className="font-serif text-lg text-on-surface">此卷尚空</p>
+              <p className="mt-1 max-w-sm text-body-sm text-on-surface-variant">
+                导入音视频自动生成双语字幕，或导入文本自动生成音频，开始研习。
               </p>
-            )
-          ) : (
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((c) => (
-                <CollectionCard key={c.id} c={c} />
-              ))}
-              {/* 桌面：新建占位卡（仿 _10「另辟新案」） */}
-              <button
-                onClick={() => setCreating(true)}
-                className="hidden flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed border-border p-6 text-center transition-colors hover:border-primary md:flex"
+              <Link
+                href={`/import?collectionId=${focus.id}`}
+                className="mt-4 flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-white transition-colors hover:bg-primary"
               >
-                <span className="flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:text-primary">
-                  <span className="material-symbols-outlined text-3xl">add</span>
-                </span>
-                <span className="font-serif text-base">另辟新案 · 创制材料集</span>
-                <span className="max-w-xs text-xs text-muted-foreground">
-                  归拢专属主题的播客、公开课或影视对白，设立专属生词谱与精读节奏
-                </span>
-              </button>
+                <span className="material-symbols-outlined text-lg">add_box</span>
+                导入新材料到此集
+              </Link>
+            </section>
+          ) : filtered.length === 0 ? (
+            <p className="py-10 text-center text-body-sm text-outline">
+              未检得相合的材料——换个关键词或筛选档位试试。
+            </p>
+          ) : (
+            <section className="flex flex-col gap-3">
+              {filtered.map((m) => (
+                <FocusMaterialRow
+                  key={m.id}
+                  m={m}
+                  /* 序号按卷内全量位次（筛选只隐藏不重排，卷内 · NN 稳定） */
+                  index={materials.indexOf(m)}
+                  removing={removeMaterial.isPending && removeMaterial.variables === m.id}
+                  onRemove={() => confirmRemoveMaterial(m)}
+                />
+              ))}
             </section>
           )}
 
-          {/* 底部禅意分隔 */}
-          <div className="flex items-center justify-center gap-3 pb-4 pt-8 text-ochre/60">
-            <span aria-hidden className="h-px w-12 bg-border" />
-            <span className="select-none font-serif text-sm">❖ 研精极虑 ❖</span>
-            <span aria-hidden className="h-px w-12 bg-border" />
-          </div>
+          {/* ===== ④ 底部研习小笺：研习法门建议 + 三处快捷入口 ===== */}
+          <section className="mt-10 flex flex-col items-start justify-between gap-4 rounded-[8px] bg-surface-container-low p-5 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
+              <span aria-hidden className="material-symbols-outlined mt-0.5 text-2xl text-shell-seal">
+                auto_stories
+              </span>
+              <div className="flex flex-col">
+                <span className="font-serif text-headline-sm text-on-surface">研习小笺</span>
+                <span className="mt-0.5 max-w-2xl text-body-sm text-on-surface-variant">
+                  精读逐句研磨之余，不妨以语流听席整篇盲听磨耳，收盘后到静思复习过一遍今日生词；词根词源的深研法门备在研习手册。
+                </span>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-4">
+              <Link
+                href="/stream"
+                className="flex items-center gap-1 text-title-sm text-shell-bamboo transition-colors hover:text-on-surface"
+              >
+                <span>语流听席</span>
+                <span aria-hidden className="material-symbols-outlined text-[18px]">
+                  arrow_forward
+                </span>
+              </Link>
+              <Link
+                href="/review"
+                className="flex items-center gap-1 text-title-sm text-shell-bamboo transition-colors hover:text-on-surface"
+              >
+                <span>静思复习</span>
+                <span aria-hidden className="material-symbols-outlined text-[18px]">
+                  arrow_forward
+                </span>
+              </Link>
+              <Link
+                href="/manual"
+                className="flex items-center gap-1 text-title-sm text-shell-bamboo transition-colors hover:text-on-surface"
+              >
+                <span>研习手册</span>
+                <span aria-hidden className="material-symbols-outlined text-[18px]">
+                  arrow_forward
+                </span>
+              </Link>
+            </div>
+          </section>
         </>
-      ) : null}
+      )}
     </div>
   );
 }
 
 /**
- * 集卷卡：移动横排（封面左/信息右，仿 _12）↔ 桌面竖排（封面顶/进度底，仿 _10）
- * @param props.c 集卷聚合数据
+ * 卷内材料行卡（案头今研视图）
+ * @param props.m 材料条目（附位图口径 progress）
+ * @param props.index 卷内序号（0 起；展示为「卷内 · NN」，筛选不重排）
+ * @param props.removing 移出请求进行中（移出钮禁用防重复提交）
+ * @param props.onRemove 移出本卷入口回调（confirm 确认与失败提示在父层统一处理）
  */
-function CollectionCard({ c }: { c: HomeCollection }) {
+function FocusMaterialRow({
+  m,
+  index,
+  removing,
+  onRemove,
+}: {
+  m: MaterialListItem;
+  index: number;
+  /** 该材料移出请求进行中 */
+  removing: boolean;
+  /** 移出本卷入口回调 */
+  onRemove: () => void;
+}) {
+  /* 处理中：轮询该材料的活跃任务拿进度文案（与集详情页同一模式） */
+  const jobs = useQuery({
+    queryKey: ['jobs', m.id],
+    queryFn: () => api<{ jobs: JobDTO[] }>(`/api/jobs?materialId=${m.id}`),
+    enabled: m.subtitleStatus === 'processing',
+    refetchInterval: 2000,
+  });
+  const job = jobs.data?.jobs.find((j) => j.status === 'queued' || j.status === 'running');
+  /* 展示元单源：来源类型 + 校订状态 + 研习状态 */
+  const src = SOURCE_META[m.sourceType] ?? SOURCE_META.audio!;
+  const st = subtitleStatusMeta(m.subtitleStatus);
+  const state = studyState(m);
+  const ready = m.subtitleStatus === 'ready';
+  const pct = m.progress?.progressPct ?? 0;
+
   return (
-    <Link
-      href={`/collection/${c.id}`}
-      className="deckle group flex flex-row gap-3 rounded-md border bg-card p-4 transition-colors hover:bg-accent/60 md:flex-col md:gap-0 md:p-5"
-    >
-      {/* 封面印模：暂无封面数据，以卷名首字活字代之 */}
-      <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-md bg-muted md:mb-4 md:h-40 md:w-full">
+    /* 行卡：白纸卡 + 悬浮加深投影；研习中/已完卷左缘落色条（进行深朱 / 完卷竹青） */
+    <article className="relative overflow-hidden rounded-[8px] bg-surface-container-lowest p-4 shadow-sm transition-shadow hover:shadow-md md:p-5">
+      {state !== 'fresh' && (
         <span
           aria-hidden
-          className="absolute inset-0 flex items-center justify-center font-serif text-4xl text-ochre/70 md:text-5xl"
-        >
-          {c.name.replace(/^[「《\s]+/, '').slice(0, 1) || '卷'}
-        </span>
-        {/* 底部卷签：篇数 */}
-        <span className="absolute bottom-1 left-1.5 text-[10px] tracking-wide text-muted-foreground">
-          {c.materialCount} 篇
-        </span>
-        {/* CEFR 角标 */}
-        {c.cefrLevel && (
-          <span className="absolute right-1 top-1 rounded-sm bg-background/80 px-1 py-0.5 text-[10px] text-ochre">
-            {c.cefrLevel}
+          className={`absolute inset-y-0 left-0 w-1 ${
+            state === 'studying' ? 'bg-shell-seal' : 'bg-shell-bamboo'
+          }`}
+        />
+      )}
+      <div className="grid grid-cols-1 items-center gap-4 xl:grid-cols-12">
+        {/* 左：卷内序号签 + 题名（就绪可入精读）+ 来源/时长注 */}
+        <div className="flex min-w-0 flex-col gap-1 xl:col-span-4">
+          <span className={`flex items-center gap-1 text-label-sm ${STATE_META[state].tone}`}>
+            <span aria-hidden className="material-symbols-outlined text-sm">
+              bookmark
+            </span>
+            卷内 · {String(index + 1).padStart(2, '0')} {STATE_META[state].label}
           </span>
-        )}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* 状态徽章行 */}
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest ${
-              c.progressPct > 0
-                ? 'bg-secondary/10 text-secondary'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            {c.progressPct > 0 ? `研读中 · ${c.progressPct}%` : '未开卷'}
-          </span>
+          {ready ? (
+            <h3 className="truncate font-serif text-headline-sm leading-snug text-on-surface">
+              <Link
+                href={`/material/${m.id}`}
+                className="transition-colors hover:text-shell-seal"
+              >
+                {m.title}
+              </Link>
+            </h3>
+          ) : (
+            <h3 className="truncate font-serif text-headline-sm leading-snug text-on-surface">
+              {m.title}
+            </h3>
+          )}
+          <p className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+            <span aria-hidden className="material-symbols-outlined text-base text-outline">
+              {src.icon}
+            </span>
+            <span>
+              {src.label}
+              {m.mediaDurationMs != null && <> · {fmtMs(m.mediaDurationMs)}</>}
+            </span>
+          </p>
         </div>
-        {/* 卷名 */}
-        <h3 className="mt-1 truncate font-serif text-base leading-snug transition-colors group-hover:text-primary md:text-lg">
-          {c.name}
-        </h3>
-        {/* 描述（可空） */}
-        {c.description && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{c.description}</p>
-        )}
-        {/* 移动底行：篇数 · 句数 · 时长 */}
-        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-ochre md:hidden">
-          <span>
-            <span className="font-semibold text-foreground">{c.materialCount}</span> 篇材料
-            {c.sentenceCount > 0 && (
+        {/* 中：韵数四格（章回句数 / 去重词藏 / 校订状态 / 研读进度） */}
+        <div className="grid grid-cols-3 items-center gap-3 rounded-sm bg-surface-container-low/70 px-4 py-2 sm:grid-cols-4 xl:col-span-5">
+          {/* 格一：章回句数 */}
+          <div className="flex flex-col">
+            <span className="text-label-sm text-outline">章回句数</span>
+            <p className="mt-0.5 text-title-sm text-on-surface">
+              {m.sentenceCount ?? '—'}
+              <span className="ml-1 text-body-sm text-outline">句</span>
+            </p>
+          </div>
+          {/* 格二：去重词藏（竹青呼应词藏强调色） */}
+          <div className="flex flex-col">
+            <span className="text-label-sm text-outline">去重词藏</span>
+            <p className="mt-0.5 text-title-sm text-shell-bamboo">
+              {m.uniqueWordCount ?? '—'}
+              <span className="ml-1 text-body-sm text-outline">词</span>
+            </p>
+          </div>
+          {/* 格三：校订状态（单源映射：就绪竹青 / 解析中赭褐 / 失败破红 / 待处理弱化） */}
+          <div className="flex flex-col">
+            <span className="text-label-sm text-outline">校订状态</span>
+            <span className={`mt-1 flex items-center gap-1 text-label-sm ${st.tone}`}>
+              <span aria-hidden className="material-symbols-outlined text-[14px]">
+                {st.icon}
+              </span>
+              {st.label}
+            </span>
+          </div>
+          {/* 格四：研读进度——处理中给任务进度条；就绪给位图进度/句位；其余空槽弱化 */}
+          <div className="col-span-3 flex flex-col sm:col-span-1">
+            {m.subtitleStatus === 'processing' ? (
               <>
-                {' '}
-                · <span className="font-semibold text-primary">{c.sentenceCount}</span> 句
+                <span className="flex items-center justify-between text-label-sm text-ochre">
+                  <span className="truncate">{job?.message ?? '排队中…'}</span>
+                  {job && <span>{Math.round(job.progress * 100)}%</span>}
+                </span>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-container-highest">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-500"
+                    style={{ width: `${Math.max(3, (job?.progress ?? 0) * 100)}%` }}
+                  />
+                </div>
+              </>
+            ) : ready ? (
+              <>
+                <span className="flex items-center justify-between text-label-sm text-outline">
+                  <span>{pct > 0 ? `进度 ${pct}%` : '未研读'}</span>
+                  {pct > 0 && m.progress && (
+                    <span className="font-semibold text-shell-seal">
+                      第 {m.progress.maxCueIndex + 1} 句
+                    </span>
+                  )}
+                </span>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-container-highest">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      pct > 0 ? progressTone(pct) : ''
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="text-label-sm text-outline">—</span>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-container-highest">
+                  <div className="h-full rounded-full bg-outline/20" style={{ width: '0%' }} />
+                </div>
               </>
             )}
-          </span>
-          {c.totalDurationMs > 0 && <span>{fmtDuration(c.totalDurationMs)}</span>}
+          </div>
         </div>
-        {/* 桌面底区：时长/最近研习 + 进度条 */}
-        <div className="mt-auto hidden pt-4 md:block">
-          <div className="flex items-center justify-between gap-2 text-[11px] text-ochre">
-            <span className="truncate">
-              {c.totalDurationMs > 0 ? `总计 ${fmtDuration(c.totalDurationMs)}` : '尚未导入'}
-              {c.lastStudiedAt ? ` · 最近研习 ${fmtRelative(c.lastStudiedAt)}` : ''}
-            </span>
-            {c.progressPct > 0 && (
-              <span className="shrink-0 font-medium text-secondary">{c.progressPct}%</span>
-            )}
-          </div>
-          {/* 进度条：未开卷为空槽 */}
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                c.progressPct > 0 ? 'bg-secondary' : ''
+        {/* 右：状态动作（就绪三态 / 失败查因 / 制备中占位）+ 移出本卷 */}
+        <div className="flex items-center justify-end gap-2 xl:col-span-3">
+          {ready ? (
+            /* 就绪：按研习状态给三态动作（研习中主按钮 / 待启卷浅朱印 / 已完卷温习） */
+            <Link
+              href={`/material/${m.id}`}
+              className={`flex items-center gap-1.5 rounded-sm px-4 py-2 text-label-md transition-colors ${
+                state === 'studying'
+                  ? 'bg-shell-seal text-white shadow-sm hover:bg-primary'
+                  : state === 'done'
+                    ? 'bg-surface-container text-on-surface hover:bg-surface-container-high'
+                    : 'bg-primary-fixed/60 text-shell-seal hover:bg-shell-seal hover:text-white'
               }`}
-              style={{ width: `${c.progressPct}%` }}
-            />
-          </div>
+            >
+              <span aria-hidden className="material-symbols-outlined text-base">
+                {state === 'done' ? 'replay' : 'menu_book'}
+              </span>
+              {state === 'studying' ? '继续精读' : state === 'done' ? '复读温习' : '开启首研'}
+            </Link>
+          ) : m.subtitleStatus === 'failed' ? (
+            /* 失败：破红描边按钮查失败原因（播放页承载） */
+            <Link
+              href={`/material/${m.id}`}
+              className="flex items-center gap-1.5 rounded-sm border border-destructive/40 px-4 py-2 text-label-md text-destructive transition-colors hover:bg-destructive/10"
+            >
+              <span aria-hidden className="material-symbols-outlined text-base">
+                report
+              </span>
+              查看失败原因
+            </Link>
+          ) : (
+            /* 待处理/解析中占位（进度格已有任务条，此处仅弱化注记不设动作） */
+            <span className="flex items-center gap-1.5 rounded-sm bg-surface-container px-4 py-2 text-label-md text-on-surface-variant">
+              <span aria-hidden className="material-symbols-outlined text-base">
+                hourglass_empty
+              </span>
+              字幕制备中
+            </span>
+          )}
+          {/* 移出本卷：软删除可恢复；confirm 后执行（删除中换沙漏禁点） */}
+          <button
+            type="button"
+            aria-label={`将「${m.title}」移出本卷`}
+            title="移出本卷"
+            disabled={removing}
+            onClick={onRemove}
+            className="flex size-9 shrink-0 items-center justify-center rounded-sm text-outline transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+          >
+            <span aria-hidden className="material-symbols-outlined text-lg">
+              {removing ? 'hourglass_empty' : 'folder_delete'}
+            </span>
+          </button>
         </div>
       </div>
-    </Link>
+    </article>
   );
 }

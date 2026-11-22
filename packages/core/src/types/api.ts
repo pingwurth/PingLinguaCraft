@@ -32,6 +32,15 @@ export interface MaterialListItem {
   sentenceCount: number | null;
   uniqueWordCount: number | null;
   createdAt: string;
+  /** 学习进度（位图口径；无进度记录时为 null——从未研习。web 端集卷列表/首页今研视图消费） */
+  progress: {
+    /** 已听到的最大句序号（0 起） */
+    maxCueIndex: number;
+    /** 是否已整篇听过 */
+    listenedThrough: boolean;
+    /** 研读进度百分比 0~100（实际听过句数/总句数，跳句不计） */
+    progressPct: number;
+  } | null;
 }
 
 /** 材料（详情形态） */
@@ -70,6 +79,18 @@ export interface ProgressDTO {
   lastPositionMs: number;
   maxCueIndex: number;
   listenedThrough: boolean;
+}
+
+/** 语流队列项（/stream 连续研习流；「最近研习优先」排序） */
+export interface StreamQueueItem {
+  id: number;
+  title: string;
+  collectionId: number;
+  collectionName: string;
+  mediaDurationMs: number | null;
+  sentenceCount: number | null;
+  /** 学习进度（无进度记录时为 null：从未研习过） */
+  progress: { lastPositionMs: number; listenedThrough: boolean } | null;
 }
 
 /** 任务（轮询形态；type 保持宽松 string——管线任务类型在演进） */

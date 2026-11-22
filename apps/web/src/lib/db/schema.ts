@@ -30,7 +30,8 @@ export const collections = sqliteTable(
     name: text('name').notNull(),
     /** 描述 */
     description: text('description'),
-    /** 封面：预设纹理 id 或 AI 生成的装帧图路径 */
+    /** 封面配置 JSON（契约见 @pinglc/core collection-cover：texture 质地 id /
+     *  image covers/ 插画路径 / seal 印文单字 / volume 册序文案；旧裸值兼容解析） */
     cover: text('cover'),
     /** CEFR 等级阶梯（设计稿 _17：A2~C2，可空） */
     cefrLevel: text('cefr_level'),

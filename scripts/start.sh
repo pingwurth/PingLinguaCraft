@@ -58,7 +58,7 @@ start_engine() {
   local holder
   holder="$(port_pid "$ENGINE_PORT")"
   if [[ -n "$holder" ]]; then
-    fail "端口 $ENGINE_PORT 已被 PID $holder 占用（非本脚本管理），请先处理后再启动"
+    fail "端口 $ENGINE_PORT 已被 $(pid_desc "$holder") 占用（非本脚本管理），请先处理后再启动"
     return 1
   fi
   command -v uv >/dev/null 2>&1 || {
@@ -94,7 +94,20 @@ start_web() {
   local holder
   holder="$(port_pid "$WEB_PORT")"
   if [[ -n "$holder" ]]; then
-    fail "端口 $WEB_PORT 已被 PID $holder 占用（非本脚本管理），请先处理后再启动"
+    fail "端口 $WEB_PORT 已被 $(pid_desc "$holder") 占用（非本脚本管理），请先处理后再启动"
+    # 占用者是 next 进程时追加专属告警：next dev 与 next start 共用 apps/web/.next，
+    # 并存会互相污染构建产物（症状：全站 client-side exception / 页面卡「装载中」）；
+    # 且手动起的 next start 无 PID 文件，stop.sh 管不到，只能手动 kill
+    if pid_matches "$holder" 'next'; then
+      local pgid
+      pgid="$(pgid_of "$holder")"
+      warn "占用者是 next 进程：它与 next dev 共用 apps/web/.next，并存会互相污染构建产物"
+      if [[ -n "$pgid" ]]; then
+        warn "请手动停止（按进程组连带子进程）：kill -- -$pgid，或仅杀主进程：kill $holder"
+      else
+        warn "请手动停止：kill $holder"
+      fi
+    fi
     return 1
   fi
   info "启动 Web 应用（next dev :$WEB_PORT）..."

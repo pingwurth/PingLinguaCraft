@@ -77,7 +77,8 @@ export const usePlayer = create<PlayerState>((set) => ({
   muted: false,
   loopMode: 'none',
   abRange: null,
-  subtitleMode: 'bilingual',
+  // 字幕默认关闭：精听先「听」后「看」，需要时手动切换开启
+  subtitleMode: 'off',
   controlsVisible: true,
   pendingSpeak: null,
   playRange: null,

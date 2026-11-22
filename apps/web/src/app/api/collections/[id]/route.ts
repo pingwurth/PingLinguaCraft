@@ -4,7 +4,8 @@
 
 import { NextResponse } from 'next/server';
 import { rmSync } from 'node:fs';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
@@ -25,11 +26,23 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .where(and(eq(collections.id, pid), eq(collections.userId, 1)))
     .all()[0];
   if (!row) return NextResponse.json({ error: '材料集不存在' }, { status: 404 });
-  return NextResponse.json({ collection: row });
+  /* 卷内统计回填（DTO Collection 契约声明 materialCount/totalDurationMs，此前直接回
+     DB 行漏了这两字段——删除确认弹窗的级联篇数提示依赖 materialCount；
+     口径与 /api/home 一致：软删材料不计） */
+  const stats = db
+    .select({
+      materialCount: sql<number>`count(${materials.id})`,
+      totalDurationMs: sql<number>`coalesce(sum(${materials.mediaDurationMs}), 0)`,
+    })
+    .from(materials)
+    .where(and(eq(materials.collectionId, pid), isNull(materials.deletedAt)))
+    .get();
+  return NextResponse.json({ collection: { ...row, ...stats } });
 }
 
 /**
  * PATCH /api/collections/[id] —— 更新材料集（name/description/cover/cefrLevel/sortOrder）
+ * cover 为封面配置对象（契约同 POST /api/collections），传 null 清空封面
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,8 +52,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const db = getDb();
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const key of ['name', 'description', 'cover', 'cefrLevel'] as const) {
+  for (const key of ['name', 'description', 'cefrLevel'] as const) {
     if (body[key] !== undefined) patch[key] = body[key];
+  }
+  // 封面配置：清洗序列化后落库（非法形态 400 拒绝，不透传原始输入）
+  if (body.cover !== undefined) {
+    if (body.cover === null) {
+      patch.cover = null;
+    } else if (typeof body.cover === 'object' && !Array.isArray(body.cover)) {
+      patch.cover = serializeCollectionCover(body.cover as CollectionCoverConfig) || null;
+    } else {
+      return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
+    }
   }
   if (body.sortOrder !== undefined) patch.sortOrder = Number(body.sortOrder);
   db.update(collections)

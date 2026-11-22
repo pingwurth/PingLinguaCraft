@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
+import { coverVolumeRank, parseCollectionCover, serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
 import { readJsonBody } from '@/lib/server/params';
@@ -42,17 +43,33 @@ export async function GET() {
 
 /**
  * POST /api/collections —— 创建材料集
- * Body: { name, description?, cefrLevel? }
+ * Body: { name, description?, cefrLevel?, cover? }
+ * cover 为封面配置对象（契约见 @pinglc/core serializeCollectionCover：
+ * texture 质地 id / image covers/ 图路径 / seal 印文单字 / volume 册序文案），
+ * 服务端清洗序列化后落库，非法字段静默丢弃，不透传原始输入。
  */
 export async function POST(request: Request) {
   const body = await readJsonBody<{
     name?: string;
     description?: string;
     cefrLevel?: string;
+    cover?: CollectionCoverConfig | null;
   }>(request);
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: '材料集名不能为空' }, { status: 400 });
+  // 封面配置：对象形态必检（数组/原始值直接拒绝），清洗后空串落 null（视为未配置）
+  let coverJson: string | null = null;
+  if (body.cover != null) {
+    if (typeof body.cover !== 'object' || Array.isArray(body.cover)) {
+      return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
+    }
+    coverJson = serializeCollectionCover(body.cover) || null;
+  }
+  // 册序即真排序：sortOrder 由「落库的清洗后配置」卷签 rank 派生（卷壹=10 …
+  // 别卷=90）；不能取原始请求串——serialize 归一别名卷签（「卷壹 · 启篇」→
+  // 「卷壹」）后 exact 匹配会落空，sortOrder 误归 0 排到真卷壹之前；未编排落 0
+  const sortOrder = coverVolumeRank(parseCollectionCover(coverJson)?.volume ?? '') ?? 0;
   const db = getDb();
   const now = new Date();
   const r = db
@@ -62,6 +79,8 @@ export async function POST(request: Request) {
       name,
       description: body.description?.trim() || null,
       cefrLevel: body.cefrLevel || null,
+      cover: coverJson,
+      sortOrder,
       createdAt: now,
       updatedAt: now,
     })

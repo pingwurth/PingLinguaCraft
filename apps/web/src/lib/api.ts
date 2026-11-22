@@ -16,6 +16,7 @@ export type {
   MaterialDetail,
   CueDTO,
   ProgressDTO,
+  StreamQueueItem,
   JobDTO,
   ProviderDTO,
   EngineInfo,

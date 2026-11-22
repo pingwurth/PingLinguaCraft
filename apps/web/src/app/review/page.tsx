@@ -144,10 +144,19 @@ export default function ReviewPage() {
           <h2 className="font-serif text-2xl">智能复习</h2>
           <p className="text-xs text-ochre">FSRS-6 调度 · {queueQuery.data?.stats.dueCount ?? 0} 词到期</p>
         </div>
-        {/* 进度计数 */}
+        {/* 进度计数 + 研习手册深研入口（当前词直达手册页） */}
         <span className="text-xs text-muted-foreground">
           {Math.min(index, items.length)} / {items.length}
         </span>
+        {item && (
+          <Link
+            href={`/manual?wordId=${item.wordId}`}
+            aria-label={`研习手册深研 ${item.displayForm}`}
+            className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-primary"
+          >
+            <span className="material-symbols-outlined">menu_book</span>
+          </Link>
+        )}
       </header>
 
       {queueQuery.isLoading ? (

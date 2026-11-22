@@ -88,13 +88,17 @@ export default function WordsPage() {
       <header className="mb-6">
         {/* 页标题 */}
         <h2 className="font-serif text-2xl md:text-3xl">词藏</h2>
-        {/* 副标题：复习入口指引（FSRS-6 已交付，去演练场轮转牢记） */}
+        {/* 副标题：复习与深研入口指引（智能复习轮转牢记 / 研习手册词汇深研） */}
         <p className="mt-1 text-sm text-ochre">
           划词收录，日积月累 ——{' '}
           <Link href="/review" className="underline underline-offset-2 hover:text-primary">
             智能复习
           </Link>{' '}
-          轮转牢记
+          轮转牢记 ·{' '}
+          <Link href="/manual" className="underline underline-offset-2 hover:text-primary">
+            研习手册
+          </Link>{' '}
+          深研一词
         </p>
       </header>
 
@@ -237,18 +241,28 @@ function WordRow({
   return (
     /* 词条容器：纸卡 */
     <div className="deckle rounded-md border bg-card">
-      {/* 折叠头：词条 + AI/人工笔记标记 */}
-      <button onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3 text-left">
-        <span className="font-serif text-lg">{word.displayForm}</span>
-        <span className="ml-auto flex gap-1.5 text-[10px]">
-          {word.noteMd && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">笔记</span>}
-          {word.aiNoteStatus === 'ready' && <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-secondary">AI</span>}
-          {word.aiNoteStatus === 'pending' && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">生成中</span>}
-        </span>
-        <span className="material-symbols-outlined text-lg text-muted-foreground">
-          {expanded ? 'expand_less' : 'expand_more'}
-        </span>
-      </button>
+      {/* 折叠头：词条 + AI/人工笔记标记 + 深研入口 */}
+      <div className="flex items-center gap-2 px-4 py-3">
+        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <span className="font-serif text-lg">{word.displayForm}</span>
+          <span className="ml-auto flex shrink-0 gap-1.5 text-[10px]">
+            {word.noteMd && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">笔记</span>}
+            {word.aiNoteStatus === 'ready' && <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-secondary">AI</span>}
+            {word.aiNoteStatus === 'pending' && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">生成中</span>}
+          </span>
+          <span className="material-symbols-outlined shrink-0 text-lg text-muted-foreground">
+            {expanded ? 'expand_less' : 'expand_more'}
+          </span>
+        </button>
+        {/* 研习手册深研入口：直达该词的手册页（语境/词源/辨析/拼字/仿写） */}
+        <Link
+          href={`/manual?wordId=${word.id}`}
+          aria-label={`研习手册深研 ${word.displayForm}`}
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-primary"
+        >
+          <span className="material-symbols-outlined text-lg">menu_book</span>
+        </Link>
+      </div>
 
       {/* 展开体 */}
       {expanded && (

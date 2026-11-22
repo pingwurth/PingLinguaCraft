@@ -1,7 +1,7 @@
 /**
  * 首页聚合数据类型（GET /api/home）
  *
- * 首页一次请求拿全：统计卡 / 续研书签 / 流转动向 / 集卷列表（含研读进度）。
+ * 首页一次请求拿全：统计卡 / 续研书签 / 案头近况 / 集卷列表（含研读进度）。
  * 仅 web 侧使用；将来移动端（apps/mobile）复用时再上移 @pinglc/core。
  */
 
@@ -13,7 +13,7 @@ export interface HomeStats {
   materialCount: number;
   /** 材料总时长（毫秒） */
   totalDurationMs: number;
-  /** 已听过的句段总数（learning_progress.listenedMask 位图置位数之和） */
+  /** 已听过的句段总数（learning_progress.listenedMask 位图置位数之和，仅计未软删材料） */
   studiedSentenceCount: number;
   /** 生词总数 */
   wordCount: number;
@@ -33,7 +33,7 @@ export interface HomeResumePoint {
   maxCueIndex: number;
   /** 材料总句数 */
   cueCount: number;
-  /** 研读进度百分比 0~100 */
+  /** 研读进度百分比 0~100（位图口径：实际听过句数/总句数，跳句不计） */
   progressPct: number;
   /** 停留句的英文原文（书签引文） */
   lastCueText: string;
@@ -41,7 +41,7 @@ export interface HomeResumePoint {
   updatedAt: number;
 }
 
-/** 流转动向条目（最近活跃的材料，设计稿 _10 列表行） */
+/** 案头近况条目（最近活跃的材料，设计稿 _10 列表行） */
 export interface HomeRecentMaterial {
   /** 材料 id（行点击跳 /material/{id}） */
   materialId: number;
@@ -63,7 +63,7 @@ export interface HomeRecentMaterial {
   collectionName: string;
   /** 学习进度最大句序号（无进度为 null） */
   maxCueIndex: number | null;
-  /** 研读进度百分比 0~100 */
+  /** 研读进度百分比 0~100（位图口径：实际听过句数/总句数，跳句不计） */
   progressPct: number;
   /** 最近活跃时间（epoch 毫秒；学习时间与材料更新时间取大） */
   activityAt: number;
@@ -74,7 +74,7 @@ export interface HomeCollection {
   id: number;
   name: string;
   description: string | null;
-  /** 封面（预设纹理 id / 装帧图路径；目前恒空，前端以卷名首字活字代之） */
+  /** 封面配置 JSON（@pinglc/core parseCollectionCover 契约；可空，空则前端以卷名首字活字代之） */
   cover: string | null;
   /** CEFR 等级（可空） */
   cefrLevel: string | null;
@@ -84,7 +84,7 @@ export interface HomeCollection {
   totalDurationMs: number;
   /** 集内句数合计（移动卡「N 篇材料 · M 句」用） */
   sentenceCount: number;
-  /** 研读进度百分比 0~100（听句数/总句数聚合） */
+  /** 研读进度百分比 0~100（位图听句数聚合：实际听过句数/总句数，跳句不计） */
   progressPct: number;
   /** 最近研习时间（epoch 毫秒；从未研习为 null） */
   lastStudiedAt: number | null;

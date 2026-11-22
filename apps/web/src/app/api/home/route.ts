@@ -4,7 +4,7 @@
  * 一次请求供全首页（设计稿 _12 移动 / _10 桌面）：
  * - stats：卷数/材料数/总时长/已研句段/生词数（_10 统计卡网格）
  * - resume：最近停留的学习进度（_12 续研书签卡）
- * - recent：最近活跃材料 5 条（_10 流转动向）
+ * - recent：最近活跃材料 5 条（_10 案头近况）
  * - collections：集卷列表 + 每卷研读进度/最近研习时间（进度条与轻筛选）
  *
  * 单用户约定：userId=1（全库预留列一致）。
@@ -12,8 +12,10 @@
 
 import { NextResponse } from 'next/server';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { countListenedBits } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { collections, cues, learningProgress, materials, words } from '@/lib/db/schema';
+import { progressPct } from '@/lib/server/progress';
 import type {
   HomeCollection,
   HomeData,
@@ -27,40 +29,12 @@ export const runtime = 'nodejs';
 const activityAtExpr = sql<number>`max(coalesce(${learningProgress.updatedAt}, 0), ${materials.updatedAt})`;
 
 /**
- * 位图 popcount：数 listened_mask（逐句听过位图，bit i = 第 i 句听过）的置位数
- * @param buf 位图 BLOB（better-sqlite3 返回 Buffer；空为 null）
- */
-function popcount(buf: Buffer | null): number {
-  if (!buf) return 0;
-  let n = 0;
-  for (const byte of buf) {
-    // Brian Kernighan 算法：每次清最低置位位
-    let x = byte;
-    while (x) {
-      x &= x - 1;
-      n++;
-    }
-  }
-  return n;
-}
-
-/**
- * 听句数 → 进度百分比（heard/total 四舍五入，上界 100；总句数为 0 时恒 0）
- * @param heard 已听句数（maxCueIndex+1 口径）
- * @param total 总句数
- */
-function progressPct(heard: number, total: number): number {
-  if (!total || total <= 0) return 0;
-  return Math.min(100, Math.round((heard / total) * 100));
-}
-
-/**
  * GET —— 首页聚合数据
  */
 export async function GET() {
   const db = getDb();
 
-  /* 集卷列表 + 每卷聚合：材料数/时长/句数（未删材料）与研读进度（听句数聚合） */
+  /* 集卷列表 + 每卷聚合：材料数/时长/句数（未删材料）；研读进度走位图（见下） */
   const collectionRows = db
     .select({
       id: collections.id,
@@ -71,7 +45,6 @@ export async function GET() {
       materialCount: sql<number>`count(${materials.id})`,
       totalDurationMs: sql<number>`coalesce(sum(${materials.mediaDurationMs}), 0)`,
       sentenceCount: sql<number>`coalesce(sum(${materials.sentenceCount}), 0)`,
-      heardCount: sql<number>`coalesce(sum(${learningProgress.maxCueIndex} + 1), 0)`,
       lastStudiedAt: sql<number | null>`max(${learningProgress.updatedAt})`,
     })
     .from(collections)
@@ -88,6 +61,34 @@ export async function GET() {
     .orderBy(collections.sortOrder, collections.id)
     .all();
 
+  /* 位图听句数（按卷聚合）：逐进度行按材料句数截断的 popcount 在 JS 侧求和——
+   * 口径 = 实际听过句数（跳句不计，仅计 userId=1 的未软删材料）；统计卡「已研句段」
+   * 也取此聚合的总和（单一来源——旧实现另起全表位图查询且缺 deletedAt/userId 过滤，
+   * 软删材料后统计卡虚高、与集卷卡/书签/近况漂移）；单用户进度行量级小，开销可忽略。
+   * 截断到现句数与进度 PUT 同口径：重跑 STT 句数变少时位图合并保留的旧高位
+   * 不算已研（否则统计永久虚高、heard 可能超过 sentenceCount） */
+  const heardByCollection = new Map<number, number>();
+  for (const r of db
+    .select({
+      collectionId: materials.collectionId,
+      mask: learningProgress.listenedMask,
+      sentenceCount: materials.sentenceCount,
+    })
+    .from(learningProgress)
+    .innerJoin(
+      materials,
+      and(eq(materials.id, learningProgress.materialId), isNull(materials.deletedAt))
+    )
+    .where(eq(learningProgress.userId, 1))
+    .all()) {
+    // blob() 列经 drizzle select 推断为 unknown，按 schema 实际类型（Buffer|null）收窄
+    const mask = r.mask as Buffer | null;
+    if (!mask) continue;
+    // 句数缺失（老数据）退回整位图口径：截断目的只是丢弃越界旧位，缺句数时无从判定
+    const total = r.sentenceCount ?? mask.length * 8;
+    heardByCollection.set(r.collectionId, (heardByCollection.get(r.collectionId) ?? 0) + countListenedBits(mask, total));
+  }
+
   const collectionList: HomeCollection[] = collectionRows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -97,7 +98,7 @@ export async function GET() {
     materialCount: r.materialCount,
     totalDurationMs: r.totalDurationMs,
     sentenceCount: r.sentenceCount,
-    progressPct: progressPct(r.heardCount, r.sentenceCount),
+    progressPct: progressPct(heardByCollection.get(r.id) ?? 0, r.sentenceCount),
     lastStudiedAt: r.lastStudiedAt,
   }));
 
@@ -109,6 +110,7 @@ export async function GET() {
       collectionId: collections.id,
       collectionName: collections.name,
       maxCueIndex: learningProgress.maxCueIndex,
+      listenedMask: learningProgress.listenedMask,
       sentenceCount: materials.sentenceCount,
       updatedAt: learningProgress.updatedAt,
     })
@@ -151,13 +153,18 @@ export async function GET() {
       collectionName: resumeRow.collectionName,
       maxCueIndex: resumeRow.maxCueIndex,
       cueCount,
-      progressPct: progressPct(resumeRow.maxCueIndex + 1, cueCount),
+      // 位图口径：实际听过句数（跳句不计，按句数截断防越界旧位），与集卷/统计卡一致；
+      // maxCueIndex 仅用于「第 N 句」定位展示
+      progressPct: progressPct(
+        resumeRow.listenedMask ? countListenedBits(resumeRow.listenedMask as Buffer, cueCount) : 0,
+        cueCount
+      ),
       lastCueText: cue?.textEn ?? '',
       updatedAt: resumeRow.updatedAt.getTime(),
     };
   }
 
-  /* 流转动向：最近活跃（学习时间与材料更新时间取大）的前 5 条未删材料 */
+  /* 案头近况：最近活跃（学习时间与材料更新时间取大）的前 5 条未删材料 */
   const recentRows = db
     .select({
       materialId: materials.id,
@@ -170,6 +177,7 @@ export async function GET() {
       collectionId: collections.id,
       collectionName: collections.name,
       maxCueIndex: learningProgress.maxCueIndex,
+      listenedMask: learningProgress.listenedMask,
       activityAt: activityAtExpr,
     })
     .from(materials)
@@ -183,34 +191,34 @@ export async function GET() {
     .limit(5)
     .all();
 
-  const recent: HomeRecentMaterial[] = recentRows.map((r) => ({
-    materialId: r.materialId,
-    title: r.title,
-    sourceType: r.sourceType,
-    mediaDurationMs: r.mediaDurationMs,
-    sentenceCount: r.sentenceCount,
-    uniqueWordCount: r.uniqueWordCount,
-    subtitleStatus: r.subtitleStatus as HomeRecentMaterial['subtitleStatus'],
-    collectionId: r.collectionId,
-    collectionName: r.collectionName,
-    maxCueIndex: r.maxCueIndex,
-    progressPct: progressPct((r.maxCueIndex ?? -1) + 1, r.sentenceCount ?? 0),
-    activityAt: r.activityAt,
-  }));
+  const recent: HomeRecentMaterial[] = recentRows.map((r) => {
+    const mask = r.listenedMask as Buffer | null;
+    /* 分母句数缺失（老数据）时位图按整幅计（无从截断），百分比侧分母为 0 恒 0% */
+    const maskTotal = r.sentenceCount ?? (mask ? mask.length * 8 : 0);
+    return {
+      materialId: r.materialId,
+      title: r.title,
+      sourceType: r.sourceType,
+      mediaDurationMs: r.mediaDurationMs,
+      sentenceCount: r.sentenceCount,
+      uniqueWordCount: r.uniqueWordCount,
+      subtitleStatus: r.subtitleStatus as HomeRecentMaterial['subtitleStatus'],
+      collectionId: r.collectionId,
+      collectionName: r.collectionName,
+      maxCueIndex: r.maxCueIndex,
+      // 位图口径：实际听过句数（跳句不计，按句数截断防越界旧位），与集卷/书签/统计卡一致
+      progressPct: progressPct(mask ? countListenedBits(mask, maskTotal) : 0, r.sentenceCount ?? 0),
+      activityAt: r.activityAt,
+    };
+  });
 
-  /* 统计卡：卷数/材料数/总时长取自集卷聚合；已研句段=位图置位数求和；生词=words 总数 */
-  const masks = db
-    .select({ mask: learningProgress.listenedMask })
-    .from(learningProgress)
-    .all();
-  // blob() 列经 drizzle select 推断为 unknown，此处按 schema 实际类型（Buffer|null）收窄
-  const studiedSentenceCount = masks.reduce(
-    (a, r) => a + popcount(r.mask as Buffer | null),
-    0
-  );
+  /* 统计卡：卷数/材料数/总时长取自集卷聚合；已研句段=上方按卷位图聚合求和（同一查询
+   * 同一口径，天然排除软删材料）；生词=words 总数（补 userId=1 过滤，全库预留列约定） */
+  const studiedSentenceCount = [...heardByCollection.values()].reduce((a, n) => a + n, 0);
   const wordCount = db
     .select({ n: sql<number>`count(*)` })
     .from(words)
+    .where(eq(words.userId, 1))
     .all()[0]!.n;
 
   const data: HomeData = {

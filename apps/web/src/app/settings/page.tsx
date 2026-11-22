@@ -3,6 +3,7 @@
 /**
  * 设置页 —— AI 服务配置（M1 核心：provider 档案管理 + 引擎状态）
  *
+ * - 学习资产入口：句藏（/favorites 收藏句列表；底部导航固定 5-tab，从本页进入）
  * - 引擎状态卡：健康、本地引擎可用性、GPU、kokoro 模型落盘状态与下载入口
  * - 六能力档案管理：新增、设默认、编辑、删除、连通性测试
  *   （STT/TTS/对齐/翻译可选本地或云端；LLM 不分本地/云端，按 API 格式区分
@@ -14,6 +15,7 @@
  *   模型与音色存 ~/.pinglc/models/kokoro/，下载先查本地缺啥补啥）
  */
 
+import Link from 'next/link';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, type EngineInfo, type ProviderDTO } from '@/lib/api';
@@ -833,6 +835,20 @@ export default function SettingsPage() {
         <h2 className="font-serif text-2xl md:text-3xl">我的 · 设置</h2>
         <p className="mt-1 text-sm text-ochre">AI 引擎与云端档案 · 数据都在本机 ~/.pinglc/</p>
       </header>
+
+      {/* 学习资产入口：句藏（底部导航 5-tab 固定，收藏句从「我的」进入；
+          /favorites 的导航高亮也归「我的」，与此处入口一致） */}
+      <section className="deckle mb-6 rounded-md border bg-card p-2">
+        <Link
+          href="/favorites"
+          className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors hover:bg-accent"
+        >
+          <span className="material-symbols-outlined text-xl text-ochre">bookmarks</span>
+          句藏
+          <span className="ml-auto text-xs text-muted-foreground">收藏句 · AI 解析 · 分类 · 笔记</span>
+          <span className="material-symbols-outlined text-lg text-muted-foreground">chevron_right</span>
+        </Link>
+      </section>
 
       {/* 引擎状态卡 */}
       <section className="deckle mb-6 rounded-md border bg-card p-4">

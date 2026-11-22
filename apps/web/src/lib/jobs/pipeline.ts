@@ -10,6 +10,7 @@
  *   retranslate_cue 同步实现（不经管线）
  *   ai_analysis   句子 AI 解析（收藏）
  *   ai_note       单词 AI 笔记
+ *   discriminate  研习手册·辨析矩阵（近义词侧重对比）
  *   model_download 本地引擎模型下载（设置页「下载模型」，payload.engine）
  *
  * 可恢复性：管线幂等（cues 已存在则跳过 STT、译文存在则跳过），进程重启后
@@ -46,6 +47,11 @@ import { resolveProfile, toEngineProfile, type ResolvedProfile } from '@/lib/ser
 import { ttsEngineFromParams } from '@/lib/providers';
 import { QUIZ_SYSTEM, buildQuizPrompt, QuizSchema, repairPrompt } from '@/lib/quiz';
 import { DEEP_SYSTEM, buildDeepPrompt, DeepCardSchema } from '@/lib/deepCard';
+import {
+  DISCRIMINATE_SYSTEM,
+  buildDiscriminatePrompt,
+  DiscriminateSchema,
+} from '@/lib/manualCard';
 
 /** 在途任务注册表（进程内；重启后为空 → recovery 判定依据） */
 const _inflight = new Set<string>();
@@ -468,6 +474,9 @@ async function runPipeline(jobId: string): Promise<void> {
         break;
       case 'deep_card':
         await deepCardPipeline(jobId, JSON.parse(job.payloadJson ?? '{}'));
+        break;
+      case 'discriminate':
+        await discriminatePipeline(jobId, JSON.parse(job.payloadJson ?? '{}'));
         break;
       case 'model_download':
         await modelDownloadPipeline(jobId, JSON.parse(job.payloadJson ?? '{}'));
@@ -1117,4 +1126,47 @@ async function deepCardPipeline(jobId: string, payload: { wordId: number }): Pro
       .run();
   });
   updateJob(jobId, { progress: 1, message: '深学卡已生成' });
+}
+
+/* ---------------------------------------------------------------------------
+ * 辨析矩阵管线（研习手册，设计稿 _7 文人辨析矩阵）
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 辨析矩阵：LLM 产出目标词与近义词的侧重对比 → zod 校验（失败修复重试一次）→
+ * 整体写 ai_artifacts（kind='discriminate'，同词覆盖式更新：先删旧）
+ */
+async function discriminatePipeline(jobId: string, payload: { wordId: number }): Promise<void> {
+  const db = getDb();
+  const word = db.select().from(wordsTable).where(eq(wordsTable.id, payload.wordId)).all()[0];
+  if (!word) throw new Error('单词不存在');
+  const example = payloadOriginSentence(db, word.originCueId);
+
+  // 结构化生成（共享 structuredLLM：校验 + 修复重试 + 档案守卫）
+  const { data: card, profile } = await structuredLLM({
+    schema: DiscriminateSchema,
+    system: DISCRIMINATE_SYSTEM,
+    user: buildDiscriminatePrompt(word.displayForm, example === '（无）' ? null : example),
+    label: '辨析矩阵',
+    onProgress: (stage, message) => updateJob(jobId, { progress: stage === 'generate' ? 0.2 : 0.6, message }),
+  });
+
+  // 同词覆盖式更新（删旧插新同一事务，中途崩溃不留半张矩阵）
+  db.transaction((tx) => {
+    tx.delete(aiArtifacts)
+      .where(and(eq(aiArtifacts.kind, 'discriminate'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, word.id)))
+      .run();
+    tx.insert(aiArtifacts)
+      .values({
+        userId: 1,
+        kind: 'discriminate',
+        subjectType: 'word',
+        subjectId: word.id,
+        provider: profile.name,
+        contentMd: JSON.stringify(card),
+        createdAt: new Date(),
+      })
+      .run();
+  });
+  updateJob(jobId, { progress: 1, message: '辨析矩阵已生成' });
 }
