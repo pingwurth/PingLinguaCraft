@@ -516,19 +516,15 @@ function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: Import
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
       const active = document.activeElement;
-      if (active !== cardRef.current && !cardRef.current?.contains(active)) {
-        // 焦点在卡外：按方向拉回末/首元素
+      if (active === cardRef.current || !cardRef.current?.contains(active)) {
+        // 焦点在卡容器本身（tabIndex=-1 的落焦点位）或卡外：按方向拉回
+        // 末/首元素，否则 Tab/Shift+Tab 会走默认行为逃出 aria-modal
         e.preventDefault();
         (e.shiftKey ? last : first).focus();
-      } else if (active === cardRef.current) {
-        // 焦点在卡容器本身（tabIndex=-1 的落焦点位）：Tab 落回首/末元素，
-        // 否则 Shift+Tab 会走默认行为逃到卡外背景
-        e.preventDefault();
-        (e.shiftKey ? last : first).focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && active === last) {
         e.preventDefault(); // 正向到尾 → 回首
         first.focus();
-      } else if (e.shiftKey && document.activeElement === first) {
+      } else if (e.shiftKey && active === first) {
         e.preventDefault(); // 逆向到首 → 回尾
         last.focus();
       }

@@ -80,38 +80,27 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     listenedThrough = existing?.listenedThrough ?? false;
   }
 
-  // maxCueIndex 收窄 + 三态平铺（readJsonBody 只保证对象形态）：非有限数/
-  // 负数与省略同态——负数正是旧版上报器「未观测到句位」的 -1（被 service
-  // worker 缓住的旧 bundle 仍会发），钳 0 会伪装成「第 1 句」顶替已存书签；
-  // NaN 绑 NOT NULL 列会 500。合法值 → 落库；省略/非法且是存量行 → 不写该列
-  // （保留现值）；省略/非法且是新行 → 落 -1（无实质句位，不挂书签）
-  const rawCueIndex = body.maxCueIndex;
-  const cueIndexValid = typeof rawCueIndex === 'number' && Number.isFinite(rawCueIndex) && rawCueIndex >= 0;
-  let maxCuePatch: { maxCueIndex?: number };
-  if (cueIndexValid) {
-    maxCuePatch = { maxCueIndex: Math.round(rawCueIndex) };
-  } else if (existing) {
-    maxCuePatch = {};
-  } else {
-    maxCuePatch = { maxCueIndex: -1 };
-  }
-
-  // lastPositionMs 与 maxCueIndex 同一三态口径：合法值落库；省略/非法且是
-  // 存量行 → 不写该列（不良上报不得抹掉续播书签）；省略/非法且是新行 →
-  // 落 0。非有限数经 Math.round 得 NaN，绑 NOT NULL 列会 500
-  const rawPositionMs = body.lastPositionMs;
-  const positionValid = typeof rawPositionMs === 'number' && Number.isFinite(rawPositionMs);
-  let positionPatch: { lastPositionMs?: number };
-  if (positionValid) {
-    positionPatch = { lastPositionMs: Math.max(0, Math.round(rawPositionMs)) };
-  } else if (existing) {
-    positionPatch = {};
-  } else {
-    positionPatch = { lastPositionMs: 0 };
-  }
+  /** 数值字段三态补丁单源（maxCueIndex 与 lastPositionMs 同口径）：合法
+   *  非负有限数 → 落取整值；省略/非法且是存量行 → 不写该列（不良上报不得
+   *  抹掉书签现值）；省略/非法且是新行 → 落 newRowDefault。负数（旧版
+   *  上报器的 -1 哨兵）与 NaN 都按非法处理（NaN 绑 NOT NULL 列会 500）
+   *  @param key        落库列名
+   *  @param raw        请求体原值
+   *  @param newRowDefault 新行的默认值
+   */
+  const numericPatch = (
+    key: 'maxCueIndex' | 'lastPositionMs',
+    raw: unknown,
+    newRowDefault: number,
+  ): Record<string, number> => {
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return { [key]: Math.round(raw) };
+    if (existing) return {};
+    return { [key]: newRowDefault };
+  };
+  const maxCuePatch = numericPatch('maxCueIndex', body.maxCueIndex, -1);
 
   const values = {
-    ...positionPatch,
+    ...numericPatch('lastPositionMs', body.lastPositionMs, 0),
     ...maxCuePatch,
     listenedMask: mask,
     listenedThrough,

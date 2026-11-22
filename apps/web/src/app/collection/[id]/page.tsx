@@ -22,6 +22,7 @@ import { api, type Collection, type JobDTO, type MaterialListItem } from '@/lib/
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SOURCE_META } from '@/lib/material-meta';
 import { fmtMs } from '@/lib/format';
+import { MATERIAL_PAGE_DEFAULT } from '@/lib/limits';
 import { HOME_QUERY_KEY } from '@/features/home/query-keys';
 
 /**
@@ -48,7 +49,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
     queryKey: ['materials', collectionId, page],
     queryFn: () =>
       api<{ materials: MaterialListItem[]; total: number; totalPages: number }>(
-        `/api/collections/${collectionId}/materials?page=${page}&pageSize=20`
+        `/api/collections/${collectionId}/materials?page=${page}&pageSize=${MATERIAL_PAGE_DEFAULT}`
       ),
     refetchInterval: (q) =>
       q.state.data?.materials.some((m) => m.subtitleStatus === 'processing') ? 2500 : false,

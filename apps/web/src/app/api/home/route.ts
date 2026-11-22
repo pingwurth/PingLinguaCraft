@@ -74,29 +74,12 @@ export async function GET() {
    * 不算已研（否则统计永久虚高、heard 可能超过 sentenceCount）。
    * 句数缺失（老数据）现数 cues 兜底，保证与集卷分母 sum(sentence_count) 同一
    * 材料集合——分子计 NULL 句数材料而分母跳过会让混装卷 heard 超过 sentenceCount */
-  const heardRows = db
-    .select({
-      materialId: materials.id,
-      collectionId: materials.collectionId,
-      mask: learningProgress.listenedMask,
-      maxCueIndex: learningProgress.maxCueIndex,
-      sentenceCount: materials.sentenceCount,
-    })
-    .from(learningProgress)
-    .innerJoin(
-      materials,
-      and(eq(materials.id, learningProgress.materialId), isNull(materials.deletedAt))
-    )
-    .where(eq(learningProgress.userId, 1))
-    .all();
-  const cueCountByMaterial = cueCountsFor(
-    db,
-    heardRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
-  );
-  /* 分母按卷聚合：全部未删材料（含从未打开的）——此前只在进度行循环里累计，
-   * 「10 篇只听过 1 篇」的卷会算出 100%；NULL sentence_count 同样走 cues 兜底
-   * （SQL sum(sentence_count) 会跳过 NULL 行，混装卷会出现 heard > 分母、被
-   * progressPct 的上界静默夹成 100% 的假完卷） */
+  /* 全部未删材料（含从未打开的）：分母按卷聚合一源，句数兜底 denomCueCounts
+   * 同时供按卷聚合/分母/简历书签/案头近况四处复用（此前各起一份 cueCountsFor，
+   * 同一请求对 cues 重复分组扫描且口径易漂）。分母必须含未打开材料，否则
+   * 「10 篇只听过 1 篇」的卷会算出 100%；NULL sentence_count 走 cues 兜底
+   * （SQL sum 会跳过 NULL 行，混装卷会出现 heard > 分母、被 progressPct 的
+   * 上界静默夹成 100% 的假完卷） */
   const denomRows = db
     .select({
       materialId: materials.id,
@@ -115,6 +98,29 @@ export async function GET() {
     const total = r.sentenceCount ?? denomCueCounts.get(r.materialId) ?? 0;
     sentenceTotalByCollection.set(r.collectionId, (sentenceTotalByCollection.get(r.collectionId) ?? 0) + total);
   }
+  /* 位图听句数（按进度行）：逐行按材料句数截断的 popcount 求和——口径 =
+   * 实际听过句数（跳句不计；materials 侧补 userId=1 与分母同口径）；
+   * 截断到现句数与进度 PUT 同口径：重跑 STT 句数变少时位图合并保留的旧高位
+   * 不算已研（否则统计永久虚高、heard 可能超过 sentenceCount） */
+  const heardRows = db
+    .select({
+      materialId: materials.id,
+      collectionId: materials.collectionId,
+      mask: learningProgress.listenedMask,
+      maxCueIndex: learningProgress.maxCueIndex,
+      sentenceCount: materials.sentenceCount,
+    })
+    .from(learningProgress)
+    .innerJoin(
+      materials,
+      and(
+        eq(materials.id, learningProgress.materialId),
+        eq(materials.userId, 1),
+        isNull(materials.deletedAt)
+      )
+    )
+    .where(eq(learningProgress.userId, 1))
+    .all();
   /* 位图为空的存量行按 maxCueIndex+1 估算（与 resume 甄别兼容：仅 maxCueIndex>0
      * 的无位图行与之同口径；maxCueIndex=0 的无位图行在 resume 按弃行处理，
      * 但仍计入卷进度/近况——两处判定不可互相套用） */
@@ -122,7 +128,7 @@ export async function GET() {
   for (const r of heardRows) {
     // blob() 列经 drizzle select 推断为 unknown，按 schema 实际类型（Buffer|null）收窄
     const mask = r.mask as Buffer | null;
-    const total = r.sentenceCount ?? cueCountByMaterial.get(r.materialId) ?? 0;
+    const total = r.sentenceCount ?? denomCueCounts.get(r.materialId) ?? 0;
     const heard = mask ? countListenedBits(mask, total) : estimateHeardNoMask(r.maxCueIndex, total);
     heardByCollection.set(r.collectionId, (heardByCollection.get(r.collectionId) ?? 0) + heard);
   }
@@ -170,14 +176,10 @@ export async function GET() {
     .limit(RESUME_CANDIDATE_LIMIT)
     .all();
 
-  /* 候选行句数兜底直接复用上方 cueCountByMaterial：heardRows（全部 userId=1
-   * 进度行 × 未删材料）是本候选集的超集，同材料 NULL sentence_count 的计数
-   * 必然一致——再发一次批量查询是同一口径的第二份源 */
-
   let resume: HomeResumePoint | null = null;
   for (const resumeRow of resumeRows) {
     // 总句数：sentence_count 就绪时已统计；缺失（老数据）则现数 cues 兜底
-    const cueCount = resumeRow.sentenceCount ?? cueCountByMaterial.get(resumeRow.materialId) ?? 0;
+    const cueCount = resumeRow.sentenceCount ?? denomCueCounts.get(resumeRow.materialId) ?? 0;
     /* 存量行甄别：maxCueIndex=0 且位图全空（或无位图）= 旧版上报器把 -1 钳 0
      * 写成的「只开过播放页」行（新版已改写 -1），不上书签——防凭空冒出
      * 「第 1 句」；只听过首句的行位图 bit0 已置、无位图存量行按 maxCueIndex>0
