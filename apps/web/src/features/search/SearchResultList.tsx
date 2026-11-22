@@ -1,6 +1,16 @@
 'use client';
 
 /**
+ * 结果行 option 元素 id（桌面键盘跟视滚动与两实例 aria 关联共用同一构造——
+ * 前缀或分隔符变更时只需改这里）
+ * @param prefix 实例 id 前缀（'global-search' / 'mobile-search'）
+ * @param idx    全列表索引
+ */
+export function optionId(prefix: string, idx: number): string {
+  return `${prefix}-option-${idx}`;
+}
+
+/**
  * 检索结果列表（SearchResultList）
  *
  * 桌面顶栏下拉面板与移动端全屏检索共用的结果渲染：
@@ -46,17 +56,19 @@ export function SearchResultList({
   onSelect,
   onHover,
 }: SearchResultListProps) {
+  /* 状态文案 role=status：可被读屏播报（listbox 容器内非 option 子节点会被
+     打乱语义，故状态行显式声明 status 角色） */
   if (error) {
     return (
-      <p className="px-3 py-6 text-center text-[13px] text-destructive">检索失败：{error}</p>
+      <p role="status" className="px-3 py-6 text-center text-[13px] text-destructive">检索失败：{error}</p>
     );
   }
   if (loading) {
-    return <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">检索中…</p>;
+    return <p role="status" className="px-3 py-6 text-center text-[13px] text-muted-foreground">检索中…</p>;
   }
   if (hits.length === 0) {
     return (
-      <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
+      <p role="status" className="px-3 py-6 text-center text-[13px] text-muted-foreground">
         未检得相关卷帙或名篇
       </p>
     );
@@ -65,65 +77,47 @@ export function SearchResultList({
   const collections = hits.slice(0, collectionCount);
   const materials = hits.slice(collectionCount);
 
+  /**
+   * 单条命中行渲染（两分区共用一份行结构，仅索引基址不同——行内 JSX
+   * 复制两份的话，改行结构必然漏一处）
+   * @param hit  命中项
+   * @param idx  全列表索引（键盘游标/option id 连续）
+   */
+  const renderRow = (hit: SearchHitItem, idx: number) => (
+    <Link
+      key={hit.key}
+      id={optionId(idPrefix, idx)}
+      role="option"
+      aria-selected={activeIndex === idx}
+      href={hit.href}
+      onClick={() => onSelect(hit.href)}
+      onMouseEnter={() => onHover?.(idx)}
+      className={`flex items-center gap-2.5 px-3 py-2.5 ${activeIndex === idx ? 'bg-accent' : ''}`}
+    >
+      <span className="material-symbols-outlined shrink-0 text-lg text-primary">{hit.icon}</span>
+      <span className="min-w-0 flex-1 truncate text-sm">{hit.title}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{hit.meta}</span>
+    </Link>
+  );
+
   return (
     <>
-      {/* 材料集分区 */}
+      {/* 材料集分区（group + aria-labelledby：listbox 的合法分组语义） */}
       {collections.length > 0 ? (
-        <div className="py-1">
-          <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-widest text-ochre">
+        <div role="group" aria-labelledby={`${idPrefix}-group-collections`} className="py-1">
+          <p id={`${idPrefix}-group-collections`} className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-widest text-ochre">
             材料集
           </p>
-          {collections.map((hit, i) => (
-            <Link
-              key={hit.key}
-              id={`${idPrefix}-option-${i}`}
-              role="option"
-              aria-selected={activeIndex === i}
-              href={hit.href}
-              onClick={() => onSelect(hit.href)}
-              onMouseEnter={() => onHover?.(i)}
-              className={`flex items-center gap-2.5 px-3 py-2.5 ${
-                activeIndex === i ? 'bg-accent' : ''
-              }`}
-            >
-              <span className="material-symbols-outlined shrink-0 text-lg text-primary">
-                {hit.icon}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm">{hit.title}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">{hit.meta}</span>
-            </Link>
-          ))}
+          {collections.map((hit, i) => renderRow(hit, i))}
         </div>
       ) : null}
       {/* 材料分区（列表索引接在材料集之后，键盘游标连续） */}
       {materials.length > 0 ? (
-        <div className="py-1">
-          <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-widest text-ochre">
+        <div role="group" aria-labelledby={`${idPrefix}-group-materials`} className="py-1">
+          <p id={`${idPrefix}-group-materials`} className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-widest text-ochre">
             名篇材料
           </p>
-          {materials.map((hit, i) => {
-            const idx = collectionCount + i;
-            return (
-              <Link
-                key={hit.key}
-                id={`${idPrefix}-option-${idx}`}
-                role="option"
-                aria-selected={activeIndex === idx}
-                href={hit.href}
-                onClick={() => onSelect(hit.href)}
-                onMouseEnter={() => onHover?.(idx)}
-                className={`flex items-center gap-2.5 px-3 py-2.5 ${
-                  activeIndex === idx ? 'bg-accent' : ''
-                }`}
-              >
-                <span className="material-symbols-outlined shrink-0 text-lg text-primary">
-                  {hit.icon}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">{hit.title}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">{hit.meta}</span>
-              </Link>
-            );
-          })}
+          {materials.map((hit, i) => renderRow(hit, collectionCount + i))}
         </div>
       ) : null}
     </>

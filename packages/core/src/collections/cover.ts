@@ -62,18 +62,32 @@ export function coverVolumeRank(value: string): number | null {
   return COVER_VOLUMES.find((v) => v.value === value)?.rank ?? null;
 }
 
-/** 封面插画库内路径白名单（covers/ 下一层、扩展名受限；防路径穿越与任意读） */
-const COVER_IMAGE_RE = /^covers\/[\w-]+\.(?:png|jpe?g|webp)$/;
+/** 封面插画扩展名 ↔ MIME 对照表（上传白名单 / 路径校验 / 出图回放共用单源，
+ *  调整格式只改这一处） */
+export const COVER_IMAGE_EXT_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+};
+
+/** 封面插画单图体积上限（字节；上传服务端闸与立卷弹窗前置校验共用单源） */
+export const COVER_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** 封面插画库内路径白名单（covers/ 下一层；扩展名取自 MIME 对照表，防路径穿越与任意读） */
+const COVER_IMAGE_RE = new RegExp(`^covers\\/[\\w-]+\\.(${Object.keys(COVER_IMAGE_EXT_MIME).join('|')})$`);
 
 /**
- * 清洗字符串字段：仅收字符串，去首尾空白并限长
+ * 清洗字符串字段：仅收字符串，去首尾空白并限长（按码点计数：代理对字符
+ * 如扩展 B 汉字/emoji 在 UTF-16 里占 2 码元，按 length 计会被误判超长）
  * @param v   原始值
- * @param max 最大长度（trim 后）
+ * @param max 最大长度（trim 后，单位=字符）
  */
 function cleanString(v: unknown, max: number): string | undefined {
   if (typeof v !== 'string') return undefined;
   const s = v.trim();
-  return s.length >= 1 && s.length <= max ? s : undefined;
+  const chars = Array.from(s);
+  return chars.length >= 1 && chars.length <= max ? s : undefined;
 }
 
 /** 质地 id 是否在预设白名单内 */
@@ -97,18 +111,26 @@ export function parseCollectionCover(raw: string | null | undefined): Collection
   try {
     obj = JSON.parse(raw);
   } catch {
-    // 非 JSON：按旧单值契约识别（裸纹理 id / 裸插画路径）
-    if (isTextureId(raw)) return { texture: raw };
-    if (COVER_IMAGE_RE.test(raw)) return { image: raw };
+    // 非 JSON：落回旧单值契约识别（裸纹理 id / 裸插画路径）
+    obj = raw;
+  }
+  if (typeof obj === 'string') {
+    // 旧单值契约：非 JSON 原文，或库里存了带引号的 JSON 字符串旧值（如
+    // '"linen"'）——parse 成功但结果是原始字符串，同路按裸值识别
+    if (isTextureId(obj)) return { texture: obj };
+    if (COVER_IMAGE_RE.test(obj)) return { image: obj };
     return null;
   }
   if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) return null;
   const o = obj as Record<string, unknown>;
 
   const out: CollectionCoverConfig = {};
-  const texture = typeof o.texture === 'string' ? o.texture : '';
-  if (isTextureId(texture)) out.texture = texture;
-  if (typeof o.image === 'string' && COVER_IMAGE_RE.test(o.image)) out.image = o.image;
+  /* 质地与其余字段同口径清洗（先去空白再白名单，否则 " linen " 会被整项丢弃） */
+  const texture = cleanString(o.texture, 20);
+  if (texture && isTextureId(texture)) out.texture = texture;
+  /* 插画路径与其余字段同口径清洗（先去空白再白名单，" covers/x.png " 不整项丢弃） */
+  const image = cleanString(o.image, 200);
+  if (image && COVER_IMAGE_RE.test(image)) out.image = image;
   const seal = cleanString(o.seal, 1);
   if (seal) out.seal = seal;
   /* 册序：白名单收窄；旧版带别称的卷签值（如「卷壹 · 启篇」）按前缀归一到

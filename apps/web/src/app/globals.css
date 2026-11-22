@@ -83,6 +83,8 @@
   --on-surface-variant: #5b403d;
   /* 深朱印泥（壳层主红，比全局朱砂 #B91C1C 沉一档：印章方/头像/进度条） */
   --shell-seal: #93000b;
+  /* 深朱印泥上的前景（印章/头像图标白；token 化防换色板时各处白字失同步） */
+  --on-shell-seal: #ffffff;
   /* 壳层竹青（状态灯、chip 强调值） */
   --shell-bamboo: #456818;
   /* 深黛靛蓝（封面质地第四色「经阁重彩 · 渊深」；深底，配白系前景） */
@@ -136,6 +138,13 @@
   --color-on-surface: var(--on-surface);
   --color-on-surface-variant: var(--on-surface-variant);
   --color-shell-seal: var(--shell-seal);
+  --color-on-shell-seal: var(--on-shell-seal);
+  /* 壳层极淡投影（侧栏/顶栏/底栏统一；底栏向上为 shadow-shell-up）：
+   * 设计稿 0 1px 8px 4% 黑，此前各组件内联裸值三处易失同步 */
+  --shadow-shell: 0 1px 8px rgb(0 0 0 / 0.04);
+  --shadow-shell-up: 0 -1px 8px rgb(0 0 0 / 0.04);
+  /* 浮层面板投影（检索下拉等悬浮面板；比壳层投影深一档） */
+  --shadow-panel: 0 4px 16px rgb(0 0 0 / 0.08);
   --color-shell-bamboo: var(--shell-bamboo);
   --color-shell-indigo: var(--shell-indigo);
   --color-shell-xuan: var(--shell-xuan);

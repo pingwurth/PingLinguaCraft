@@ -18,6 +18,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { seededPick, seededShuffle, type SRating } from '@pinglc/core';
 import { api } from '@/lib/api';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
+import { escapeRegExp } from '@/lib/regexp';
 
 /** 队列项（与 /api/review/queue 响应契约一致） */
 interface QueueItem {
@@ -35,11 +36,6 @@ interface QueueResp {
   queue: QueueItem[];
   pool: string[];
   stats: { totalWords: number; dueCount: number; newCount: number };
-}
-
-/** 正则元字符转义（词条可能含 c++、a.b、(be) 等形态——未转义会抛 SyntaxError 炸整页） */
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** 从 AI 笔记里抽「释义」首行（粗解析，够用） */

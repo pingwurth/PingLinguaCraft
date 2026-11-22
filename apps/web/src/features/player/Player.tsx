@@ -16,12 +16,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './store';
 import { useMediaClock } from './useMediaClock';
+import { PLAYER_RATES, RESUME_SEEK_MIN_MS, clampSeekMs } from './rates';
 import { useProgressReporter } from './useProgressReporter';
 import type { CueDTO, MaterialDetail } from '@/lib/api';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
-
-/** 倍速档位 */
-const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 /**
  * 播放器
@@ -108,9 +106,10 @@ export function Player({
       const d = m.duration;
       if (Number.isFinite(d)) {
         usePlayer.getState().setDurationMs(d * 1000);
-        // 元数据就绪后补跳暂存的定位值（详情先到、元数据后到的竞态）
-        if (pendingSeekRef.current > 500) {
-          m.currentTime = pendingSeekRef.current / 1000;
+        // 元数据就绪后补跳暂存的定位值（详情先到、元数据后到的竞态）；
+        // clampSeekMs 统一按时长夹取（与续播 effect 同一助手）
+        if (pendingSeekRef.current > RESUME_SEEK_MIN_MS) {
+          m.currentTime = clampSeekMs(pendingSeekRef.current, d) / 1000;
           pendingSeekRef.current = 0;
         }
       }
@@ -130,14 +129,23 @@ export function Player({
   /* ---------- 续播定位 ---------- */
   useEffect(() => {
     const m = mediaRef.current;
-    if (!m || initialPositionMs <= 500) return;
+    if (!m) return;
+    /* 低于阈值的定位意图视同从头播：显式清掉挂起值——详情命中缓存时组件不
+       重挂载，上一轮的 pendingSeek 会在新材料的 loadedmetadata 补跳到无关位置 */
+    if (initialPositionMs <= RESUME_SEEK_MIN_MS) {
+      pendingSeekRef.current = 0;
+      return;
+    }
     if (Number.isFinite(m.duration)) {
       pendingSeekRef.current = 0;
-      m.currentTime = initialPositionMs / 1000;
+      // 夹取与 onMeta 补跳同一助手：重导入后时长变短的材料，续播位置不至于越界
+      m.currentTime = clampSeekMs(initialPositionMs, m.duration) / 1000;
     } else {
       pendingSeekRef.current = initialPositionMs;
     }
-  }, [initialPositionMs]);
+    // material.id 入依赖：缓存命中不重挂载时前后两材定位值可能相同（都续播
+    // 自 20s），effect 不重跑会让新材的定位意图丢失（从 0 开始）
+  }, [initialPositionMs, material.id]);
 
   /* ---------- 控制条渐隐策略（需求 6）---------- */
   const armHide = useCallback((delayMs: number) => {
@@ -281,7 +289,7 @@ export function Player({
   }, [pendingSpeak]);
 
   /* ---------- 进度上报（5s 防抖 + pagehide；位图逐句标记，与语流页共用）---------- */
-  useProgressReporter(material.id);
+  useProgressReporter(material.id, mediaRef);
 
   /* ---------- 进度条拖拽 ---------- */
   const duration = durationMs || 1;
@@ -478,7 +486,7 @@ export function Player({
               </button>
               {rateMenu && (
                 <div className="deckle absolute bottom-12 right-0 z-10 flex flex-col rounded-md border bg-background py-1 text-foreground shadow-lg">
-                  {RATES.map((r) => (
+                  {PLAYER_RATES.map((r) => (
                     <button
                       key={r}
                       onClick={() => {

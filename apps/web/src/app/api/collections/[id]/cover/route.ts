@@ -10,7 +10,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import { parseCollectionCover } from '@pinglc/core';
+import { COVER_IMAGE_EXT_MIME, parseCollectionCover } from '@pinglc/core';
 import { and, eq } from 'drizzle-orm';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import { collections } from '@/lib/db/schema';
@@ -18,13 +18,8 @@ import { parseIdParam } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
 
-/** 插画扩展名 → MIME（与上传侧白名单一致） */
-const EXT_MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-};
+/** 插画扩展名 → MIME（core 扩展名↔MIME 对照表单源，与上传侧白名单一致） */
+const EXT_MIME = COVER_IMAGE_EXT_MIME;
 
 /**
  * GET —— 出图（200 全量；无配置/文件缺失 404，路径越界 403）
@@ -53,24 +48,31 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return new Response('非法路径', { status: 403 });
   }
 
-  let size: number;
+  let isFile: boolean;
   try {
-    const st = statSync(filePath);
-    if (!st.isFile()) return new Response('封面插画缺失', { status: 404 });
-    size = st.size;
+    isFile = statSync(filePath).isFile();
   } catch {
     // 小图整读前的 stat 缺失（ENOENT 等）一律按「无插画」404，不区分故障类
     return new Response('封面插画缺失', { status: 404 });
   }
+  if (!isFile) return new Response('封面插画缺失', { status: 404 });
 
   const mime = EXT_MIME[imagePath.split('.').pop() ?? ''] ?? 'application/octet-stream';
-  // ≤5MB 小图同步整读可接受（与上传侧 writeFileSync 同一权衡）
-  const body = readFileSync(filePath);
-  return new Response(body, {
+  // ≤5MB 小图同步整读可接受（与上传侧 writeFileSync 同一权衡）；stat 与 read
+  // 之间文件被删/IO 故障同样按 404 收口（扩展名可信由上传侧魔数闸保证，仍加
+  // nosniff 防中间层改写 Content-Type 后被浏览器嗅探执行）
+  let body: Buffer;
+  try {
+    body = readFileSync(filePath);
+  } catch {
+    return new Response('封面插画缺失', { status: 404 });
+  }
+  return new Response(new Uint8Array(body), {
     status: 200,
     headers: {
       'Content-Type': mime,
-      'Content-Length': String(size),
+      'Content-Length': String(body.length),
+      'X-Content-Type-Options': 'nosniff',
       // 单用户局域网同源场景；客户端以 ?v=<image> 版本化 URL 请求（见文件头注释），可较长时间缓存
       'Cache-Control': 'private, max-age=86400',
     },

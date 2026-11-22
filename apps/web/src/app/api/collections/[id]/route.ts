@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server';
 import { rmSync } from 'node:fs';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
+import { coverVolumeRank, parseCollectionCover, serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
@@ -55,17 +55,34 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   for (const key of ['name', 'description', 'cefrLevel'] as const) {
     if (body[key] !== undefined) patch[key] = body[key];
   }
-  // 封面配置：清洗序列化后落库（非法形态 400 拒绝，不透传原始输入）
+  // 封面配置：清洗序列化后落库。清洗后全字段非法（空串）按非法输入 400 拒绝
+  // 而非静默置 null——字段拼错（如 texture:'linen2'）会把既有封面（插画/印文/
+  // 册序）整条抹掉却仍回 ok；只有显式传 null 才走清空分支
   if (body.cover !== undefined) {
     if (body.cover === null) {
       patch.cover = null;
     } else if (typeof body.cover === 'object' && !Array.isArray(body.cover)) {
-      patch.cover = serializeCollectionCover(body.cover as CollectionCoverConfig) || null;
+      const serialized = serializeCollectionCover(body.cover as CollectionCoverConfig);
+      if (!serialized) return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
+      patch.cover = serialized;
     } else {
       return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
     }
   }
-  if (body.sortOrder !== undefined) patch.sortOrder = Number(body.sortOrder);
+  // sortOrder：显式传入则收整数（Number 强转会放过 [3]/true 之类结构非法值）；
+  // 未传但本次改了封面时，由清洗后卷签重算（与 POST 同源——「册序即真排序」
+  // 不应只靠前端记得传 sortOrder 维持），卷签未编排则保留现值不强行归 0
+  if (body.sortOrder !== undefined) {
+    // 先验 JSON 类型再验整数：裸 Number 强转会放过 true/[3]/null 之类
+    // （null→0 会静默把卷顶到书架最前）
+    if (typeof body.sortOrder !== 'number' || !Number.isInteger(body.sortOrder)) {
+      return NextResponse.json({ error: 'sortOrder 必须是整数' }, { status: 400 });
+    }
+    patch.sortOrder = body.sortOrder;
+  } else if (typeof patch.cover === 'string') {
+    const ranked = coverVolumeRank(parseCollectionCover(patch.cover)?.volume ?? '');
+    if (ranked !== null) patch.sortOrder = ranked;
+  }
   db.update(collections)
     .set(patch)
     .where(and(eq(collections.id, pid), eq(collections.userId, 1)))

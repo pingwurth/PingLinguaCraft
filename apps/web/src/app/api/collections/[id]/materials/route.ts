@@ -72,7 +72,7 @@ export async function GET(
    * cues 作分母（与 /api/home resume 路径同口径）——否则老材料位图口径进度恒 0%，
    * 「已完卷」筛选永远筛不出整篇听过的老材料 */
   const cueCounts = new Map<number, number>();
-  const missingIds = rows.filter((r) => r.sentenceCount == null).map((r) => r.id);
+  const missingIds = rows.filter((r) => r.sentenceCount === null).map((r) => r.id);
   if (missingIds.length > 0) {
     for (const cr of db
       .select({ materialId: cues.materialId, n: sql<number>`count(*)` })
@@ -102,12 +102,17 @@ export async function GET(
       /* timestamp_ms 列运行时为 Date，序列化后即 DTO 契约的 ISO 字符串 */
       createdAt: r.createdAt.toISOString(),
       progress:
-        r.progressUpdatedAt == null
+        r.progressUpdatedAt === null
           ? null
           : {
               maxCueIndex: r.maxCueIndex ?? 0,
               listenedThrough: Boolean(r.listenedThrough),
-              progressPct: progressPct(mask ? countListenedBits(mask, total) : 0, total),
+              /* 无位图存量行按 maxCueIndex+1 估算（与 /api/home 三处同口径，
+                 防卷首缎带 >0% 而该材料行恒「未研读」的跨面漂移） */
+              progressPct: progressPct(
+                mask ? countListenedBits(mask, total) : (r.maxCueIndex == null ? 0 : Math.min(r.maxCueIndex + 1, total)),
+                total,
+              ),
             },
     };
   });

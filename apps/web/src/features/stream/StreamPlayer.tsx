@@ -19,10 +19,9 @@ import { useQuery } from '@tanstack/react-query';
 import { usePlayer } from '@/features/player/store';
 import { useMediaClock } from '@/features/player/useMediaClock';
 import { useProgressReporter } from '@/features/player/useProgressReporter';
+import { PLAYER_RATES, RESUME_SEEK_MIN_MS, clampSeekMs } from '@/features/player/rates';
 import { api, type CueDTO, type StreamQueueItem } from '@/lib/api';
-
-/** 倍速档位（与精读播放器一致） */
-const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+import { fmtClock } from '@/lib/format';
 
 /**
  * 语流播放器
@@ -40,6 +39,9 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
   const pendingSeekMs = useRef(0);
   /** 连播意图：ended 接力时置 true，新材就绪即播（首次装载不自动播，等用户手势） */
   const autoPlayNext = useRef(false);
+  /** 会话内各材料最新播放头（换材时快照存入）：队列是进页快照且不再 refetch，
+   * 点 chip 续播若只看队列 progress 会退回进页时的旧位置（本会话听过的白听） */
+  const sessionPosRef = useRef(new Map<number, number>());
 
   // id 反查下标：当前材料仍 在队列则取新位置（重排跟随）；被移出队列（refetch
   // 缩短/材料删除）则退回上次下标并收敛到有效域；空队列走 hooks 之后的早退
@@ -61,7 +63,7 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
 
   useMediaClock(mediaRef);
   // current 缺位时传 0：上报内部在无 cues 时整体 no-op，不会产生脏写
-  useProgressReporter(current?.id ?? 0);
+  useProgressReporter(current?.id ?? 0, mediaRef);
 
   /* store 订阅（控制条粒度） */
   const isPlaying = usePlayer((s) => s.isPlaying);
@@ -91,14 +93,20 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
     }
   }, [setLoopMode, setPlayRange, queue]);
 
-  /* ---------- 媒体元素属性同步（倍速/音高保持，与精读一致）---------- */
+  /* ---------- 媒体元素属性同步（倍速/音高保持 + 音量/静音，与精读一致）----------
+   * store 是模块单例：精读页调过的音量/静音若不同步过来，语流会以浏览器
+   * 默认满音量突然开嗓 */
+  const volume = usePlayer((s) => s.volume);
+  const muted = usePlayer((s) => s.muted);
   useEffect(() => {
     const m = mediaRef.current;
     if (!m) return;
     m.playbackRate = rate;
+    m.volume = volume;
+    m.muted = muted;
     type MediaWithPitch = HTMLVideoElement & { preservesPitch?: boolean };
     (m as MediaWithPitch).preservesPitch = true;
-  }, [rate, current?.id]);
+  }, [rate, volume, muted, current?.id]);
 
   /* ---------- 换材/进页：重置单例 store 的时钟与激活句 ----------
    * store 跨路由存活，精读页/上一材料残留的播放头与时长会让新材料控制条
@@ -114,8 +122,15 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
     const m = mediaRef.current;
     if (!m) return;
     if (Number.isFinite(m.duration)) usePlayer.getState().setDurationMs(m.duration * 1000);
-    if (pendingSeekMs.current > 500 && Number.isFinite(m.duration)) {
-      m.currentTime = Math.min(pendingSeekMs.current / 1000, Math.max(0, m.duration - 0.5));
+    if (pendingSeekMs.current > RESUME_SEEK_MIN_MS) {
+      const clamped = clampSeekMs(pendingSeekMs.current, m.duration);
+      /* 续播点已贴片尾（整篇听完的材料 lastPositionMs≈时长）：从头重听——
+       * 否则播半秒就 ended 又被连播接力带走，chip 看似跳到别的材料 */
+      if (Number.isFinite(m.duration) && m.duration * 1000 - clamped < 1000) {
+        m.currentTime = 0;
+      } else {
+        m.currentTime = clamped / 1000;
+      }
     }
     // 消费即清：挂起的定位意图不清理的话，「点 chip 记下续播位置 → 立刻再点
     // 同 chip 从头重听」会被随后的 loadedmetadata 拉回旧意图位置
@@ -141,22 +156,28 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
   const switchTo = (i: number, opts?: { fromStart?: boolean; autoPlay?: boolean }) => {
     if (i < 0 || i >= queue.length) return;
     const item = queue[i];
+    /* 离开当前材料前快照其播放头（点当前 chip 重听时也会先存——无害） */
+    if (current) {
+      sessionPosRef.current.set(current.id, usePlayer.getState().currentTimeMs);
+    }
     // 点当前材料自己的 chip = 从头重听：src 不变不会再触发 loadedmetadata，
-    // 定位意图无处消费——直接定位到 0（否则按钮看似失灵）
+    // 定位意图无处消费——直接定位到 0 并续播（否则按钮看似失灵）；
+    // 挂起的旧续播意图一并清掉：元数据迟到的话会把播放头拉回续播位置
     if (item.id === current?.id) {
-      if (opts?.fromStart) {
-        const m = mediaRef.current;
-        if (m) {
-          m.currentTime = 0;
-          void m.play().catch(() => undefined);
-        }
+      const m = mediaRef.current;
+      pendingSeekMs.current = 0;
+      if (m) {
+        m.currentTime = 0;
+        void m.play().catch(() => undefined);
       }
       return;
     }
     setFallbackIndex(i);
     setCurrentId(item.id);
     setActiveCueIndex(-1); // 新材激活句未知，先清（防旧 index 索引错位）
-    pendingSeekMs.current = opts?.fromStart ? 0 : (item.progress?.lastPositionMs ?? 0);
+    pendingSeekMs.current = opts?.fromStart
+      ? 0
+      : (sessionPosRef.current.get(item.id) ?? item.progress?.lastPositionMs ?? 0);
     autoPlayNext.current = opts?.autoPlay ?? false;
   };
 
@@ -258,9 +279,12 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
       {/* ===== 队列 chips（横向滚动，点击换材） ===== */}
       <nav className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
         {queue.map((item, i) => (
+          /* 点 chip 换材：默认接上次研习位置续播（与队列「最近研习优先」语义
+             一致）；点前正在播则接力自动播——否则 src 换载会静默停住，用户
+             还得再点一次播放 */
           <button
             key={item.id}
-            onClick={() => switchTo(i, { fromStart: true })}
+            onClick={() => switchTo(i, { autoPlay: usePlayer.getState().isPlaying })}
             className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs transition-colors ${
               item.id === current?.id
                 ? 'bg-primary text-primary-foreground'
@@ -278,14 +302,30 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
 
       {/* ===== 字幕瀑布（滚动主体；确定视口高度内部滚动，上下边缘渐隐遮罩） ===== */}
       <div
-        className="relative h-[48dvh] overflow-y-auto md:h-[60dvh] [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)]"
-        style={{ scrollbarWidth: 'none' }}
+        className="relative h-[48dvh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:h-[60dvh] [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)]"
       >
         <div className="flex min-h-full flex-col justify-center gap-4 py-10">
-          {cuesQuery.isLoading ? (
-            <p className="text-center text-sm text-muted-foreground">字幕装载中…</p>
-          ) : (
-            windowCues.map((cue) => {
+          {(() => {
+            /* 三态早返回（装载中/失败可重试/瀑布），不嵌套三元 */
+            if (cuesQuery.isLoading) {
+              return <p className="text-center text-sm text-muted-foreground">字幕装载中…</p>;
+            }
+            if (cuesQuery.isError) {
+              /* 装载失败可见可重试：静默空白会让用户以为该材料没有字幕 */
+              return (
+                <div className="flex flex-col items-center gap-2 py-8 text-center">
+                  <p className="text-sm text-muted-foreground">字幕装载失败</p>
+                  <button
+                    type="button"
+                    onClick={() => void cuesQuery.refetch()}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    重试
+                  </button>
+                </div>
+              );
+            }
+            return windowCues.map((cue) => {
               const active = cue.index === activeCueIndex;
               const past = activeCueIndex >= 0 && cue.index < activeCueIndex;
               return (
@@ -313,8 +353,8 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
                   )}
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
       </div>
 
@@ -322,12 +362,12 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
       <div className="mt-3 space-y-2">
         {/* 进度条 + 时间 */}
         <div className="flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
-          <span>{fmtTime(currentTimeMs)}</span>
+          <span>{fmtClock(currentTimeMs)}</span>
           {/* 可点击进度条：当前材料内跳转 */}
           <div onClick={onScrubClick} className="h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full bg-border">
             <div className="h-full bg-primary transition-all duration-300" style={{ width: `${(currentTimeMs / duration) * 100}%` }} />
           </div>
-          <span>{fmtTime(durationMs)}</span>
+          <span>{fmtClock(durationMs)}</span>
         </div>
         {/* 按钮组 */}
         <div className="flex items-center justify-center gap-2">
@@ -347,7 +387,7 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
           >
             <span className="material-symbols-outlined text-3xl">{isPlaying ? 'pause' : 'play_arrow'}</span>
           </button>
-          {/* 下一句（队尾且当前材播完：禁用） */}
+          {/* 下一句（队尾时钳到末句重播） */}
           <button
             onClick={() => seekSentence(1)}
             aria-label="下一句"
@@ -366,7 +406,7 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
             {/* 倍速档位弹出层 */}
             {rateMenu && (
               <div className="absolute bottom-10 right-0 z-10 w-20 overflow-hidden rounded-md border bg-card shadow-sm">
-                {RATES.map((r) => (
+                {PLAYER_RATES.map((r) => (
                   <button
                     key={r}
                     onClick={() => {
@@ -391,17 +431,4 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
       </div>
     </div>
   );
-}
-
-/**
- * 毫秒 → m:ss / h:mm:ss 文本
- * @param ms 毫秒数
- */
-function fmtTime(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  const two = (n: number) => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
 }

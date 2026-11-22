@@ -94,7 +94,6 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
       router.replace('/library');
     },
     // 删除失败必须可见（静默时用户以为已删，重进才知卷还在；确认弹窗保持打开可取消）
-    onError: (err) => alert(`删除失败：${err.message}`),
   });
 
   /* 删除确认弹窗开关（卷详情未载入前不允许开——级联后果文案需卷名与篇数） */
@@ -188,6 +187,11 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
             <div className="mt-4 flex max-h-72 flex-col gap-1 overflow-y-auto">
               {colsQuery.isLoading ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">装载中…</p>
+              ) : colsQuery.isError ? (
+                /* 装载失败 ≠ 空库：如实报错，否则用户被误导去藏经阁立卷 */
+                <p className="py-6 text-center text-sm text-destructive">
+                  目标卷列表装载失败：{colsQuery.error.message}
+                </p>
               ) : moveTargets.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
                   库中暂无其他卷，先去藏经阁立卷。
@@ -248,14 +252,18 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
       {/* 删除确认弹窗（纸墨风共享 ConfirmDialog，替代原生 confirm）：与藏经阁删除
           入口同一弹窗同一文案口径；成功后跳回藏经阁，失败保持打开可取消/重试 */}
       <ConfirmDialog
-        open={confirmOpen && col != null}
+        open={confirmOpen && col !== undefined}
         title="删除材料集"
         icon="delete_forever"
         confirmLabel="确认删除"
         destructive
         pending={remove.isPending}
+        error={remove.isError ? remove.error.message : null}
         onConfirm={() => remove.mutate()}
-        onClose={() => setConfirmOpen(false)}
+        onClose={() => {
+          setConfirmOpen(false);
+          remove.reset();
+        }}
         body={
           <>
             <p>

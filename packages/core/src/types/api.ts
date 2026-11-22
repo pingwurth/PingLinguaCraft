@@ -33,14 +33,23 @@ export interface MaterialListItem {
   uniqueWordCount: number | null;
   createdAt: string;
   /** 学习进度（位图口径；无进度记录时为 null——从未研习。web 端集卷列表/首页今研视图消费） */
-  progress: {
-    /** 已听到的最大句序号（0 起） */
-    maxCueIndex: number;
-    /** 是否已整篇听过 */
-    listenedThrough: boolean;
-    /** 研读进度百分比 0~100（实际听过句数/总句数，跳句不计） */
-    progressPct: number;
-  } | null;
+  progress: MaterialProgress | null;
+}
+
+/** 材料位图口径进度（集卷列表/首页今研逐篇进度条消费） */
+export interface MaterialProgress {
+  /** 已听到的最大句序号（0 起） */
+  maxCueIndex: number;
+  /** 是否已整篇听过 */
+  listenedThrough: boolean;
+  /** 研读进度百分比 0~100（实际听过句数/总句数，跳句不计） */
+  progressPct: number;
+}
+
+/** 语流续播口径进度（/stream 队列项；只带续播所需字段） */
+export interface StreamProgress {
+  lastPositionMs: number;
+  listenedThrough: boolean;
 }
 
 /** 材料（详情形态） */
@@ -90,7 +99,7 @@ export interface StreamQueueItem {
   mediaDurationMs: number | null;
   sentenceCount: number | null;
   /** 学习进度（无进度记录时为 null：从未研习过） */
-  progress: { lastPositionMs: number; listenedThrough: boolean } | null;
+  progress: StreamProgress | null;
 }
 
 /** 任务（轮询形态；type 保持宽松 string——管线任务类型在演进） */

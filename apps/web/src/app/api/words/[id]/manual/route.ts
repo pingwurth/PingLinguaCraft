@@ -21,7 +21,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (wordId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const db = getDb();
 
-  // 词条全字段（音标与原典溯源都在 words 行上）
+  // 词条字段（音标在 words 行上；只取客户端契约声明的字段，未消费的
+  // originMaterialId/lastReviewedAt 不随聚合下发，防响应与页面契约静默漂移）
   const word = db
     .select({
       id: words.id,
@@ -32,20 +33,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       status: words.status,
       noteMd: words.noteMd,
       originCueId: words.originCueId,
-      originMaterialId: words.originMaterialId,
-      lastReviewedAt: words.lastReviewedAt,
     })
     .from(words)
     .where(eq(words.id, wordId))
     .all()[0];
   if (!word) return NextResponse.json({ error: '单词不存在' }, { status: 404 });
 
-  // SRS 轮转卡（FSRS：复习次数 / 稳定性 / 下次到期）
+  // SRS 轮转卡（FSRS：复习次数 / 稳定性 / 下次到期；difficulty 客户端未渲染不下发）
   const srs = db
     .select({
       reps: srsCards.reps,
       stability: srsCards.stability,
-      difficulty: srsCards.difficulty,
       dueMs: srsCards.dueMs,
     })
     .from(srsCards)
@@ -62,7 +60,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     materialId: number;
     materialTitle: string;
   } | null = null;
-  if (word.originCueId != null) {
+  if (word.originCueId !== null) {
     const row = db
       .select({
         id: cues.id,

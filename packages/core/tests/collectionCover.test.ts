@@ -82,6 +82,22 @@ describe('serializeCollectionCover（严出：清洗 + 固定键序）', () => {
     const config = { texture: COVER_TEXTURES[3]!.id, image: 'covers/r-1.jpg', seal: '悟', volume: '别卷' };
     expect(parseCollectionCover(serializeCollectionCover(config))).toEqual(config);
   });
+
+  it('带引号的 JSON 字符串旧值回落旧单值契约', () => {
+    expect(parseCollectionCover('"linen"')).toEqual({ texture: 'linen' });
+    expect(parseCollectionCover('"covers/x.png"')).toEqual({ image: 'covers/x.png' });
+    expect(parseCollectionCover('"乱写的"')).toBeNull();
+  });
+
+  it('texture/image 先去空白再白名单（" linen " 不整项丢弃）', () => {
+    expect(parseCollectionCover('{"texture":" linen "}')).toEqual({ texture: 'linen' });
+    expect(parseCollectionCover('{"image":" covers/x.png "}')).toEqual({ image: 'covers/x.png' });
+  });
+
+  it('字段限长按码点计（代理对单字不算超长）', () => {
+    // U+2A6A5（扩展 B 汉字）UTF-16 占 2 码元：按码点计是 1 字，应被接受
+    expect(parseCollectionCover('{"seal":"\ud869\udea5"}')).toEqual({ seal: '\ud869\udea5' });
+  });
 });
 
 describe('coverVolumeRank（册序 → sortOrder 建议值）', () => {

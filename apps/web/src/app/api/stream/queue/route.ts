@@ -38,7 +38,7 @@ export async function GET() {
       learningProgress,
       and(eq(learningProgress.materialId, materials.id), eq(learningProgress.userId, 1))
     )
-    .where(and(eq(materials.subtitleStatus, 'ready'), isNull(materials.deletedAt)))
+    .where(and(eq(materials.userId, 1), eq(materials.subtitleStatus, 'ready'), isNull(materials.deletedAt)))
     .orderBy(desc(sql`coalesce(${learningProgress.updatedAt}, 0)`), desc(materials.createdAt))
     .all();
 

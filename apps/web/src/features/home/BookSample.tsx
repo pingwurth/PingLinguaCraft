@@ -17,12 +17,14 @@ import type { ReactNode } from 'react';
 import type { CoverTextureId } from '@pinglc/core';
 
 /**
- * 装帧质地 id → 视觉类（web 端呈现层映射；id 白名单在 core COVER_TEXTURES 单源。
+ * 装帧质地 id → 视觉类（web 端呈现层映射；id 白名单在 core COVER_TEXTURES 单源，
+ * 键类型收窄为 CoverTextureId——core 加第五种质体会在此编译报缺键，消费端
+ * 的无条件索引（COVER_TEXTURE_BG[texture].book）不会运行时炸 undefined。
  * 类名必须字面量出现在此，Tailwind 才能提取——不可拼接生成。
  * ink: 'light' 标记深色底（深黛靛蓝），书影文字需换白系前景反色）
  */
 export const COVER_TEXTURE_BG: Record<
-  string,
+  CoverTextureId,
   { book: string; swatch: string; ink?: 'light' }
 > = {
   linen: { book: 'bg-surface-container-lowest', swatch: 'bg-surface-container-high' },
@@ -96,12 +98,12 @@ export function BookInner({
       {/* 左侧装订线（四枚装线点） */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 z-20 flex w-6 flex-col items-center justify-between bg-black/10 py-4"
+        className="pointer-events-none absolute inset-y-0 left-0 z-20 flex w-6 flex-col items-center justify-between bg-on-surface/10 py-4"
       >
-        <span className="h-3 w-1 rounded-full bg-white/80 shadow-sm" />
-        <span className="h-3 w-1 rounded-full bg-white/80 shadow-sm" />
-        <span className="h-3 w-1 rounded-full bg-white/80 shadow-sm" />
-        <span className="h-3 w-1 rounded-full bg-white/80 shadow-sm" />
+        <span className="h-3 w-1 rounded-full bg-surface-container-lowest/80 shadow-sm" />
+        <span className="h-3 w-1 rounded-full bg-surface-container-lowest/80 shadow-sm" />
+        <span className="h-3 w-1 rounded-full bg-surface-container-lowest/80 shadow-sm" />
+        <span className="h-3 w-1 rounded-full bg-surface-container-lowest/80 shadow-sm" />
       </div>
       {/* 卷签行：册序徽签 + 微字坊号 */}
       <div className="relative z-10 flex items-center justify-between gap-1 pl-6">
@@ -112,7 +114,7 @@ export function BookInner({
         )}
         <span
           className={`shrink-0 font-mono text-[8px] tracking-widest ${
-            inkLight ? 'text-white/70' : 'text-on-surface-variant/70'
+            inkLight ? 'text-on-shell-seal/70' : 'text-on-surface-variant/70'
           }`}
         >
           LINGUA·CRAFT
@@ -134,7 +136,7 @@ export function BookInner({
         <div className="flex min-w-0 flex-col">
           <span
             className={`line-clamp-2 font-serif text-lg font-bold leading-tight ${
-              inkLight ? 'text-white' : 'text-on-surface'
+              inkLight ? 'text-on-shell-seal' : 'text-on-surface'
             }`}
           >
             {name.trim() || '未命名卷帙'}
@@ -142,7 +144,7 @@ export function BookInner({
           {description?.trim() && (
             <span
               className={`mt-0.5 line-clamp-1 text-[10px] italic ${
-                inkLight ? 'text-white/70' : 'text-on-surface-variant'
+                inkLight ? 'text-on-shell-seal/70' : 'text-on-surface-variant'
               }`}
             >
               {description.trim()}
@@ -152,7 +154,7 @@ export function BookInner({
           {materialCount !== undefined && (
             <span
               className={`mt-1 text-[10px] ${
-                inkLight ? 'text-white/70' : 'text-on-surface-variant'
+                inkLight ? 'text-on-shell-seal/70' : 'text-on-surface-variant'
               }`}
             >
               {materialCount} 篇材料 · {progressPct != null && progressPct > 0 ? `已研 ${progressPct}%` : '未开卷'}
@@ -164,7 +166,7 @@ export function BookInner({
           独立于题名块：my-auto 悬于插画窗与脚注间的余量内，保持原版心落印位 */}
       {seal && (
         <div className="relative z-10 my-auto flex justify-end">
-          <span className="flex size-8 shrink-0 rotate-[-2deg] flex-col items-center justify-center rounded-sm bg-shell-seal text-white shadow-sm">
+          <span className="flex size-8 shrink-0 rotate-[-2deg] flex-col items-center justify-center rounded-sm bg-shell-seal text-on-shell-seal shadow-sm">
             <span className="font-serif text-sm leading-none">{seal}</span>
             <span className="scale-75 text-[6px] tracking-widest opacity-90">精校</span>
           </span>
@@ -174,7 +176,7 @@ export function BookInner({
           脚注贴底；质地名不在书面展示——质地由底色自明） */}
       <div
         className={`relative z-10 mt-auto flex items-center gap-1 pl-6 pt-1 text-[10px] ${
-          inkLight ? 'text-white/70' : 'text-on-surface-variant'
+          inkLight ? 'text-on-shell-seal/70' : 'text-on-surface-variant'
         }`}
       >
         <span className="truncate">文墨典藏 · {cefr ?? '未设梯级'}</span>
@@ -183,8 +185,10 @@ export function BookInner({
   );
 }
 
-/** 案头试样属性（弹窗装帧成相专用；书影内容属性 + 试样垫附加类名） */
-export interface BookSampleProps extends BookInnerProps {
+/** 案头试样属性（弹窗装帧成相专用；书影内容属性 + 试样垫附加类名。
+ *  排除 materialCount/progressPct：试样台永远无卷内统计，类型层面封死
+ *  「调用方照类型传值被静默丢弃」的口子） */
+export interface BookSampleProps extends Omit<BookInnerProps, 'materialCount' | 'progressPct'> {
   /** 试样垫附加类名（可空） */
   className?: string;
 }

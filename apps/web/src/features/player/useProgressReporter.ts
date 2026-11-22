@@ -19,8 +19,15 @@ import { usePlayer } from './store';
 /**
  * 启动进度上报（挂载期间持续，随 materialId 重建）
  * @param materialId 当前材料 id（切换即重建上报上下文）
+ * @param mediaRef   媒体元素 ref（可选；仅 pagehide 终报取实时位置用——后台
+ *                   标签页 rAF 停摆而音频继续播，快照会停在转入后台那一刻，
+ *                   把续播书签倒回几分钟前。卸载终报不读它：ref 已被 React
+ *                   置空，换材时元素 src 也已切换，读了必是脏值）
  */
-export function useProgressReporter(materialId: number): void {
+export function useProgressReporter(
+  materialId: number,
+  mediaRef?: React.RefObject<HTMLVideoElement | null>,
+): void {
   /** 已听句集合（材料内累积；materialId 重建时清零） */
   const listenedRef = useRef<Set<number>>(new Set());
   /** 持续快照：最近位置（毫秒）与高水位句号（终报兜底用，见文件头注释） */
@@ -38,7 +45,7 @@ export function useProgressReporter(materialId: number): void {
     // 秒进秒出）时终报会把 positionMs=0/maxCueIndex=-1 打给服务端无条件覆盖，
     // 抹掉既有续研位置——只在真的听过/走表后才终报
     let touched = false;
-    const report = (final = false) => {
+    const report = (final = false, livePositionMs?: number) => {
       const s = usePlayer.getState();
       if (s.cues.length === 0) return;
       const now = Date.now();
@@ -58,7 +65,7 @@ export function useProgressReporter(materialId: number): void {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lastPositionMs: snapRef.current.positionMs,
+          lastPositionMs: livePositionMs ?? snapRef.current.positionMs,
           maxCueIndex: snapRef.current.maxCueIndex,
           listenedMask: mask,
           listenedThrough: listenedRef.current.size >= total,
@@ -80,7 +87,10 @@ export function useProgressReporter(materialId: number): void {
       if (Date.now() - lastReport >= 5000) report();
     });
     const onHide = () => {
-      if (touched) report(true);
+      if (!touched) return;
+      // 后台收听场景 rAF 停摆：终报位置优先取媒体元素实时值（见 hook 头注释）
+      const live = mediaRef?.current;
+      report(true, live ? live.currentTime * 1000 : undefined);
     };
     window.addEventListener('pagehide', onHide);
     return () => {
@@ -88,5 +98,5 @@ export function useProgressReporter(materialId: number): void {
       window.removeEventListener('pagehide', onHide);
       if (touched) report(true);
     };
-  }, [materialId]);
+  }, [materialId, mediaRef]);
 }

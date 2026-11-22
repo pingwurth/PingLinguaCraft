@@ -836,8 +836,8 @@ export default function SettingsPage() {
         <p className="mt-1 text-sm text-ochre">AI 引擎与云端档案 · 数据都在本机 ~/.pinglc/</p>
       </header>
 
-      {/* 学习资产入口：句藏（底部导航 5-tab 固定，收藏句从「我的」进入；
-          /favorites 的导航高亮也归「我的」，与此处入口一致） */}
+      {/* 学习资产入口：句藏（导航壳未给 /settings、/favorites 设条目——本页与
+          收藏页都不参与侧栏/底栏高亮，收藏句唯一入口在此，删改入口须同步） */}
       <section className="deckle mb-6 rounded-md border bg-card p-2">
         <Link
           href="/favorites"

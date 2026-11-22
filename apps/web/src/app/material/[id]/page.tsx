@@ -38,8 +38,9 @@ export default function MaterialPage({
   const { id } = use(params);
   const sp = use(searchParams);
   const materialId = Number(id);
-  /* 深链定位：?t= 毫秒（优先于续播位置——外部入口明确指定了落点） */
-  const deepLinkMs = Number(Array.isArray(sp.t) ? sp.t[0] : sp.t) || 0;
+  /* 深链定位：?t= 毫秒（优先于续播位置——外部入口明确指定了落点；
+     越界上界由 Player 的 clampSeekMs 统一夹取） */
+  const rawDeepLinkMs = Number(Array.isArray(sp.t) ? sp.t[0] : sp.t) || 0;
   const [tab, setTab] = useState<TabKey>('current');
   // 激活句订阅（仅取 activeCueIndex，粒度最小化）
   const activeCueIndex = usePlayer((s) => s.activeCueIndex);
@@ -97,6 +98,10 @@ export default function MaterialPage({
   const activeCue = activeCueIndex >= 0 ? (cues[activeCueIndex] ?? null) : null;
   const activeJob = jobs.data?.jobs.find((j) => j.status === 'queued' || j.status === 'running');
 
+  /* 定位值：深链优先，无深链回落续播位置（上界夹取在 Player 内统一处理，
+   * 两条路径共用 clampSeekMs 助手，此处不再各自夹） */
+  const initialPositionMs = rawDeepLinkMs > 0 ? rawDeepLinkMs : (progress?.lastPositionMs ?? 0);
+
   return (
     /* 播放页容器：移动单列 / 桌面左右分栏 */
     <div className="mx-auto w-full max-w-6xl px-3 pb-8 pt-3 md:px-8 md:pt-6">
@@ -124,7 +129,7 @@ export default function MaterialPage({
         <Player
           material={material}
           cues={cues}
-          initialPositionMs={deepLinkMs > 0 ? deepLinkMs : (progress?.lastPositionMs ?? 0)}
+          initialPositionMs={initialPositionMs}
         />
       </div>
 

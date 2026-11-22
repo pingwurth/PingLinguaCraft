@@ -7,6 +7,8 @@
  * 词高亮 + 去原声）→ 词源构架（复用深学卡）→ 辨析矩阵（AI 近义对比）→
  * 拼字演练（前端逐字母）→ 仿写演练（AI 点拨 + 收入笔记）。
  * 词序 = 复习队列到期序（手账「N / 42 词」意象）；词藏页可指定词进入。
+ * 五张卡片均以 key={wordId} 渲染：换词即重挂载，草稿/mutation 状态天然
+ * 归零（不靠 reset effect 补救，也防上一词的生成/点拨状态漏进新词）。
  */
 
 import { use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -16,6 +18,10 @@ import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
 import { waitForJob } from '@/lib/jobs/wait';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
+import { type Discriminate, type WriteCheck } from '@/lib/manualCard';
+import { WRITE_TEXT_MAX } from '@/lib/limits';
+import type { DeepCard } from '@/lib/deepCard';
+import { escapeRegExp } from '@/lib/regexp';
 
 /** 手册聚合数据形态（GET /api/words/[id]/manual） */
 interface ManualData {
@@ -28,7 +34,7 @@ interface ManualData {
     status: string;
     noteMd: string | null;
   };
-  srs: { reps: number; stability: number; difficulty: number; dueMs: string } | null;
+  srs: { reps: number; stability: number; dueMs: string } | null;
   cue: {
     id: number;
     textEn: string;
@@ -40,20 +46,11 @@ interface ManualData {
   } | null;
 }
 
-/** 深学卡数据形态（GET /api/words/[id]/deep） */
-interface DeepData {
-  etymology: {
-    origin: string;
-    roots: Array<{ part: string; meaning: string; lang?: string }>;
-    related: Array<{ word: string; relation: string }>;
-  } | null;
-  frames: Array<{ pattern: string; tip?: string }> | null;
-}
+/** 深学卡数据形态（GET /api/words/[id]/deep；词源形态取自服务端 schema 单源） */
+type DeepData = { etymology: Omit<DeepCard, 'frames'> | null; frames: DeepCard['frames'] | null };
 
-/** 辨析矩阵数据形态（GET /api/words/[id]/discriminate） */
-interface MatrixData {
-  matrix: { summary: string; rivals: Array<{ word: string; focus: string; nuance: string }> } | null;
-}
+/** 辨析矩阵数据形态（GET /api/words/[id]/discriminate；矩阵形态取自服务端 schema 单源） */
+type MatrixData = { matrix: Discriminate | null };
 
 /** 复习队列形态（导航与统计；只声明本页用到的字段） */
 interface QueueResp {
@@ -61,37 +58,36 @@ interface QueueResp {
   stats: { dueCount: number };
 }
 
-/** 仿写点拨结果形态 */
-interface WriteCheckResult {
-  check: {
-    overall: string;
-    points: Array<{ kind: 'good' | 'issue'; text: string }>;
-    collocations: string[];
-  };
-}
+/** 仿写点拨结果形态（响应壳；check 形态取自服务端 schema 单源） */
+type WriteCheckResult = { check: WriteCheck };
 
 /** 错误信息提取（网络异常与服务端 { error } 统一为可展示文本） */
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : '生成失败';
 }
 
-/** 正则元字符转义（词高亮用） */
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 /**
- * 单次朗读 hook：新播放前中断上一段，避免多次点击音频叠加；卸载时停掉
- * 在播朗读（否则离开手册页后音频继续出声且无控件可停）
+ * 单次朗读 hook：新播放前中断上一段；卸载时停掉在播朗读并让未到的异步
+ * 结果过期（代际计数：连点两次只有最后一次出声；卸载后到达的 URL 直接
+ * 丢弃——否则会在页面已离开后创建新 Audio 继续出声且无控件可停）
  * @returns 朗读函数（文本 → TTS 播放）
  */
 function useTts() {
   const ref = useRef<HTMLAudioElement | null>(null);
-  /* 卸载清理：暂停残留音频 */
-  useEffect(() => () => ref.current?.pause(), []);
+  const genRef = useRef(0);
+  useEffect(() => {
+    /* 卸载清理（return 的才是 cleanup——写在函数体里会变成挂载时执行）：
+       代际 +1 使在途请求全部过期，并停掉在播音频 */
+    return () => {
+      genRef.current += 1;
+      ref.current?.pause();
+    };
+  }, []);
   return useCallback((text: string) => {
+    const gen = ++genRef.current;
     ref.current?.pause();
     void ttsAudioUrl(text).then((url) => {
+      if (gen !== genRef.current) return;
       const a = new Audio(url);
       ref.current = a;
       void a.play().catch(() => {});
@@ -139,6 +135,45 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
+ * 词产物生成 hook（词源卡/辨析矩阵卡同构抽一）：GET 查询 + POST（force 由
+ * 「已有产物」谓词在提交时求值）→ waitForJob → refetch。产物契约只有一份，
+ * 再添词产物卡不复制第四遍生成回路
+ * @param wordId  单词 id
+ * @param kind    产物 API 路径段（同时作 queryKey 前缀：'deep' / 'discriminate'）
+ * @param hasData 已有产物判定谓词（入参为查询缓存值；按钮文案同判据复用）
+ */
+function useArtifactGeneration<T>(
+  wordId: number,
+  kind: string,
+  hasData: (data: T | undefined) => boolean,
+) {
+  const query = useQuery({
+    queryKey: [kind, wordId],
+    queryFn: () => api<T>(`/api/words/${wordId}/${kind}`),
+  });
+  const gen = useMutation({
+    mutationFn: async () => {
+      // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成
+      const r = await api<{ cached?: boolean; jobId?: string }>(`/api/words/${wordId}/${kind}`, {
+        method: 'POST',
+        body: JSON.stringify({ force: hasData(query.data) }),
+      });
+      if (r.cached || !r.jobId) return;
+      await waitForJob(r.jobId);
+    },
+    onSuccess: () => void query.refetch(),
+  });
+  return { query, gen };
+}
+
+/** 生成键文案（顺序判断，不嵌套三元） */
+function genLabel(hasData: boolean, pending: boolean): string {
+  if (hasData) return '重新生成';
+  if (pending) return '生成中…';
+  return '生成';
+}
+
+/**
  * 研习手册页组件
  * @param props.searchParams 查询参数（wordId：从词藏页指定词进入）
  */
@@ -170,7 +205,7 @@ export default function ManualPage({
   const manual = useQuery({
     queryKey: ['manual', wordId],
     queryFn: () => api<ManualData>(`/api/words/${wordId}/manual`),
-    enabled: wordId != null,
+    enabled: wordId !== null,
   });
 
   /* 队列内序号（手账「第 N / M 词」；不在队列中显示 — ） */
@@ -219,22 +254,8 @@ export default function ManualPage({
       </header>
 
       {wordId === null ? (
-        /* 空态：全库无词可研 */
-        queue.isSuccess && items.length === 0 ? (
-          <div className="deckle rounded-md border border-dashed bg-card/50 py-14 text-center">
-            <p className="font-serif">暂无到期之词</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              词藏空空如也 —— 去播放页点词收录，或到{' '}
-              <Link href="/review" className="underline underline-offset-2 hover:text-primary">
-                智能复习
-              </Link>{' '}
-              轮转牢记
-            </p>
-          </div>
-        ) : (
-          /* 队列装载中 */
-          <p className="py-16 text-center text-sm text-muted-foreground">装载中…</p>
-        )
+        /* 待定词占位（队列失败/空库/装载中三态在组件内早返回） */
+        <QueuePlaceholder queueError={queue.isError ? queue.error : null} queueReady={queue.isSuccess} empty={items.length === 0} />
       ) : manual.isLoading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">装载中…</p>
       ) : manual.isError || !manual.data ? (
@@ -283,25 +304,23 @@ export default function ManualPage({
             </p>
           </section>
 
-          {/* ===== 原典语境卡：收录句对 + 词高亮 + 去原声 ===== */}
-          <ContextCueCard data={manual.data} speak={speak} />
-
-          {/* ===== 词源与构架卡（复用深学卡数据与生成链路） ===== */}
-          <EtymologyCard wordId={wordId} example={manual.data.cue?.textEn ?? null} />
-
-          {/* ===== 辨析矩阵卡：近义词侧重对比（AI） ===== */}
-          <DiscriminateCard wordId={wordId} example={manual.data.cue?.textEn ?? null} />
-
-          {/* ===== 拼字演练卡：逐字母默写 ===== */}
+          {/* ===== 语境/生成/演练五卡（key=wordId：换词整卡重挂，状态天然归零） ===== */}
+          <ContextCueCard key={`cue-${wordId}`} data={manual.data} speak={speak} />
+          <EtymologyCard key={`deep-${wordId}`} wordId={wordId} example={manual.data.cue?.textEn ?? null} />
+          <DiscriminateCard key={`disc-${wordId}`} wordId={wordId} example={manual.data.cue?.textEn ?? null} />
           <SpellDrillCard
+            key={`spell-${wordId}`}
             target={manual.data.word.displayForm}
             sentence={manual.data.cue?.textEn ?? null}
             lemma={manual.data.word.lemma}
             speak={speak}
           />
-
-          {/* ===== 仿写演练卡：短句仿写 + AI 点拨 ===== */}
-          <WriteCard wordId={wordId} displayForm={manual.data.word.displayForm} noteMd={manual.data.word.noteMd} />
+          <WriteCard
+            key={`write-${wordId}`}
+            wordId={wordId}
+            displayForm={manual.data.word.displayForm}
+            noteMd={manual.data.word.noteMd}
+          />
 
           {/* ===== 我的笔记（只读展示；编辑回词藏页） ===== */}
           {manual.data.word.noteMd && (
@@ -371,27 +390,15 @@ function ContextCueCard({ data, speak }: { data: ManualData; speak: (t: string) 
  * ------------------------------------------------------------------------- */
 
 /**
- * 词源与构架卡：深学卡数据的简版渲染 + 生成/重生成
+ * 词源与构架卡：深学卡数据的简版渲染 + 生成/重生成（生成回路走
+ * useArtifactGeneration 共享 hook）
  * @param props.wordId 单词 id
  * @param props.example 原典例句（无语境时提示词可参考）
  */
 function EtymologyCard({ wordId, example }: { wordId: number; example: string | null }) {
-  const deep = useQuery({
-    queryKey: ['deep', wordId],
-    queryFn: () => api<DeepData>(`/api/words/${wordId}/deep`),
-  });
-  const gen = useMutation({
-    mutationFn: async () => {
-      const r = await api<{ cached?: boolean; jobId?: string }>(`/api/words/${wordId}/deep`, {
-        method: 'POST',
-        // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成
-        body: JSON.stringify({ force: Boolean(deep.data?.etymology && deep.data?.frames) }),
-      });
-      if (r.cached || !r.jobId) return;
-      await waitForJob(r.jobId);
-    },
-    onSuccess: () => void deep.refetch(),
-  });
+  /* 已有产物判定（force 与按钮文案同判据） */
+  const hasDeep = (d: DeepData | undefined) => Boolean(d?.etymology && d?.frames);
+  const { query: deep, gen } = useArtifactGeneration<DeepData>(wordId, 'deep', hasDeep);
 
   return (
     /* 词源卡容器 */
@@ -405,14 +412,26 @@ function EtymologyCard({ wordId, example }: { wordId: number; example: string | 
           className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary disabled:opacity-50"
         >
           <span className="material-symbols-outlined text-sm">account_tree</span>
-          {deep.data?.etymology && deep.data?.frames ? '重新生成' : gen.isPending ? '生成中…' : '生成'}
+          {genLabel(hasDeep(deep.data), gen.isPending)}
         </button>
       </div>
       {/* 生成失败提示 */}
       {gen.isError && <p className="mb-1.5 text-xs text-destructive">生成失败：{errMsg(gen.error)}</p>}
-      {deep.isLoading ? (
-        <p className="text-xs text-muted-foreground">装载中…</p>
-      ) : deep.data?.etymology ? (
+      {(() => {
+        /* 卡体四态早返回（装载中/失败/词源/空态），不嵌套三元 */
+        if (deep.isLoading) return <p className="text-xs text-muted-foreground">装载中…</p>;
+        if (deep.isError) {
+          /* 查询失败 ≠ 尚未生成：如实报错，否则用户会去点一次注定无功的生成 */
+          return <p className="text-xs text-destructive">深学数据装载失败：{errMsg(deep.error)}</p>;
+        }
+        if (!deep.data?.etymology) {
+          return (
+            <p className="text-xs text-muted-foreground">
+              尚未生成（需在设置页配置 LLM 档案{example ? '' : '；无原典例句，生成质量可能略降'}）
+            </p>
+          );
+        }
+        return (
         <div className="rounded-md bg-muted/40 p-3 text-xs">
           {/* 词源概述 */}
           <p className="text-sm">{deep.data.etymology.origin}</p>
@@ -451,11 +470,8 @@ function EtymologyCard({ wordId, example }: { wordId: number; example: string | 
             </div>
           )}
         </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          尚未生成（需在设置页配置 LLM 档案{example ? '' : '；无原典例句，生成质量可能略降'}）
-        </p>
-      )}
+        );
+      })()}
     </section>
   );
 }
@@ -465,27 +481,15 @@ function EtymologyCard({ wordId, example }: { wordId: number; example: string | 
  * ------------------------------------------------------------------------- */
 
 /**
- * 辨析矩阵卡：近义词侧重对比（AI 生成，kind='discriminate' 产物）
+ * 辨析矩阵卡：近义词侧重对比（AI 生成，kind='discriminate' 产物；生成回路
+ * 走 useArtifactGeneration 共享 hook）
  * @param props.wordId 单词 id
  * @param props.example 原典例句（空态提示用）
  */
 function DiscriminateCard({ wordId, example }: { wordId: number; example: string | null }) {
-  const matrix = useQuery({
-    queryKey: ['discriminate', wordId],
-    queryFn: () => api<MatrixData>(`/api/words/${wordId}/discriminate`),
-  });
-  const gen = useMutation({
-    mutationFn: async () => {
-      const r = await api<{ cached?: boolean; jobId?: string }>(`/api/words/${wordId}/discriminate`, {
-        method: 'POST',
-        // force 与已有数据绑定（同深学卡语义）
-        body: JSON.stringify({ force: Boolean(matrix.data?.matrix) }),
-      });
-      if (r.cached || !r.jobId) return;
-      await waitForJob(r.jobId);
-    },
-    onSuccess: () => void matrix.refetch(),
-  });
+  /* 已有产物判定（force 与按钮文案同判据） */
+  const hasMatrix = (d: MatrixData | undefined) => Boolean(d?.matrix);
+  const { query: matrix, gen } = useArtifactGeneration<MatrixData>(wordId, 'discriminate', hasMatrix);
 
   return (
     /* 辨析卡容器 */
@@ -499,14 +503,26 @@ function DiscriminateCard({ wordId, example }: { wordId: number; example: string
           className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary disabled:opacity-50"
         >
           <span className="material-symbols-outlined text-sm">psychology_alt</span>
-          {matrix.data?.matrix ? '重新生成' : gen.isPending ? '生成中…' : '生成'}
+          {genLabel(hasMatrix(matrix.data), gen.isPending)}
         </button>
       </div>
       {/* 生成失败提示 */}
       {gen.isError && <p className="mb-1.5 text-xs text-destructive">生成失败：{errMsg(gen.error)}</p>}
-      {matrix.isLoading ? (
-        <p className="text-xs text-muted-foreground">装载中…</p>
-      ) : matrix.data?.matrix ? (
+      {(() => {
+        /* 卡体四态早返回（装载中/失败/矩阵/空态），不嵌套三元 */
+        if (matrix.isLoading) return <p className="text-xs text-muted-foreground">装载中…</p>;
+        if (matrix.isError) {
+          /* 查询失败 ≠ 尚未生成：如实报错，否则用户会去点一次注定无功的生成 */
+          return <p className="text-xs text-destructive">辨析矩阵装载失败：{errMsg(matrix.error)}</p>;
+        }
+        if (!matrix.data?.matrix) {
+          return (
+            <p className="text-xs text-muted-foreground">
+              尚未生成（需在设置页配置 LLM 档案{example ? '' : '；无原典例句，生成质量可能略降'}）
+            </p>
+          );
+        }
+        return (
         <div>
           {/* 一句意象总评 */}
           <p className="font-serif text-sm italic text-ochre">意象：{matrix.data.matrix.summary}</p>
@@ -521,11 +537,8 @@ function DiscriminateCard({ wordId, example }: { wordId: number; example: string
             ))}
           </div>
         </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          尚未生成（需在设置页配置 LLM 档案{example ? '' : '；无原典例句，生成质量可能略降'}）
-        </p>
-      )}
+        );
+      })()}
     </section>
   );
 }
@@ -535,8 +548,20 @@ function DiscriminateCard({ wordId, example }: { wordId: number; example: string
  * ------------------------------------------------------------------------- */
 
 /**
- * 拼字演练卡：目标词逐字母默写（不区分大小写），完成即朗读印证；
- * 有原句时同时展示挖空句辅助回忆
+ * 拼字槽位配色：未输灰槽 / 已对竹青 / 已错朱砂
+ * @param t 已输字母（undefined=未输到该位）
+ * @param c 目标字母
+ */
+function slotCls(t: string | undefined, c: string): string {
+  if (t === undefined) return 'border-border text-muted-foreground';
+  if (t === c) return 'border-secondary/60 text-secondary';
+  return 'border-destructive/60 text-destructive';
+}
+
+/**
+ * 拼字演练卡：目标词逐字母默写（不区分大小写），完成即朗读印证（提示键
+ * 补满完成的路径同样朗读——印证文案「已朗读」才永远属实）；有原句时同时
+ * 展示挖空句辅助回忆
  * @param props.target 目标词（展示形态）
  * @param props.sentence 原典例句（可空；展示挖空形态）
  * @param props.lemma 词元（原句挖空匹配用）
@@ -557,12 +582,17 @@ function SpellDrillCard({
      （don't / co-op / café）若按原词形开槽，键入路径永远无法输满 */
   const letters = target.toLowerCase().replace(/[^a-z]/g, '').split('');
   const [typed, setTyped] = useState('');
-  /* 换词重置（含从队列导航切词） */
-  useEffect(() => setTyped(''), [target]);
 
   /** 首个错位下标（-1=全对或未输完） */
   const wrongAt = typed.split('').findIndex((c, i) => c !== letters[i]);
   const complete = typed.length === letters.length && wrongAt === -1;
+
+  /* 完成即朗读（跃迁触发：键入补满与提示键补满两条路径统一在此收口） */
+  const wasCompleteRef = useRef(false);
+  useEffect(() => {
+    if (complete && !wasCompleteRef.current) speak(target);
+    wasCompleteRef.current = complete;
+  }, [complete, speak, target]);
 
   /** 挖空句（原句中词形替换为等长下划线，辅助回忆） */
   const cloze = sentence
@@ -602,15 +632,14 @@ function SpellDrillCard({
       {/* 字母槽位行 */}
       <div className="flex flex-wrap gap-1">
         {letters.map((c, i) => {
-          const t = typed[i];
-          /* 槽位配色：已对竹青 / 已错朱砂 / 未输灰槽 */
-          const cls = t == null ? 'border-border text-muted-foreground' : t === c ? 'border-secondary/60 text-secondary' : 'border-destructive/60 text-destructive';
+          /* 槽位配色：已对竹青 / 已错朱砂 / 未输灰槽（slotCls 单源） */
+          const cls = slotCls(typed[i], c);
           return (
             <span
               key={i}
               className={`flex size-8 items-center justify-center rounded border font-mono text-sm ${cls}`}
             >
-              {t ?? '·'}
+              {typed[i] ?? '·'}
             </span>
           );
         })}
@@ -621,8 +650,6 @@ function SpellDrillCard({
         onChange={(e) => {
           const v = e.target.value.toLowerCase().replace(/[^a-z]/g, '').slice(0, letters.length);
           setTyped(v);
-          /* 输满且全对：自动朗读印证 */
-          if (v.length === letters.length && v.split('').every((c, i) => c === letters[i])) speak(target);
         }}
         autoCapitalize="off"
         autoComplete="off"
@@ -644,69 +671,77 @@ function SpellDrillCard({
 
 /**
  * 仿写演练卡：围绕目标词写一句，AI 即时点拨（总评/亮点待改/搭配建议）；
- * 可把仿写句收入手账笔记
+ * 可把仿写句收入手账笔记。点拨结果与「点拨那一刻的草稿」绑定：草稿改动
+ * 即清点拨结果（收入笔记时不会把旧总评配给新句子）
  * @param props.wordId 单词 id
  * @param props.displayForm 目标词（提示文案用）
  * @param props.noteMd 现有笔记（追加收入时保留原文）
  */
 function WriteCard({ wordId, displayForm, noteMd }: { wordId: number; displayForm: string; noteMd: string | null }) {
   const [text, setText] = useState('');
+  /* 被点拨的草稿快照：点拨请求在途时草稿仍可改，响应落地后只对仍匹配的草稿
+     生效（渲染与收入笔记同判据），否则「上一句的点评」会挂到新草稿下 */
+  const [submittedText, setSubmittedText] = useState<string | null>(null);
   const qc = useQueryClient();
 
   /* AI 点拨（同步接口，一次往返） */
   const check = useMutation({
-    mutationFn: () =>
+    mutationFn: (draft: string) =>
       api<WriteCheckResult>(`/api/words/${wordId}/write-check`, {
         method: 'POST',
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: draft }),
       }),
+    onMutate: (draft) => setSubmittedText(draft),
   });
+  const checkCurrent = submittedText !== null && submittedText === text ? check.data : undefined;
 
   /* 收入笔记：仿写句追加到 noteMd（点拨总评一并留痕）。底稿取查询缓存现值
-     而非闭包 props（快照），成功后失效缓存——否则连续两次收入时第二次仍以
-     旧底拼接整体 PATCH，第一次的追加被静默抹掉 */
+     而非闭包 props（快照），成功后失效缓存并清草稿——否则连续两次收入时
+     第二次仍以旧底拼接整体 PATCH，第一次的追加被静默抹掉 */
   const saveNote = useMutation({
     mutationFn: () => {
       const fresh = qc.getQueryData<ManualData>(['manual', wordId]);
       const base = fresh?.word?.noteMd ?? noteMd;
       const stamp = new Date().toISOString().slice(0, 10);
-      const appended = `${base ? base.trimEnd() + '\n\n' : ''}> 仿写（${stamp}）：${text}` + (check.data ? `\n> 点拨：${check.data.check.overall}` : '');
+      const appended = `${base ? base.trimEnd() + '\n\n' : ''}> 仿写（${stamp}）：${text}` + (checkCurrent ? `\n> 点拨：${checkCurrent.check.overall}` : '');
       return api(`/api/words/${wordId}`, { method: 'PATCH', body: JSON.stringify({ noteMd: appended }) });
     },
     onSuccess: () => {
+      setText('');
+      /* 收纳成功后点拨结果一并清（草稿已清，留着会「空输入+旧总评」同框） */
+      check.reset();
+      setSubmittedText(null);
       void qc.invalidateQueries({ queryKey: ['manual', wordId] });
     },
   });
-
-  /* 换词重置（含队列导航切词）：草稿之外，点拨/收纳两个 mutation 状态也须清，
-     否则上一词的点拨结果残留显示、且新词「收入笔记」会把旧词总评写进新词笔记 */
-  const prevWordRef = useRef(wordId);
-  useEffect(() => {
-    if (prevWordRef.current !== wordId) {
-      prevWordRef.current = wordId;
-      setText('');
-      check.reset();
-      saveNote.reset();
-    }
-  }, [wordId, check, saveNote]);
 
   return (
     /* 仿写卡容器 */
     <section className="deckle mb-4 rounded-md border bg-card px-5 py-4">
       {/* 小节标题 */}
       <h4 className="mb-2 text-xs font-medium text-muted-foreground">仿写演练 · 将 {displayForm} 付诸笔端</h4>
-      {/* 仿写输入区 */}
+      {/* 仿写输入区（maxLength 与服务端闸同源：超长不会再被静默截断评分） */}
       <textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          /* 草稿变了，旧点拨结果不再适用于新句子 */
+          if (check.data || check.isError) {
+            check.reset();
+            setSubmittedText(null);
+          }
+        }}
+        maxLength={WRITE_TEXT_MAX}
         placeholder={`写一句包含 ${displayForm} 的话…`}
         className="min-h-20 w-full rounded border border-input bg-background p-2 text-sm"
       />
       {/* 操作行：字数 + AI 点拨键 + 收入笔记键 */}
       <div className="mt-2 flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground">已键入 {text.trim().length} 字</span>
+        <span className="text-[11px] text-muted-foreground">
+          已键入 {text.trim().length} / {WRITE_TEXT_MAX} 字
+        </span>
         <button
-          onClick={() => check.mutate()}
+          onClick={() => check.mutate(text)}
           disabled={!text.trim() || check.isPending}
           className="ml-auto flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary disabled:opacity-50"
         >
@@ -722,17 +757,19 @@ function WriteCard({ wordId, displayForm, noteMd }: { wordId: number; displayFor
           {saveNote.isPending ? '收纳中…' : '收入笔记'}
         </button>
       </div>
-      {/* 点拨失败提示 */}
-      {check.isError && <p className="mt-2 text-xs text-destructive">点拨失败：{errMsg(check.error)}</p>}
+      {/* 点拨失败提示（草稿已改的话连失败态一并失效，不算数） */}
+      {check.isError && submittedText === text && (
+        <p className="mt-2 text-xs text-destructive">点拨失败：{errMsg(check.error)}</p>
+      )}
       {/* 收纳结果反馈 */}
       {saveNote.isSuccess && <p className="mt-2 text-xs text-secondary">已收入手账笔记（词藏页可编辑）</p>}
-      {/* 点拨结果：总评 + 逐条点评 + 搭配建议 */}
-      {check.data && (
+      {/* 点拨结果：总评 + 逐条点评 + 搭配建议（只对仍匹配的草稿生效） */}
+      {checkCurrent && (
         <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs">
-          <p className="text-sm">{check.data.check.overall}</p>
-          {check.data.check.points.length > 0 && (
+          <p className="text-sm">{checkCurrent.check.overall}</p>
+          {checkCurrent.check.points.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1">
-              {check.data.check.points.map((p, i) => (
+              {checkCurrent.check.points.map((p, i) => (
                 <li key={i} className="flex gap-1.5">
                   {/* 点评图标：亮点竹青勾 / 待改朱砂叹 */}
                   <span className={`material-symbols-outlined text-sm ${p.kind === 'good' ? 'text-secondary' : 'text-destructive'}`}>
@@ -743,11 +780,11 @@ function WriteCard({ wordId, displayForm, noteMd }: { wordId: number; displayFor
               ))}
             </ul>
           )}
-          {check.data.check.collocations.length > 0 && (
+          {checkCurrent.check.collocations.length > 0 && (
             <div className="mt-2 border-t border-border pt-2">
               <p className="mb-1 text-[11px] text-ochre">典雅搭配</p>
               <div className="flex flex-wrap gap-1.5">
-                {check.data.check.collocations.map((c, i) => (
+                {checkCurrent.check.collocations.map((c, i) => (
                   <span key={i} className="rounded-full bg-background px-2 py-0.5 font-serif">
                     {c}
                   </span>
@@ -759,4 +796,39 @@ function WriteCard({ wordId, displayForm, noteMd }: { wordId: number; displayFor
       )}
     </section>
   );
+}
+
+/**
+ * 待定词占位（队列三态早返回，不嵌套三元）：失败 / 空库引导 / 装载中
+ * @param props.queueError 队列查询失败对象（null=未失败）
+ * @param props.queueReady 队列查询已成功
+ * @param props.empty      队列为空（全库无到期词）
+ */
+function QueuePlaceholder({
+  queueError,
+  queueReady,
+  empty,
+}: {
+  queueError: Error | null;
+  queueReady: boolean;
+  empty: boolean;
+}) {
+  if (queueError) {
+    return <p className="py-16 text-center text-sm text-destructive">复习队列装载失败：{errMsg(queueError)}</p>;
+  }
+  if (queueReady && empty) {
+    return (
+      <div className="deckle rounded-md border border-dashed bg-card/50 py-14 text-center">
+        <p className="font-serif">暂无到期之词</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          词藏空空如也 —— 去播放页点词收录，或到{' '}
+          <Link href="/review" className="underline underline-offset-2 hover:text-primary">
+            智能复习
+          </Link>{' '}
+          轮转牢记
+        </p>
+      </div>
+    );
+  }
+  return <p className="py-16 text-center text-sm text-muted-foreground">装载中…</p>;
 }

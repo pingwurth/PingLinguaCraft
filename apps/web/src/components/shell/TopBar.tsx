@@ -21,23 +21,27 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useGlobalSearch } from '@/features/search/useGlobalSearch';
-import { SearchResultList } from '@/features/search/SearchResultList';
-import { api } from '@/lib/api';
+import { SEARCH_PLACEHOLDER, useGlobalSearch } from '@/features/search/useGlobalSearch';
+import { SearchResultList, optionId } from '@/features/search/SearchResultList';
+import { api, type EngineInfo } from '@/lib/api';
 
-/** 引擎健康探测的最小响应形态（完整 EngineInfo 见设置页；顶栏状态灯只关心 healthy） */
-interface EngineHealth {
-  /** 本地 AI 引擎（127.0.0.1:8765）健康与否 */
-  healthy: boolean;
-}
+/** 引擎健康探测的最小响应形态（与设置页同一 ['engine'] 缓存条目共用 EngineInfo
+ *  契约，只 Pick 状态灯需要的字段——另立局部类型会让同一响应的两个消费者形状漂移） */
+type EngineHealth = Pick<EngineInfo, 'healthy'>;
+
+/** 检索实例 id 前缀（listbox 容器 id / option id 构造 / aria 关联共用一份，
+ *  换前缀只改这里） */
+const SEARCH_ID_PREFIX = 'global-search';
 
 /**
  * 桌面端全局顶栏组件：检索 + 引擎状态 + 导入 + 设置入口（仅 ≥md 渲染）
  */
 export function TopBar() {
   const router = useRouter();
-  /* 检索逻辑单源：防抖输入、请求、命中扁平化（hooks/面板开合见 hook 内注释） */
-  const { raw, setRaw, q, open, setOpen, search, hits, reset } = useGlobalSearch();
+  /* 检索逻辑单源：防抖输入、请求、命中扁平化；面板开合是桌面下拉的本地
+     状态（输入聚焦/点外关闭/快捷键展开，与移动端浮层的 props 驱动不同源） */
+  const { raw, setRaw, q, search, hits, reset } = useGlobalSearch();
+  const [open, setOpen] = useState(false);
   /* 键盘选择游标：-1 表示未选中（Enter 落在首条命中） */
   const [active, setActive] = useState(-1);
   /* 检索区容器引用：点击面板外关闭用 */
@@ -58,10 +62,28 @@ export function TopBar() {
     return () => document.removeEventListener('pointerdown', onDown);
   }, [open, setOpen]);
 
-  /* ⌘K / Ctrl+K 聚焦检索框并展开面板（全局监听；输入聚焦时浏览器默认无该绑定，不冲突） */
+  /* ⌘K / Ctrl+K 聚焦检索框并展开面板（全局监听）。焦点已在输入类元素时
+     （设置页表单/笔记编辑等）不抢焦点——快捷键为检索服务，打断正在进行的
+     输入弊大于利 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        const el = document.activeElement;
+        /* 已在检索框：只拦默认（浏览器地址栏抢占），不重复抢焦 */
+        if (el === inputRef.current) {
+          e.preventDefault();
+          return;
+        }
+        /* 文本类输入中不打断（复选/单选/按钮类 INPUT 不算——那里拦掉快捷键
+           属误伤，检查过仍应可用） */
+        if (el instanceof HTMLElement) {
+          const textLike =
+            el.tagName === 'TEXTAREA' ||
+            el.isContentEditable ||
+            (el instanceof HTMLInputElement &&
+              !['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'file'].includes(el.type));
+          if (textLike) return;
+        }
         e.preventDefault();
         inputRef.current?.focus();
         setOpen(true);
@@ -69,7 +91,14 @@ export function TopBar() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setOpen]);
+  }, []);
+
+  /* 键盘游标滚动跟视：↑↓ 移动时把选中项滚入面板可视区（面板限高 7 行左右，
+     越界后高亮项不可见，键盘用户看不到自己在选什么） */
+  useEffect(() => {
+    if (active < 0) return;
+    document.getElementById(optionId(SEARCH_ID_PREFIX, active))?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
 
   /* 引擎健康探测：与设置页共享 ['engine'] 查询缓存；60s 轻轮询维持状态灯新鲜 */
   const engine = useQuery({
@@ -79,11 +108,11 @@ export function TopBar() {
     refetchInterval: 60_000,
   });
   const engineOnline = engine.data?.healthy === true;
-  const engineText = engine.isPending
-    ? '引擎探询中…'
-    : engineOnline
-      ? '引擎在线 · 本地推理'
-      : '引擎休眠 · 离线';
+  /* 状态灯文案（顺序赋值，不嵌套三元） */
+  let engineText: string;
+  if (engine.isPending) engineText = '引擎探询中…';
+  else if (engineOnline) engineText = '引擎在线 · 本地推理';
+  else engineText = '引擎休眠 · 离线';
 
   /** 跳转命中项并复位（键盘 Enter 路径；Link 点击路径走自身导航 + onSelect 善后） */
   const go = (href: string) => {
@@ -129,7 +158,7 @@ export function TopBar() {
 
   return (
     /* 桌面顶栏：吸顶 + surface/80 毛玻璃 + 设计稿原样极淡投影（替代纸墨 1px 细线） */
-    <header className="sticky top-0 z-30 hidden bg-surface/80 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl md:block">
+    <header className="sticky top-0 z-30 hidden bg-surface/80 shadow-shell backdrop-blur-xl md:block">
       <div className="flex h-16 items-center justify-between px-10">
         {/* 左段：全局检索槽（w-96 定宽；冷灰压印底 + 图标内嵌，设计稿同款） */}
         <div ref={boxRef} className="relative w-96 shrink-0">
@@ -151,12 +180,12 @@ export function TopBar() {
               onKeyDown={onKeyDown}
               role="combobox"
               aria-expanded={showPanel}
-              aria-controls="global-search-listbox"
-              aria-activedescendant={active >= 0 ? `global-search-option-${active}` : undefined}
+              aria-controls={`${SEARCH_ID_PREFIX}-listbox`}
+              aria-activedescendant={active >= 0 ? optionId(SEARCH_ID_PREFIX, active) : undefined}
               aria-label="全局检索：材料集卷名与名篇标题"
-              placeholder="搜寻典籍与名篇 (⌘K)…"
+              placeholder={SEARCH_PLACEHOLDER.desktop}
               autoComplete="off"
-              className="min-w-0 flex-1 border-none bg-transparent font-body-sm text-body-sm text-on-surface outline-none placeholder:text-on-surface-variant"
+              className="min-w-0 flex-1 border-none bg-transparent text-body-sm text-on-surface outline-none placeholder:text-on-surface-variant"
             />
           </div>
           {/* 清空按钮：仅有输入时出现（压印槽右内侧） */}
@@ -176,17 +205,17 @@ export function TopBar() {
           {/* 结果面板：吸在检索槽正下方（纯白底 + container-high 细边 + 轻投影，配壳稿冷灰系） */}
           {showPanel ? (
             <div
-              id="global-search-listbox"
+              id={`${SEARCH_ID_PREFIX}-listbox`}
               role="listbox"
               aria-label="检索结果"
-              className="absolute inset-x-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-md border border-surface-container-high bg-surface-container-lowest shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
+              className="absolute inset-x-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-md border border-surface-container-high bg-surface-container-lowest shadow-panel"
             >
               <SearchResultList
                 hits={hits}
                 collectionCount={search.data?.collections.length ?? 0}
-                loading={search.isFetching && !search.data}
+                loading={search.isFetching && (search.isPlaceholderData || !search.data)}
                 error={search.isError ? search.error.message : null}
-                idPrefix="global-search"
+                idPrefix={SEARCH_ID_PREFIX}
                 activeIndex={active}
                 onSelect={onSelect}
                 onHover={setActive}
@@ -222,7 +251,7 @@ export function TopBar() {
             aria-label="我的 · 设置"
             className="flex size-8 items-center justify-center rounded-xl bg-shell-seal"
           >
-            <span className="material-symbols-outlined text-[18px] text-white">person</span>
+            <span className="material-symbols-outlined text-[18px] text-on-shell-seal">person</span>
           </Link>
         </div>
       </div>

@@ -100,7 +100,10 @@ export function Pagination({
             type="button"
             aria-label={`第 ${it} 页`}
             aria-current={it === page ? 'page' : undefined}
-            onClick={() => go(it)}
+            /* 当前页点击不做任何事：go 会触发调用方的滚动等副作用（如列表滚回顶部） */
+            onClick={() => {
+              if (it !== page) go(it);
+            }}
             className={btnCls(it === page)}
           >
             {it}

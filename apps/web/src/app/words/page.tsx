@@ -241,9 +241,10 @@ function WordRow({
   return (
     /* 词条容器：纸卡 */
     <div className="deckle rounded-md border bg-card">
-      {/* 折叠头：词条 + AI/人工笔记标记 + 深研入口 */}
-      <div className="flex items-center gap-2 px-4 py-3">
-        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+      {/* 折叠头：词条 + AI/人工笔记标记 + 深研入口（py-3 在折叠钮上：整行
+          高度都是展开/收起热区——挪到容器上的话上下留白带的点按会失效） */}
+      <div className="flex items-center gap-2 px-4">
+        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left">
           <span className="font-serif text-lg">{word.displayForm}</span>
           <span className="ml-auto flex shrink-0 gap-1.5 text-[10px]">
             {word.noteMd && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">笔记</span>}
@@ -254,11 +255,13 @@ function WordRow({
             {expanded ? 'expand_less' : 'expand_more'}
           </span>
         </button>
-        {/* 研习手册深研入口：直达该词的手册页（语境/词源/辨析/拼字/仿写） */}
+        {/* 研习手册深研入口：直达该词的手册页（语境/词源/辨析/拼字/仿写）。
+            size-10 ≥44px 级触控目标并留 gap：紧贴折叠钮的 32px 小热区在触屏上
+            稍偏一点就会误触展开/收起 */}
         <Link
           href={`/manual?wordId=${word.id}`}
           aria-label={`研习手册深研 ${word.displayForm}`}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-primary"
+          className="ml-1 flex size-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-primary"
         >
           <span className="material-symbols-outlined text-lg">menu_book</span>
         </Link>

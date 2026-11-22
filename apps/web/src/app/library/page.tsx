@@ -31,6 +31,8 @@ import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  COVER_IMAGE_EXT_MIME,
+  COVER_IMAGE_MAX_BYTES,
   COVER_SEAL_CHARS,
   COVER_TEXTURES,
   COVER_VOLUMES,
@@ -69,11 +71,10 @@ const CEFR_OPTIONS = [
   { value: 'C2', alias: '神会通达' },
 ] as const;
 
-/** 封面插画允许的 MIME（与 /api/collections/cover-image 服务端闸一致） */
-const COVER_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-
-/** 封面插画体积上限 5MB（与服务端一致） */
-const COVER_IMAGE_MAX = 5 * 1024 * 1024;
+/* 封面插画闸（core 单源：MIME 集合自扩展名↔MIME 对照表、体积上限常量，
+ * 与上传服务端闸同源——两侧各自手写字面量会静默漂移） */
+const COVER_IMAGE_TYPES = new Set(Object.values(COVER_IMAGE_EXT_MIME));
+const COVER_IMAGE_MAX = COVER_IMAGE_MAX_BYTES;
 
 /**
  * 印文清洗：去首尾空白后取最后一个字符（Unicode 码点计，与 core 单字清洗一致）。
@@ -106,7 +107,8 @@ export default function LibraryPage() {
   const sealComposingRef = useRef(false);
   /* Esc 取消标记：抑制随后（若浏览器派发）的 blur 误提交 */
   const sealCancelRef = useRef(false);
-  const [volume, setVolume] = useState<string>(COVER_VOLUMES[0].value);
+  /* 册序编排（''=未编排：存量卷不因编辑被静默安上「卷壹」卷签与跳序） */
+  const [volume, setVolume] = useState<string>('');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverUrl, setCoverUrl] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
@@ -122,15 +124,9 @@ export default function LibraryPage() {
   /* 印文候选：预设 + 会话内自定义（Set 去重，自定义印文与预设重合时预设优先） */
   const sealOptions = useMemo(() => [...new Set([...COVER_SEAL_CHARS, ...customSeals])], [customSeals]);
 
-  /** 关闭立卷弹窗：清错误、保留已填字段（编辑模式重开时按库值重新预填） */
-  const closeCreate = () => {
-    setCreating(false);
-    setCreateError(null);
-  };
-
-  /** 打建立卷弹窗（从零开始：清编辑态与全部表单字段） */
-  const openCreate = () => {
-    setEditing(null);
+  /** 表单全量复位（openCreate 与建卷成功共用同一份字段清单，防两处各自
+   *  维护漂移——此前 onSuccess 少清了质地/印文/册序等六项） */
+  const resetForm = () => {
     setName('');
     setDescription('');
     setCefr(null);
@@ -140,10 +136,16 @@ export default function LibraryPage() {
     setCustomSeals([]);
     setAddingSeal(false);
     setSealDraft('');
-    setVolume(COVER_VOLUMES[0].value);
+    setVolume('');
     setCoverFile(null);
     setCoverUrl('');
     uploadedCoverRef.current = null;
+  };
+
+  /** 打开立卷弹窗（从零开始：清编辑态与全部表单字段） */
+  const openCreate = () => {
+    setEditing(null);
+    resetForm();
     setCreateError(null);
     setCreating(true);
   };
@@ -162,7 +164,8 @@ export default function LibraryPage() {
     if (cover?.seal && !(COVER_SEAL_CHARS as readonly string[]).includes(cover.seal)) {
       setCustomSeals((prev) => (prev.includes(cover.seal!) ? prev : [...prev, cover.seal!]));
     }
-    setVolume(cover?.volume ?? COVER_VOLUMES[0].value);
+    /* 未编排册序的存量卷保持未编排（''），不静默安上卷壹 */
+    setVolume(cover?.volume ?? '');
     setCoverFile(null);
     /* 库内插画预览 URL 带内容版本参数：封面路由按 URL 长缓存，换图后
        同一路径会命中旧缓存（?v= 换图即换 URL，缓存自然失效） */
@@ -233,16 +236,6 @@ export default function LibraryPage() {
     };
   }, [coverUrl]);
 
-  /* 立卷弹窗打开期间监听 Escape 关闭（与点遮罩 / 取消钮同一路径） */
-  useEffect(() => {
-    if (!creating) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeCreate();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [creating]);
-
   /* 首页聚合数据（一次请求供全页） */
   const home = useQuery({ queryKey: ['home'], queryFn: () => api<HomeData>('/api/home') });
 
@@ -294,12 +287,7 @@ export default function LibraryPage() {
     },
     onSuccess: () => {
       setCreating(false);
-      setName('');
-      setDescription('');
-      setCefr(null);
-      setCoverFile(null);
-      setCoverUrl('');
-      uploadedCoverRef.current = null;
+      resetForm();
       setCreateError(null);
       void qc.invalidateQueries({ queryKey: ['home'] });
     },
@@ -339,6 +327,25 @@ export default function LibraryPage() {
     onError: (err) => setCreateError(err.message),
   });
 
+  /** 关闭立卷弹窗：清错误、保留已填字段（编辑模式重开时按库值重新预填）。
+   *  提交进行中不关：关了的话失败错误会写进已关闭的弹窗，下一次 openCreate
+   *  又把它清掉——失败对用户不可见（useCallback：Escape 监听 effect 依赖它） */
+  const closeCreate = useCallback(() => {
+    if (create.isPending || update.isPending) return;
+    setCreating(false);
+    setCreateError(null);
+  }, [create.isPending, update.isPending]);
+
+  /* 立卷弹窗打开期间监听 Escape 关闭（与点遮罩 / 取消钮同一路径） */
+  useEffect(() => {
+    if (!creating) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeCreate();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [creating, closeCreate]);
+
   /* 删除材料集（物理删：级联清卷内材料/字幕与媒体目录；DELETE /api/collections/[id]） */
   const remove = useMutation({
     mutationFn: (id: number) => api(`/api/collections/${id}`, { method: 'DELETE' }),
@@ -347,8 +354,8 @@ export default function LibraryPage() {
       /* 删除成功关确认弹窗（失败保持打开：用户可改主意取消或重试） */
       setDeleting(null);
     },
-    // 删除失败必须可见（静默时用户以为已删，重进才知卷还在）
-    onError: (err) => alert(`删除失败：${err.message}`),
+    // 删除失败经确认弹窗 error 槽就地展示（弹窗保持打开可取消/重试，
+    // 不弹阻塞线程的原生 alert）
   });
 
   /* 待删集卷（非空即删除确认弹窗开着；存整卷对象供弹窗取卷名与篇数） */
@@ -434,7 +441,7 @@ export default function LibraryPage() {
                 {/* 即刻续研：回播放页（播放器自动续播最近停留点） */}
                 <Link
                   href={`/material/${data.resume.materialId}`}
-                  className="flex shrink-0 items-center gap-1 rounded-sm bg-shell-seal px-3 py-1.5 text-label-md text-white"
+                  className="flex shrink-0 items-center gap-1 rounded-sm bg-shell-seal px-3 py-1.5 text-label-md text-on-shell-seal"
                 >
                   <span className="material-symbols-outlined text-sm">play_arrow</span>
                   即刻续研
@@ -683,30 +690,9 @@ export default function LibraryPage() {
             </div>
           )}
 
-          {/* ===== 集卷卡列表 ===== */}
+          {/* ===== 集卷卡列表（空态两分支收敛在 ListEmptyState，主流程不嵌套三元） ===== */}
           {filtered.length === 0 ? (
-            collections.length === 0 ? (
-              /* 空库引导：立卷起点 */
-              <section className="flex flex-col items-center justify-center rounded-[8px] border border-dashed border-outline-variant/60 bg-surface-container-lowest/50 px-6 py-16 text-center">
-                <span className="material-symbols-outlined mb-3 text-4xl text-outline">
-                  library_books
-                </span>
-                <p className="font-serif text-lg text-on-surface">尚无卷帙，虚位以待</p>
-                <p className="mt-1 max-w-sm text-body-sm text-on-surface-variant">
-                  先立一卷，再导入音视频自动生成字幕，或导入文本自动生成音频。
-                </p>
-                <button
-                  onClick={openCreate}
-                  className="mt-4 flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-white transition-colors hover:bg-primary"
-                >
-                  <span className="material-symbols-outlined text-lg">create_new_folder</span>
-                  另辟新卷
-                </button>
-              </section>
-            ) : (
-              /* 筛选档位空态（非空库） */
-              <p className="py-10 text-center text-body-sm text-outline">此档位暂无卷帙。</p>
-            )
+            <ListEmptyState isEmptyLibrary={collections.length === 0} onOpen={openCreate} />
           ) : (
             <section
               ref={gridRef}
@@ -781,7 +767,7 @@ export default function LibraryPage() {
                 {/* 头行：深朱小印 + 标题 + 关闭钮（双栏通栏） */}
                 <div className="flex items-center justify-between md:col-span-2">
                   <div className="flex items-center gap-2">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-shell-seal text-white">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-shell-seal text-on-shell-seal">
                       <span className="material-symbols-outlined text-base">
                         {editing ? 'edit' : 'bookmark_add'}
                       </span>
@@ -794,7 +780,8 @@ export default function LibraryPage() {
                     type="button"
                     aria-label={editing ? '取消编辑' : '取消新建'}
                     onClick={closeCreate}
-                    className="p-1 text-on-surface-variant transition-colors hover:text-on-surface"
+                    disabled={create.isPending || update.isPending}
+                    className="p-1 text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-50"
                   >
                     <span className="material-symbols-outlined text-xl">close</span>
                   </button>
@@ -921,7 +908,7 @@ export default function LibraryPage() {
                               onClick={() => setSeal(seal === ch ? '' : ch)}
                               className={`w-full rounded-xs py-1.5 text-center font-serif text-sm font-bold transition-colors ${
                                 seal === ch
-                                  ? 'bg-shell-seal text-white'
+                                  ? 'bg-shell-seal text-on-shell-seal'
                                   : 'bg-surface-container text-on-surface hover:bg-surface-container-high'
                               }`}
                             >
@@ -1005,14 +992,16 @@ export default function LibraryPage() {
                       <label htmlFor="create-volume" className="text-title-sm text-on-surface">
                         册序编排
                       </label>
-                      {/* 原生 select（样式仿设计稿；候选集 core COVER_VOLUMES 单源，
-                          册序即真排序——rank 映射 sortOrder 随立卷/存卷写入） */}
+                      {/* 原生 select（样式仿设计稿；候选集 core COVER_VOLUMES 单源 +
+                          「未编排」档——存量卷不编排也不被静默安签；册序即真排序，
+                          rank 映射 sortOrder 随立卷/存卷写入，未编排 rank=0 排最前） */}
                       <select
                         id="create-volume"
                         value={volume}
                         onChange={(e) => setVolume(e.target.value)}
                         className="w-full cursor-pointer rounded-sm bg-surface-container px-2 py-2.5 text-body-sm text-on-surface outline-none"
                       >
+                        <option value="">未编排</option>
                         {COVER_VOLUMES.map((v) => (
                           <option key={v.value} value={v.value}>
                             {v.value}
@@ -1080,7 +1069,7 @@ export default function LibraryPage() {
                           onClick={() => setCefr(cefr === opt.value ? null : opt.value)}
                           className={`rounded-xs py-1.5 text-center transition-colors ${
                             cefr === opt.value
-                              ? 'bg-shell-seal text-white shadow-sm'
+                              ? 'bg-shell-seal text-on-shell-seal shadow-sm'
                               : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
                           }`}
                         >
@@ -1100,26 +1089,23 @@ export default function LibraryPage() {
                   <button
                     type="button"
                     onClick={closeCreate}
-                    className="rounded-sm px-4 py-2 text-title-sm text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+                    disabled={create.isPending || update.isPending}
+                    className="rounded-sm px-4 py-2 text-title-sm text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:opacity-50"
                   >
                     取消
                   </button>
                   <button
                     type="submit"
                     disabled={!name.trim() || create.isPending || update.isPending}
-                    className="flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-white transition-all hover:bg-primary active:scale-[0.99] disabled:opacity-50"
+                    className="flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-on-shell-seal transition-all hover:bg-primary active:scale-[0.99] disabled:opacity-50"
                   >
                     <span aria-hidden className="material-symbols-outlined text-lg">
                       {editing ? 'save' : 'history_edu'}
                     </span>
-                    {/* 编辑模式存卷 / 建卷模式立卷，进行中示忙 */}
+                    {/* 提交键文案（顺序判断不嵌套：进行中示忙 → 编辑存卷 / 建卷立卷） */}
                     {editing
-                      ? update.isPending
-                        ? '存卷中…'
-                        : '存卷'
-                      : create.isPending
-                        ? '立卷中…'
-                        : '立卷'}
+                      ? update.isPending ? '存卷中…' : '存卷'
+                      : create.isPending ? '立卷中…' : '立卷'}
                   </button>
                 </div>
               </form>
@@ -1127,7 +1113,7 @@ export default function LibraryPage() {
           )}
 
           {/* 删除确认弹窗（纸墨风共享 ConfirmDialog，替代原生 confirm）：卷名衬线强调 +
-              级联后果警示条；确认进行中禁用双钮，失败 alert 后弹窗保持打开可取消/重试 */}
+              级联后果警示条；确认进行中封死关闭路径，失败经 error 槽就地展示、弹窗保持打开可取消/重试 */}
           <ConfirmDialog
             open={deleting !== null}
             title="删除材料集"
@@ -1135,8 +1121,12 @@ export default function LibraryPage() {
             confirmLabel="确认删除"
             destructive
             pending={remove.isPending}
+            error={remove.isError ? remove.error.message : null}
             onConfirm={() => deleting && remove.mutate(deleting.id)}
-            onClose={() => setDeleting(null)}
+            onClose={() => {
+              setDeleting(null);
+              remove.reset();
+            }}
             body={
               <>
                 <p>
@@ -1262,5 +1252,36 @@ function CollectionCard({
         </button>
       </div>
     </Link>
+  );
+}
+
+/**
+ * 集卷列表空态（if/else 顺序判断，不嵌套三元）：空库引导立卷 / 筛选档位空态
+ * @param props.isEmptyLibrary 是否全库无卷（true=空库引导，false=档位无命中）
+ * @param props.onOpen 立卷入口回调
+ */
+function ListEmptyState({ isEmptyLibrary, onOpen }: { isEmptyLibrary: boolean; onOpen: () => void }) {
+  if (!isEmptyLibrary) {
+    /* 筛选档位空态（非空库） */
+    return <p className="py-10 text-center text-body-sm text-outline">此档位暂无卷帙。</p>;
+  }
+  /* 空库引导：立卷起点 */
+  return (
+    <section className="flex flex-col items-center justify-center rounded-[8px] border border-dashed border-outline-variant/60 bg-surface-container-lowest/50 px-6 py-16 text-center">
+      <span className="material-symbols-outlined mb-3 text-4xl text-outline">
+        library_books
+      </span>
+      <p className="font-serif text-lg text-on-surface">尚无卷帙，虚位以待</p>
+      <p className="mt-1 max-w-sm text-body-sm text-on-surface-variant">
+        先立一卷，再导入音视频自动生成字幕，或导入文本自动生成音频。
+      </p>
+      <button
+        onClick={onOpen}
+        className="mt-4 flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-on-shell-seal transition-colors hover:bg-primary"
+      >
+        <span className="material-symbols-outlined text-lg">create_new_folder</span>
+        另辟新卷
+      </button>
+    </section>
   );
 }

@@ -34,7 +34,29 @@ import type { HomeData } from '@/features/home/types';
  * 「我的」（/settings、/favorites）不入导航：两形态均由顶栏/头部位像承担（设置页内链收藏）。
  * 首页（/，案头今研）不入导航：入口为左上角品牌区（Logo）。
  */
-const SHELL_NAV_ITEMS = [
+/** 桌面侧栏分组标签（条目 group 以此联合类型约束——漏配/写错值会编译报错，
+ *  而非条目在侧栏静默消失） */
+const SHELL_NAV_GROUP_LABELS = ['典藏阁', '研习录'] as const;
+type ShellNavGroup = (typeof SHELL_NAV_GROUP_LABELS)[number];
+
+/** 壳层导航条目形态 */
+interface ShellNavItem {
+  href: string;
+  label: string;
+  icon: string;
+  group: ShellNavGroup;
+  match: (p: string) => boolean;
+}
+
+/** 研习辅助条目形态（不带 group：不进移动 5-tab，仅桌面侧栏末组） */
+interface ShellAuxItem {
+  href: string;
+  label: string;
+  icon: string;
+  match: (p: string) => boolean;
+}
+
+const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   {
     href: '/library',
     label: '藏经阁库',
@@ -70,22 +92,23 @@ const SHELL_NAV_ITEMS = [
     group: '研习录',
     match: (p: string) => p.startsWith('/review'),
   },
-] as const;
+];
 
 /** 桌面侧栏「研习辅助」组（仿设计稿 _7 侧栏 Manual：词汇深研手册入口）。
  *  不入 SHELL_NAV_ITEMS——移动底部导航固定 5-tab，手册在移动端由词藏页/复习页链入。 */
-const SHELL_AUX_ITEMS = [
+const SHELL_AUX_ITEMS: readonly ShellAuxItem[] = [
   {
     href: '/manual',
     label: '研习手册',
     icon: 'menu_book',
     match: (p: string) => p.startsWith('/manual'),
   },
-] as const;
+];
 
-/** 桌面侧栏分组视图：按 group 字段聚合（典藏阁：馆藏资产；研习录：研习活动），仿 linguacraft_16；末尾追加研习辅助组 */
-const DESKTOP_NAV_GROUPS = [
-  ...['典藏阁', '研习录'].map((label) => ({
+/** 桌面侧栏分组视图：按 group 字段聚合（典藏阁：馆藏资产；研习录：研习活动），
+ *  分组标签取自 SHELL_NAV_GROUP_LABELS 单源，仿 linguacraft_16；末尾追加研习辅助组 */
+const DESKTOP_NAV_GROUPS: ReadonlyArray<{ label: string; items: readonly (ShellNavItem | ShellAuxItem)[] }> = [
+  ...SHELL_NAV_GROUP_LABELS.map((label) => ({
     label,
     items: SHELL_NAV_ITEMS.filter((item) => item.group === label),
   })),
@@ -101,8 +124,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   /* 移动端全屏检索浮层开合（顶栏放大镜入口） */
   const [searchOpen, setSearchOpen] = useState(false);
 
-  /* 壳层统计：与首页共享 ['home'] 查询缓存（首页零额外请求；其余页面补一次本地聚合查询） */
-  const home = useQuery({ queryKey: ['home'], queryFn: () => api<HomeData>('/api/home') });
+  /* 壳层统计：与首页共享 ['home'] 查询缓存（首页零额外请求；其余页面补一次本地聚合查询）。
+   * staleTime 60s：壳层常驻每个路由都挂着，不设 stale 的话窗口每次重新聚焦都
+   * 重取一次重聚合接口（集卷聚合 + 全表位图 + 三条查询），移动端也照付 */
+  const home = useQuery({
+    queryKey: ['home'],
+    queryFn: () => api<HomeData>('/api/home'),
+    staleTime: 60_000,
+  });
   /* 全馆总句数（各集卷句数合计）与已研句数 → 全馆研读进度百分比（研墨造诣卡） */
   const totalSentences = home.data?.collections.reduce((a, c) => a + c.sentenceCount, 0) ?? 0;
   const studiedCount = home.data?.stats.studiedSentenceCount ?? 0;
@@ -113,28 +142,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     /* 最外层容器：动态视口高度 + 纸底色 */
     <div className="flex min-h-dvh flex-col bg-background md:flex-row">
       {/* ===== 桌面端左侧栏（≥md；linguacraft_16 同款：container-low 冷灰底 + 极淡投影，无边线） ===== */}
-      <aside className="sticky top-0 z-30 hidden h-dvh w-64 shrink-0 flex-col justify-between bg-surface-container-low py-6 shadow-[0_1px_8px_rgba(0,0,0,0.04)] md:flex">
-        {/* 上半区：品牌 + chip + 导航（设计稿 gap-space-lg 三段纵排） */}
-        <div className="flex flex-col gap-6">
-          {/* 品牌区：ink_pen 深朱印章方 + 双行标题；点击回首页（案头今研） */}
+      <aside className="sticky top-0 z-30 hidden h-dvh w-64 shrink-0 flex-col bg-surface-container-low py-6 shadow-shell md:flex">
+        {/* 上半区：品牌 + chip + 导航（设计稿 gap-space-lg 三段纵排）；min-h-0 让
+            导航区在短视口（缩放 150%/大字号）下自身滚动，底部条目不致被裁掉 */}
+        <div className="flex min-h-0 flex-1 flex-col gap-6">
+          {/* 品牌区（ShellBrand 单源）：点击回首页（案头今研） */}
           <div className="px-6">
-            <Link
-              href="/"
-              aria-label="回到首页"
-              className="flex items-center gap-2 rounded-md transition-opacity hover:opacity-80"
-            >
-              {/* 印章方块：深朱底 + 白色 ink_pen 图标（设计稿 8x8 rounded-lg 同款） */}
-              <span className="flex size-8 shrink-0 select-none items-center justify-center rounded-md bg-shell-seal">
-                <span className="material-symbols-outlined text-[20px] text-white">ink_pen</span>
-              </span>
-              {/* 双行标题：衬线主标（headline-sm 角色）+ 赭褐小字副标（label-sm 角色） */}
-              <span className="flex flex-col">
-                <span className="font-serif text-headline-sm tracking-tight text-on-surface">
-                  LinguaCraft
-                </span>
-                <span className="text-label-sm text-on-surface-variant">纸墨研习 · 案头</span>
-              </span>
-            </Link>
+            <ShellBrand />
           </div>
           {/* 已研句段 chip（设计稿「今日砚墨」槽位；值取真实统计 studiedSentenceCount） */}
           <div className="px-4">
@@ -153,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           {/* 分组导航：组标签（典藏阁/研习录）+ 条目；活动态 = container-highest 染底 + 浓墨半粗 */}
-          <nav className="flex flex-col gap-1 px-4">
+          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4">
             {DESKTOP_NAV_GROUPS.map((group, gi) => (
               <Fragment key={group.label}>
                 {/* 组标签：第二组起加 mt-2（设计稿 mt-space-sm 与导航 gap 叠加出的呼吸感） */}
@@ -209,24 +223,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <TopBar />
 
         {/* 移动端顶栏（<md 显示）：与桌面 TopBar 同款视觉（毛玻璃 + 极淡投影），另留安全区 */}
-        <header className="sticky top-0 z-30 bg-surface/80 pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl md:hidden">
+        <header className="sticky top-0 z-30 bg-surface/80 pt-safe shadow-shell backdrop-blur-xl md:hidden">
           <div className="flex h-16 items-center justify-between px-4">
-            {/* 品牌区：与桌面侧栏同款（ink_pen 深朱印章 + 双行标题），点击回首页（案头今研） */}
-            <Link
-              href="/"
-              aria-label="回到首页"
-              className="flex items-center gap-2 rounded-md transition-opacity hover:opacity-80"
-            >
-              <span className="flex size-8 shrink-0 select-none items-center justify-center rounded-md bg-shell-seal">
-                <span className="material-symbols-outlined text-[20px] text-white">ink_pen</span>
-              </span>
-              <span className="flex flex-col">
-                <span className="font-serif text-headline-sm tracking-tight text-on-surface">
-                  LinguaCraft
-                </span>
-                <span className="text-label-sm text-on-surface-variant">纸墨研习 · 案头</span>
-              </span>
-            </Link>
+            {/* 品牌区（ShellBrand 单源）：与桌面侧栏同款，点击回首页（案头今研） */}
+            <ShellBrand />
             {/* 右侧三入口：检索 / 导入 / 我的（44px 触控目标；检索打开全屏浮层） */}
             <div className="flex items-center gap-1">
               {/* 检索入口：放大镜，打开全屏检索浮层 */}
@@ -249,7 +249,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {/* 我的入口：深朱印章头像（与桌面顶栏头像同款）→ 设置页 */}
               <Link href="/settings" aria-label="我的 · 设置" className="flex size-11 items-center justify-center">
                 <span className="flex size-8 items-center justify-center rounded-xl bg-shell-seal">
-                  <span className="material-symbols-outlined text-[18px] text-white">person</span>
+                  <span className="material-symbols-outlined text-[18px] text-on-shell-seal">person</span>
                 </span>
               </Link>
             </div>
@@ -261,10 +261,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* 移动端底部导航（<md 显示）：container-low 冷灰底 + 顶部极淡投影；
             5-tab 与桌面侧栏五条目同构（同 label/icon/目的地），活动态同桌面（container-highest 染底半粗） */}
-        <nav className="fixed inset-x-0 bottom-0 z-30 bg-surface-container-low pb-safe shadow-[0_-1px_8px_rgba(0,0,0,0.04)] md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-30 bg-surface-container-low pb-safe shadow-shell-up md:hidden">
           <div className="grid grid-cols-5">
             {SHELL_NAV_ITEMS.map((item) => (
-              /* 单个 tab：活动态染底药丸 + 浓墨半粗，44px+ 触控目标 */
+              /* 单个 tab：活动态染底药丸 + 浓墨半粗，44px+ 触控目标。
+                 字重挂在标签 span 上——角色 token 的 font-weight 声明在子元素
+                 自身，父级继承压不过它，挂 Link 上是无效样式 */
               <Link
                 key={item.href}
                 href={item.href}
@@ -272,12 +274,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 aria-current={item.match(pathname) ? 'page' : undefined}
                 className={`mx-1 my-2 flex flex-col items-center justify-center gap-0.5 rounded-md py-1.5 transition-colors ${
                   item.match(pathname)
-                    ? 'bg-surface-container-highest font-semibold text-on-surface'
+                    ? 'bg-surface-container-highest text-on-surface'
                     : 'text-on-surface-variant'
                 }`}
               >
                 <span className="material-symbols-outlined text-[22px]">{item.icon}</span>
-                <span className="text-label-sm">{item.label}</span>
+                <span className={`text-label-sm ${item.match(pathname) ? 'font-semibold' : 'font-medium'}`}>
+                  {item.label}
+                </span>
               </Link>
             ))}
           </div>
@@ -287,5 +291,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <MobileSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
       </div>
     </div>
+  );
+}
+
+/**
+ * 品牌区组件：ink_pen 深朱印章方 + 双行标题（衬线主标 + 赭褐副标），
+ * 点击回首页（案头今研）。桌面侧栏与移动顶栏两处同款单源——文案/字阶
+ * 调整只改这一处。
+ */
+function ShellBrand() {
+  return (
+    <Link
+      href="/"
+      aria-label="回到首页"
+      className="flex items-center gap-2 rounded-md transition-opacity hover:opacity-80"
+    >
+      {/* 印章方块：深朱底 + 白色 ink_pen 图标（设计稿 8x8 rounded-lg 同款） */}
+      <span className="flex size-8 shrink-0 select-none items-center justify-center rounded-md bg-shell-seal">
+        <span className="material-symbols-outlined text-[20px] text-on-shell-seal">ink_pen</span>
+      </span>
+      {/* 双行标题：衬线主标（headline-sm 角色）+ 赭褐小字副标（label-sm 角色） */}
+      <span className="flex flex-col">
+        <span className="font-serif text-headline-sm tracking-tight text-on-surface">
+          LinguaCraft
+        </span>
+        <span className="text-label-sm text-on-surface-variant">纸墨研习 · 案头</span>
+      </span>
+    </Link>
   );
 }

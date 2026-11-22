@@ -32,6 +32,9 @@ mkdir -p "$RUN_DIR"
 info() { printf '\033[1;34m[启动]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m[就绪]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[跳过]\033[0m %s\n' "$*"; }
+# 处置建议（启动失败后的后续动作提示）：与 fail 同流打 stderr——stdout/stderr
+# 分开重定向时原因与建议不错序；标签用 [提示] 而非 [跳过]，语义不同
+hint() { printf '\033[1;36m[提示]\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31m[失败]\033[0m %s\n' "$*" >&2; }
 
 # ---- 以独立进程组后台启动：lib.sh 的 spawn_group（与 dev-https.sh 共用同一实现）----
@@ -103,8 +106,8 @@ start_web() {
     # 「PID==自身 PGID」安全约束）：不直接建议 kill -- -PGID——手动起的 next
     # start 与终端共享进程组，裸组杀会连带用户的 shell/编辑器
     if [[ -d /proc ]] && pid_matches "$holder" 'next-server|next dev|@pinglc/web'; then
-      warn "占用者疑似 next 进程：它与 next dev 共用 apps/web/.next，并存会互相污染构建产物"
-      warn "可先运行 ./scripts/stop.sh web 安全清理（识别/组杀约束见其脚本注释），再重新启动"
+      hint "占用者疑似 next 进程：它与 next dev 共用 apps/web/.next，并存会互相污染构建产物"
+      hint "可先运行 ./scripts/stop.sh web 安全清理（识别/组杀约束见其脚本注释），再重新启动"
     fi
     return 1
   fi

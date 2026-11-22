@@ -58,8 +58,8 @@ export const WriteCheckSchema = z.object({
       })
     )
     .max(5),
-  /** 高阶搭配建议（含目标词的地道搭配） */
-  collocations: z.array(z.string().min(2)).max(5),
+  /** 高阶搭配建议（含目标词的地道搭配，2~4 条——与系统提示的条数要求一致） */
+  collocations: z.array(z.string().min(2)).min(2).max(4),
 });
 
 /** 仿写点拨数据形态 */
@@ -76,8 +76,18 @@ export const WRITE_CHECK_SYSTEM =
  * 构造仿写点拨 user 提示
  * @param word 目标单词
  * @param framesHint 仿写构架提示（可空）
+ * @param example 原典例句参考（可空；单独成段，不与用户仿写混排——拼进
+ *                用户文本会被模型当成仿写的一部分点评）
  * @param text 用户仿写短句
  */
-export function buildWriteCheckPrompt(word: string, framesHint: string | null, text: string): string {
-  return `目标单词：${word}\n仿写构架参考：${framesHint ?? '（无）'}\n用户仿写：${text}\n\n请点评并给搭配建议。`;
+export function buildWriteCheckPrompt(
+  word: string,
+  framesHint: string | null,
+  example: string | null,
+  text: string,
+): string {
+  return (
+    `目标单词：${word}\n仿写构架参考：${framesHint ?? '（无）'}\n` +
+    `原典例句参考：${example ?? '（无）'}\n用户仿写：${text}\n\n请点评并给搭配建议。`
+  );
 }

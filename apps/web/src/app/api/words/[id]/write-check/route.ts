@@ -10,15 +10,16 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { aiArtifacts, cues, words } from '@/lib/db/schema';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
-import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
-import { enginePost, engineErrorResponse } from '@/lib/server/engine';
-import { repairPrompt } from '@/lib/quiz';
+import { EngineError, engineErrorResponse } from '@/lib/server/engine';
+import { structuredLLM } from '@/lib/server/structuredLlm';
 import { WRITE_CHECK_SYSTEM, buildWriteCheckPrompt, WriteCheckSchema } from '@/lib/manualCard';
+import { WRITE_TEXT_MAX } from '@/lib/limits';
 
 export const runtime = 'nodejs';
 
-/** 仿写短句长度上限（超长截断，防 token 失控） */
-const TEXT_MAX = 600;
+/** 仿写短句长度上限（manualCard 单源：超长直接 400 拒绝而非静默截断——截断
+ *  会让批改与用户实际所写不符；客户端 textarea 同上限 maxLength 正常路径不触达） */
+const TEXT_MAX = WRITE_TEXT_MAX;
 
 /**
  * POST —— 仿写即时点拨
@@ -27,14 +28,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const wordId = parseIdParam(id);
   if (wordId === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
-  const body = await readJsonBody<{ text?: string }>(request);
+  const body = await readJsonBody<{ text?: unknown }>(request);
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
-  const text = body.text?.trim().slice(0, TEXT_MAX);
+  // readJsonBody 只保证 body 是对象，text 字段类型仍需显式守卫（{"text":123}
+  // 会让 123?.trim 抛 TypeError → 框架 500）
+  if (typeof body.text !== 'string') return NextResponse.json({ error: 'text 必须是字符串' }, { status: 400 });
+  const text = body.text.trim();
   if (!text) return NextResponse.json({ error: '仿写内容为空' }, { status: 400 });
-
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
-    return NextResponse.json({ error: '未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）' }, { status: 400 });
+  if (text.length > TEXT_MAX) {
+    return NextResponse.json({ error: `仿写内容超长（上限 ${TEXT_MAX} 字）` }, { status: 400 });
   }
 
   const db = getDb();
@@ -67,36 +69,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
   }
 
-  // 同步结构化生成（want_json；zod 校验失败带错误修复重试一次，与管线
-  // structuredLLM 同款策略——批改 JSON 偶发不合规，一次往返的失败率不可接受）；
-  // 引擎调用整体包 try/catch：引擎未启动/超时/非 2xx 抛 EngineError，映射为
-  // 可读错误响应而非框架级 500（与 shadow-score 等引擎代理路由同款出口）
-  const user = buildWriteCheckPrompt(word.displayForm, framesHint, `${text}\n原典例句参考：${example ?? '（无）'}`);
-  let parsed: ReturnType<typeof WriteCheckSchema.safeParse> | undefined;
+  // 同步结构化生成（structuredLLM 单源：管线与同步路由共用同一套
+  // 「生成 → 校验 → 修复重试」回路，温度/重试/错误映射不再各持一份）；
+  // 引擎未启动/超时/非 2xx/两次不合规抛 EngineError，映射为可读错误响应
+  // 而非框架级 500（与 shadow-score 等引擎代理路由同款出口）
   try {
-    let r = await enginePost<{ json: unknown }>('/llm/chat', {
-      profile: toEngineProfile(profile),
+    const { data } = await structuredLLM({
+      schema: WriteCheckSchema,
       system: WRITE_CHECK_SYSTEM,
-      user,
-      want_json: true,
-      temperature: 0.3,
+      user: buildWriteCheckPrompt(word.displayForm, framesHint, example, text),
+      label: '点拨',
     });
-    parsed = WriteCheckSchema.safeParse(r.json);
-    if (!parsed.success) {
-      r = await enginePost<{ json: unknown }>('/llm/chat', {
-        profile: toEngineProfile(profile),
-        system: WRITE_CHECK_SYSTEM,
-        user: `${user}\n\n${repairPrompt(parsed.error.issues)}`,
-        want_json: true,
-        temperature: 0.2,
-      });
-      parsed = WriteCheckSchema.safeParse(r.json);
-    }
+    return NextResponse.json({ check: data });
   } catch (err) {
+    /* 「未配置 LLM 档案」守卫只在 structuredLLM 一处（此前路由预检重复同一
+       判定与文案，改一处漏一处）；EngineError status=0 映射 400，其余 502 */
+    if (err instanceof EngineError && err.status === 0) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     return engineErrorResponse(err, '点拨生成失败');
   }
-  if (!parsed?.success) {
-    return NextResponse.json({ error: '点拨生成异常，请重试' }, { status: 502 });
-  }
-  return NextResponse.json({ check: parsed.data });
 }

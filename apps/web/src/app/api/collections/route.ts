@@ -58,13 +58,17 @@ export async function POST(request: Request) {
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: '材料集名不能为空' }, { status: 400 });
-  // 封面配置：对象形态必检（数组/原始值直接拒绝），清洗后空串落 null（视为未配置）
+  // 封面配置：对象形态必检（数组/原始值直接拒绝）；清洗后全字段非法同样 400
+  // （与 PATCH 同口径——静默落 null 会让拼错字段的请求看似成功）
   let coverJson: string | null = null;
-  if (body.cover != null) {
+  if (body.cover !== undefined && body.cover !== null) {
     if (typeof body.cover !== 'object' || Array.isArray(body.cover)) {
       return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
     }
-    coverJson = serializeCollectionCover(body.cover) || null;
+    // 清洗后全字段非法（如 texture 拼错）按非法输入 400——与 PATCH 同口径，
+    // 静默落 null 会让两端对同一份坏输入行为漂移
+    coverJson = serializeCollectionCover(body.cover);
+    if (!coverJson) return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
   }
   // 册序即真排序：sortOrder 由「落库的清洗后配置」卷签 rank 派生（卷壹=10 …
   // 别卷=90）；不能取原始请求串——serialize 归一别名卷签（「卷壹 · 启篇」→

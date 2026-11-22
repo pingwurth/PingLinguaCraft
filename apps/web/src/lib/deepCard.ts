@@ -3,7 +3,7 @@
  *
  * 一次 LLM 调用产出两部分：词源树（JSON，前端渲染拓扑）+ 仿写构架（句型模板）。
  * zod 严格校验；校验失败的修复提示词与测验共用 quiz.ts 的 repairPrompt
- * （调用-校验-修复循环在 pipeline.ts 的 structuredLLM 单点实现）。
+ * （调用-校验-修复循环在 lib/server/structuredLlm.ts 的 structuredLLM 单点实现）。
  */
 
 import { z } from 'zod';

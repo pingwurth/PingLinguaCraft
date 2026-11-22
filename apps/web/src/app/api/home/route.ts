@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { countListenedBits } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { collections, cues, learningProgress, materials, words } from '@/lib/db/schema';
@@ -27,6 +27,35 @@ export const runtime = 'nodejs';
 
 /** 最近活跃时间表达式：学习时间与材料更新时间取大（select 与 orderBy 共用一份，防两处口径漂移） */
 const activityAtExpr = sql<number>`max(coalesce(${learningProgress.updatedAt}, 0), ${materials.updatedAt})`;
+
+/**
+ * 批量现数句段（sentence_count 缺失的老材料分母兜底）：一条分组查询取多材料
+ * cues 计数（本文件三处兜底共用，此前各写一份形态各异正是漂移源）
+ * @param db   数据库连接
+ * @param ids  材料 id 列表
+ */
+function cueCountsFor(db: ReturnType<typeof getDb>, ids: number[]): Map<number, number> {
+  const map = new Map<number, number>();
+  if (ids.length === 0) return map;
+  for (const r of db
+    .select({ materialId: cues.materialId, n: sql<number>`count(*)` })
+    .from(cues)
+    .where(inArray(cues.materialId, ids))
+    .groupBy(cues.materialId)
+    .all()) {
+    map.set(r.materialId, r.n);
+  }
+  return map;
+}
+
+/**
+ * 无位图行的听句估算（位图机制之前的存量进度）：按 maxCueIndex+1 封顶句数。
+ * 本文件按卷聚合 / resume 书签 / 案头近况三处同口径调用，防同一材料在不同
+ * 卡片上 0% 与 >0% 打架
+ */
+function estimateHeardNoMask(maxCueIndex: number | null, total: number): number {
+  return maxCueIndex == null || total <= 0 ? 0 : Math.min(maxCueIndex + 1, total);
+}
 
 /**
  * GET —— 首页聚合数据
@@ -66,12 +95,15 @@ export async function GET() {
    * 也取此聚合的总和（单一来源——旧实现另起全表位图查询且缺 deletedAt/userId 过滤，
    * 软删材料后统计卡虚高、与集卷卡/书签/近况漂移）；单用户进度行量级小，开销可忽略。
    * 截断到现句数与进度 PUT 同口径：重跑 STT 句数变少时位图合并保留的旧高位
-   * 不算已研（否则统计永久虚高、heard 可能超过 sentenceCount） */
-  const heardByCollection = new Map<number, number>();
-  for (const r of db
+   * 不算已研（否则统计永久虚高、heard 可能超过 sentenceCount）。
+   * 句数缺失（老数据）现数 cues 兜底，保证与集卷分母 sum(sentence_count) 同一
+   * 材料集合——分子计 NULL 句数材料而分母跳过会让混装卷 heard 超过 sentenceCount */
+  const heardRows = db
     .select({
+      materialId: materials.id,
       collectionId: materials.collectionId,
       mask: learningProgress.listenedMask,
+      maxCueIndex: learningProgress.maxCueIndex,
       sentenceCount: materials.sentenceCount,
     })
     .from(learningProgress)
@@ -80,13 +112,23 @@ export async function GET() {
       and(eq(materials.id, learningProgress.materialId), isNull(materials.deletedAt))
     )
     .where(eq(learningProgress.userId, 1))
-    .all()) {
+    .all();
+  const cueCountByMaterial = cueCountsFor(
+    db,
+    heardRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
+  );
+  /* 分子分母同一材料集合：分母也走 cues 兜底（SQL sum(sentence_count) 会跳过
+   * NULL 行，混装卷会出现 heard > 分母、被 progressPct 的上界静默夹成 100% 的
+   * 假完卷）；位图为空的存量行按 maxCueIndex+1 估算（与 resume 同口径） */
+  const heardByCollection = new Map<number, number>();
+  const sentenceTotalByCollection = new Map<number, number>();
+  for (const r of heardRows) {
     // blob() 列经 drizzle select 推断为 unknown，按 schema 实际类型（Buffer|null）收窄
     const mask = r.mask as Buffer | null;
-    if (!mask) continue;
-    // 句数缺失（老数据）退回整位图口径：截断目的只是丢弃越界旧位，缺句数时无从判定
-    const total = r.sentenceCount ?? mask.length * 8;
-    heardByCollection.set(r.collectionId, (heardByCollection.get(r.collectionId) ?? 0) + countListenedBits(mask, total));
+    const total = r.sentenceCount ?? cueCountByMaterial.get(r.materialId) ?? 0;
+    const heard = mask ? countListenedBits(mask, total) : estimateHeardNoMask(r.maxCueIndex, total);
+    heardByCollection.set(r.collectionId, (heardByCollection.get(r.collectionId) ?? 0) + heard);
+    sentenceTotalByCollection.set(r.collectionId, (sentenceTotalByCollection.get(r.collectionId) ?? 0) + total);
   }
 
   const collectionList: HomeCollection[] = collectionRows.map((r) => ({
@@ -98,7 +140,7 @@ export async function GET() {
     materialCount: r.materialCount,
     totalDurationMs: r.totalDurationMs,
     sentenceCount: r.sentenceCount,
-    progressPct: progressPct(heardByCollection.get(r.id) ?? 0, r.sentenceCount),
+    progressPct: progressPct(heardByCollection.get(r.id) ?? 0, sentenceTotalByCollection.get(r.id) ?? 0),
     lastStudiedAt: r.lastStudiedAt,
   }));
 
@@ -132,14 +174,8 @@ export async function GET() {
   let resume: HomeResumePoint | null = null;
   if (resumeRow) {
     // 总句数：sentence_count 就绪时已统计；缺失（老数据）则现数 cues 兜底
-    let cueCount = resumeRow.sentenceCount;
-    if (cueCount == null) {
-      cueCount = db
-        .select({ n: sql<number>`count(*)` })
-        .from(cues)
-        .where(eq(cues.materialId, resumeRow.materialId))
-        .all()[0]!.n;
-    }
+    const cueCount =
+      resumeRow.sentenceCount ?? cueCountsFor(db, [resumeRow.materialId]).get(resumeRow.materialId) ?? 0;
     // 停留句引文：书签上展示「当前句」原文，缺失（句被重排等）静默降级为无引文
     const cue = db
       .select({ textEn: cues.textEn })
@@ -153,10 +189,13 @@ export async function GET() {
       collectionName: resumeRow.collectionName,
       maxCueIndex: resumeRow.maxCueIndex,
       cueCount,
-      // 位图口径：实际听过句数（跳句不计，按句数截断防越界旧位），与集卷/统计卡一致；
-      // maxCueIndex 仅用于「第 N 句」定位展示
+      // 位图口径：实际听过句数（跳句不计，按句数截断防越界旧位），与集卷/统计卡
+      // 一致；maxCueIndex 仅用于「第 N 句」定位展示。位图为空的存量行（位图机制
+      // 之前写入）按 maxCueIndex+1 估算，避免「第 N 句」旁挂着刺眼的 0%
       progressPct: progressPct(
-        resumeRow.listenedMask ? countListenedBits(resumeRow.listenedMask as Buffer, cueCount) : 0,
+        resumeRow.listenedMask
+          ? countListenedBits(resumeRow.listenedMask as Buffer, cueCount)
+          : estimateHeardNoMask(resumeRow.maxCueIndex, cueCount),
         cueCount
       ),
       lastCueText: cue?.textEn ?? '',
@@ -191,10 +230,16 @@ export async function GET() {
     .limit(5)
     .all();
 
+  const recentCueCounts = cueCountsFor(
+    db,
+    recentRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
+  );
   const recent: HomeRecentMaterial[] = recentRows.map((r) => {
     const mask = r.listenedMask as Buffer | null;
-    /* 分母句数缺失（老数据）时位图按整幅计（无从截断），百分比侧分母为 0 恒 0% */
-    const maskTotal = r.sentenceCount ?? (mask ? mask.length * 8 : 0);
+    /* 分母句数缺失（老数据）现数 cues 兜底；无位图行按 maxCueIndex+1 估算
+       （与集卷聚合/resume 书签/集内列表四处同口径） */
+    const total = r.sentenceCount ?? recentCueCounts.get(r.materialId) ?? 0;
+    const heard = mask ? countListenedBits(mask, total) : estimateHeardNoMask(r.maxCueIndex, total);
     return {
       materialId: r.materialId,
       title: r.title,
@@ -207,7 +252,7 @@ export async function GET() {
       collectionName: r.collectionName,
       maxCueIndex: r.maxCueIndex,
       // 位图口径：实际听过句数（跳句不计，按句数截断防越界旧位），与集卷/书签/统计卡一致
-      progressPct: progressPct(mask ? countListenedBits(mask, maskTotal) : 0, r.sentenceCount ?? 0),
+      progressPct: progressPct(heard, total),
       activityAt: r.activityAt,
     };
   });

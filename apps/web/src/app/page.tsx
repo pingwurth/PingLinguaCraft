@@ -4,8 +4,8 @@
  * 首页 —— 案头今研（结构参照设计稿 首页/code.html：卷首抬头 + 卷内材料列表）
  *
  * 首页不再是藏经阁全库（移至 /library，由侧栏「藏经阁库」条目进入），而是聚焦
- * 「今研之卷」：自动选中最近研习的材料集（与续研书签同源同口径的 lastStudiedAt
- * 最大卷；全库未开卷时回落库序首卷），给出一屏可续研的工作台——
+ * 「今研之卷」：优先落座续研书签所在卷（口径恒同卷），无书签再取最近研习
+ * （lastStudiedAt 最大）卷，全库未开卷时回落库序首卷，给出一屏可续研的工作台——
  * - 卷首抬头卡：面包屑（藏经阁 / 卷名 + 私享藏本）+ 卷名 + 题记引文 +
  *   韵数徽记（在卷材料 / 卷册总长 / 经卷句藏 / 最近研习）+ 导入/入卷动作 +
  *   卷册修研总度缎带（进度 + 续研书签「第 N 句」即刻续研）；
@@ -23,6 +23,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { parseCollectionCover } from '@pinglc/core';
 import { api, type JobDTO, type MaterialListItem } from '@/lib/api';
@@ -37,20 +38,48 @@ type StudyState = 'studying' | 'done' | 'fresh';
 type StudyFilter = 'all' | StudyState;
 
 /**
- * 材料 → 研习状态档位（位图口径进度 ≥100 视为已完卷，>0 视为研习中，否则待启卷）
+ * 材料 → 研习状态档位（已完卷以 listenedThrough 判定——服务端按位图逐句复核，
+ * 与「已完卷」语义一致；四舍五入的 progressPct 在 199/200→100% 时会误判，
+ * 仅作展示。研习中 = 进度 >0，否则待启卷）
  * @param m 材料条目（progress 为 null 即从未研习 → 待启卷）
  */
 function studyState(m: MaterialListItem): StudyState {
-  const pct = m.progress?.progressPct ?? 0;
-  return pct >= 100 ? 'done' : pct > 0 ? 'studying' : 'fresh';
+  const p = m.progress;
+  if (!p) return 'fresh';
+  if (p.listenedThrough) return 'done';
+  return p.progressPct > 0 ? 'studying' : 'fresh';
 }
 
-/** 研习状态 → 卷内签文案与色调（研习中深朱 / 已完卷竹青 / 待启卷赭褐弱化） */
-const STATE_META: Record<StudyState, { label: string; tone: string }> = {
-  studying: { label: '正在研习', tone: 'text-shell-seal' },
-  done: { label: '已完卷', tone: 'text-shell-bamboo' },
-  fresh: { label: '待启卷', tone: 'text-outline' },
+/** 研习状态 → 卷内签文案/色调 + 主动作（样式/文案/图标单表收敛，禁嵌套三元） */
+const STATE_META: Record<
+  StudyState,
+  { label: string; tone: string; actionCls: string; actionLabel: string; actionIcon: string }
+> = {
+  studying: {
+    label: '正在研习',
+    tone: 'text-shell-seal',
+    actionCls: 'bg-shell-seal text-on-shell-seal shadow-sm hover:bg-primary',
+    actionLabel: '继续精读',
+    actionIcon: 'menu_book',
+  },
+  done: {
+    label: '已完卷',
+    tone: 'text-shell-bamboo',
+    actionCls: 'bg-surface-container text-on-surface hover:bg-surface-container-high',
+    actionLabel: '复读温习',
+    actionIcon: 'replay',
+  },
+  fresh: {
+    label: '待启卷',
+    tone: 'text-outline',
+    actionCls: 'bg-primary-fixed/60 text-shell-seal hover:bg-shell-seal hover:text-on-shell-seal',
+    actionLabel: '开启首研',
+    actionIcon: 'menu_book',
+  },
 };
+
+/** 卷内材料列表页大小（与 API pageSize 上限一致：首页定位速览，超量走「入卷查阅」分页） */
+const FOCUS_PAGE_SIZE = 100;
 
 /**
  * 首页组件：案头今研（聚焦最近研习的材料集）
@@ -65,16 +94,23 @@ export default function HomePage() {
   const home = useQuery({ queryKey: ['home'], queryFn: () => api<HomeData>('/api/home') });
   const collections = useMemo(() => home.data?.collections ?? [], [home.data]);
 
-  /* 今研之卷选取：lastStudiedAt 最大的卷（与续研书签同源 learningProgress.updatedAt，
-   * 同口径必同卷）；全库从未开卷时按库序回落首卷 */
+  /* 今研之卷选取：优先落座续研书签所在卷（resume 的材料口径比 lastStudiedAt 窄：
+   * 只取就绪材料且 maxCueIndex>0 的最新行——按 lastStudiedAt 选卷会出现「卷首
+   * 说未开卷、同卡进度却 >0」的自相矛盾）；无书签再取 lastStudiedAt 最大卷，
+   * 全库从未开卷时按库序回落首卷 */
+  const resumePoint = home.data?.resume ?? null;
   const focus = useMemo(() => {
     if (collections.length === 0) return null;
+    const resumeCol = resumePoint
+      ? collections.find((c) => c.id === resumePoint.collectionId)
+      : undefined;
+    if (resumeCol) return resumeCol;
     let best: HomeCollection = collections[0]!;
     for (const c of collections) {
       if ((c.lastStudiedAt ?? 0) > (best.lastStudiedAt ?? 0)) best = c;
     }
     return best;
-  }, [collections]);
+  }, [collections, resumePoint]);
   const focusId = focus?.id ?? null;
 
   /* 卷内材料（pageSize 顶格 100：首页定位速览；更多材料由「入卷查阅」分页承接），
@@ -84,7 +120,7 @@ export default function HomePage() {
     queryFn: () => {
       if (focusId === null) throw new Error('未选定今研之卷');
       return api<{ materials: MaterialListItem[]; total: number }>(
-        `/api/collections/${focusId}/materials?page=1&pageSize=100`
+        `/api/collections/${focusId}/materials?page=1&pageSize=${FOCUS_PAGE_SIZE}`
       );
     },
     enabled: focusId !== null,
@@ -97,28 +133,27 @@ export default function HomePage() {
   const resume: HomeResumePoint | null =
     home.data?.resume && home.data.resume.collectionId === focusId ? home.data.resume : null;
 
-  /* 移出本卷（软删除可恢复；DELETE /api/materials/[id]）：
-   * 成功后失效首页聚合/今研卷列表/集详情（materialCount 等随之刷新） */
+  /* 移出本卷（软删除；DELETE /api/materials/[id]）：
+   * 成功后失效首页聚合/今研卷列表/集详情（materialCount 等随之刷新）。
+   * 确认走共享 ConfirmDialog（与删卷同款，含进行中封路与失败就地展示）；
+   * 软删保留库内数据但应用内暂无恢复入口，文案不承诺可恢复 */
+  const [removingTarget, setRemovingTarget] = useState<MaterialListItem | null>(null);
   const removeMaterial = useMutation({
     mutationFn: (id: number) => api(`/api/materials/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      setRemovingTarget(null);
       void qc.invalidateQueries({ queryKey: ['home'] });
       void qc.invalidateQueries({ queryKey: ['focus-materials'] });
       void qc.invalidateQueries({ queryKey: ['collection'] });
     },
-    // 删除失败必须可见（静默时用户以为已移出，重进才知材料还在）
-    onError: (err) => alert(`移出失败：${err.message}`),
   });
 
   /**
-   * 移出前确认（原生 confirm，与设置页删除同款；软删保留库内数据但应用内
-   * 暂无恢复入口，文案不承诺可恢复）
+   * 打开移出确认弹窗
    * @param m 待移出材料
    */
   const confirmRemoveMaterial = (m: MaterialListItem) => {
-    if (confirm(`将「${m.title}」移出本卷？（软删除：媒体与研习进度保留在库中）`)) {
-      removeMaterial.mutate(m.id);
-    }
+    setRemovingTarget(m);
   };
 
   /* 筛选档位计数（基于全量卷内材料，与筛选结果无关，供药丸角标） */
@@ -126,6 +161,13 @@ export default function HomePage() {
     const c: Record<StudyFilter, number> = { all: materials.length, studying: 0, done: 0, fresh: 0 };
     for (const m of materials) c[studyState(m)] += 1;
     return c;
+  }, [materials]);
+
+  /* 卷内全量位次表（id → 序号）：行卡「卷内 · NN」取号 O(1)，不逐行 indexOf */
+  const indexById = useMemo(() => {
+    const map = new Map<number, number>();
+    materials.forEach((m, i) => map.set(m.id, i));
+    return map;
   }, [materials]);
 
   /* 卷内轻筛：标题关键词（大小写不敏感）+ 研习状态档位 */
@@ -165,7 +207,7 @@ export default function HomePage() {
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/library"
-              className="flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-white transition-colors hover:bg-primary"
+              className="flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-on-shell-seal transition-colors hover:bg-primary"
             >
               <span className="material-symbols-outlined text-lg">create_new_folder</span>
               去藏经阁立卷
@@ -277,7 +319,7 @@ export default function HomePage() {
               <div className="relative flex flex-col items-stretch justify-end gap-2 lg:col-span-4 lg:items-end">
                 <Link
                   href={`/import?collectionId=${focus.id}`}
-                  className="flex items-center justify-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2.5 text-label-md text-white shadow-sm transition-colors hover:bg-primary"
+                  className="flex items-center justify-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2.5 text-label-md text-on-shell-seal shadow-sm transition-colors hover:bg-primary"
                 >
                   <span className="material-symbols-outlined text-[18px]">add_box</span>
                   导入新材料到此集
@@ -319,7 +361,7 @@ export default function HomePage() {
                   </span>
                   <Link
                     href={`/material/${resume.materialId}`}
-                    className="flex shrink-0 items-center gap-1 rounded-sm bg-shell-seal px-3 py-1.5 text-label-md text-white transition-colors hover:bg-primary"
+                    className="flex shrink-0 items-center gap-1 rounded-sm bg-shell-seal px-3 py-1.5 text-label-md text-on-shell-seal transition-colors hover:bg-primary"
                   >
                     <span aria-hidden className="material-symbols-outlined text-base">
                       play_arrow
@@ -401,7 +443,7 @@ export default function HomePage() {
               </p>
               <Link
                 href={`/import?collectionId=${focus.id}`}
-                className="mt-4 flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-white transition-colors hover:bg-primary"
+                className="mt-4 flex items-center gap-1.5 rounded-sm bg-shell-seal px-4 py-2 text-title-sm text-on-shell-seal transition-colors hover:bg-primary"
               >
                 <span className="material-symbols-outlined text-lg">add_box</span>
                 导入新材料到此集
@@ -418,13 +460,46 @@ export default function HomePage() {
                   key={m.id}
                   m={m}
                   /* 序号按卷内全量位次（筛选只隐藏不重排，卷内 · NN 稳定） */
-                  index={materials.indexOf(m)}
+                  index={indexById.get(m.id) ?? 0}
                   removing={removeMaterial.isPending && removeMaterial.variables === m.id}
                   onRemove={() => confirmRemoveMaterial(m)}
                 />
               ))}
             </section>
           )}
+
+          {/* 超量注记：列表只取首页速览的页大小，超过时明示总量防与「在卷材料 N 篇」打架 */}
+          {list.data != null && list.data.total > materials.length && (
+            <p className="mt-3 text-center text-label-sm text-outline">
+              仅显示前 {FOCUS_PAGE_SIZE} 篇 · 共 {list.data.total} 篇——「入卷查阅」看全部
+            </p>
+          )}
+
+          {/* ===== 移出材料确认弹窗（共享 ConfirmDialog；软删文案不承诺恢复） ===== */}
+          <ConfirmDialog
+            open={removingTarget !== null}
+            title="移出本卷"
+            icon="folder_delete"
+            destructive
+            pending={removeMaterial.isPending}
+            error={removeMaterial.isError ? removeMaterial.error.message : null}
+            confirmLabel="确认移出"
+            onConfirm={() => {
+              if (removingTarget !== null) removeMaterial.mutate(removingTarget.id);
+            }}
+            onClose={() => {
+              setRemovingTarget(null);
+              removeMaterial.reset();
+            }}
+            body={
+              removingTarget && (
+                <>
+                  将「<strong className="text-on-surface">{removingTarget.title}</strong>」移出本卷？
+                  <span className="mt-1 block">软删除：媒体与研习进度保留在库中（应用内暂无恢复入口）。</span>
+                </>
+              )
+            }
+          />
 
           {/* ===== ④ 底部研习小笺：研习法门建议 + 三处快捷入口 ===== */}
           <section className="mt-10 flex flex-col items-start justify-between gap-4 rounded-[8px] bg-surface-container-low p-5 sm:flex-row sm:items-center">
@@ -508,7 +583,10 @@ function FocusMaterialRow({
   const st = subtitleStatusMeta(m.subtitleStatus);
   const state = studyState(m);
   const ready = m.subtitleStatus === 'ready';
-  const pct = m.progress?.progressPct ?? 0;
+  /* 展示进度与档位判定同源：已完卷（listenedThrough，服务端逐句复核）恒显
+   * 100——位图为空的存量行 pct 可能是 0，否则一行会同时出现「已完卷」与「未研读」；
+   * 未完卷封顶 99——199/200 句四舍五入成 100% 会与「正在研习」同框打架 */
+  const pct = m.progress?.listenedThrough ? 100 : Math.min(m.progress?.progressPct ?? 0, 99);
 
   return (
     /* 行卡：白纸卡 + 悬浮加深投影；研习中/已完卷左缘落色条（进行深朱 / 完卷竹青） */
@@ -629,21 +707,16 @@ function FocusMaterialRow({
         {/* 右：状态动作（就绪三态 / 失败查因 / 制备中占位）+ 移出本卷 */}
         <div className="flex items-center justify-end gap-2 xl:col-span-3">
           {ready ? (
-            /* 就绪：按研习状态给三态动作（研习中主按钮 / 待启卷浅朱印 / 已完卷温习） */
+            /* 就绪：按研习状态给三态动作（研习中主按钮 / 待启卷浅朱印 / 已完卷温习；
+               样式文案图标全查 STATE_META 单表） */
             <Link
               href={`/material/${m.id}`}
-              className={`flex items-center gap-1.5 rounded-sm px-4 py-2 text-label-md transition-colors ${
-                state === 'studying'
-                  ? 'bg-shell-seal text-white shadow-sm hover:bg-primary'
-                  : state === 'done'
-                    ? 'bg-surface-container text-on-surface hover:bg-surface-container-high'
-                    : 'bg-primary-fixed/60 text-shell-seal hover:bg-shell-seal hover:text-white'
-              }`}
+              className={`flex items-center gap-1.5 rounded-sm px-4 py-2 text-label-md transition-colors ${STATE_META[state].actionCls}`}
             >
               <span aria-hidden className="material-symbols-outlined text-base">
-                {state === 'done' ? 'replay' : 'menu_book'}
+                {STATE_META[state].actionIcon}
               </span>
-              {state === 'studying' ? '继续精读' : state === 'done' ? '复读温习' : '开启首研'}
+              {STATE_META[state].actionLabel}
             </Link>
           ) : m.subtitleStatus === 'failed' ? (
             /* 失败：破红描边按钮查失败原因（播放页承载） */

@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
-import { collections, jobs, learningProgress, materials } from '@/lib/db/schema';
+import { collections, cues, jobs, learningProgress, materials } from '@/lib/db/schema';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
@@ -61,11 +61,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const db = getDb();
 
-  /* 移动意图解析：目标卷 id 必须是正整数；与现属卷相同视为纯更新（不迁移） */
-  const targetId = body.collectionId !== undefined ? Number(body.collectionId) : null;
-  if (targetId !== null && (!Number.isInteger(targetId) || targetId <= 0)) {
+  /* 移动意图解析：目标卷 id 必须是正整数（先验 JSON 类型再收——裸 Number
+   * 强转会放过 [3]/true 之类结构非法值并静默移卷）；与现属卷相同视为纯更新 */
+  const rawTarget = body.collectionId;
+  if (rawTarget !== undefined && (typeof rawTarget !== 'number' || !Number.isInteger(rawTarget) || rawTarget <= 0)) {
     return NextResponse.json({ error: 'collectionId 非法' }, { status: 400 });
   }
+  const targetId = rawTarget ?? null;
 
   /* 移动前置校验：材料存在未删、目标卷存在、无进行中任务。
    * 任务占用是硬闸——导入/重 STT/重译以绝对路径往材料目录写产物，迁移中
@@ -91,7 +93,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             .from(jobs)
             .where(and(eq(jobs.materialId, pid), inArray(jobs.status, ['queued', 'running'])))
             .all()[0]!.n;
-          if (busy > 0) return 'busy' as const;
+          // 句级任务（restt_cue）不带 material_id，但其 cue_id 列可关联 cues 判定
+          // 归属：单句重 STT 同样往材料目录写切片产物，迁移同样要挡（SQL 侧
+          // 关联判定，不把全部在跑任务拉进 JS 过滤）
+          const cueBusy = db
+            .select({ n: sql<number>`count(*)` })
+            .from(jobs)
+            .innerJoin(cues, eq(cues.id, jobs.cueId))
+            .where(and(eq(jobs.type, 'restt_cue'), inArray(jobs.status, ['queued', 'running']), eq(cues.materialId, pid)))
+            .all()[0]!.n;
+          if (busy > 0 || cueBusy > 0) return 'busy' as const;
           return { from: row.collectionId, to: targetId };
         })()
       : null;
@@ -102,6 +113,28 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       { error: '该材料有进行中的任务（字幕/翻译等），完成后再移动' },
       { status: 409 }
     );
+  }
+
+  /* 路径校验先于目录迁移：media/peaks 路径若与 `<from>/<pid>/` 前缀不符
+   * （历史脏数据），迁完后 remap 会原样保留旧前缀 → 「库指旧路径、文件已
+   * 迁走」的死链还回 200。校验不过直接 409，一个文件都不动 */
+  let mediaPath: string | null = null;
+  let peaksPath: string | null = null;
+  if (move) {
+    const cur = db
+      .select({ mediaPath: materials.mediaPath, peaksPath: materials.peaksPath })
+      .from(materials)
+      .where(eq(materials.id, pid))
+      .all()[0];
+    mediaPath = cur?.mediaPath ?? null;
+    peaksPath = cur?.peaksPath ?? null;
+    const prefix = `${move.from}/${pid}/`;
+    if ((mediaPath && !mediaPath.startsWith(prefix)) || (peaksPath && !peaksPath.startsWith(prefix))) {
+      return NextResponse.json(
+        { error: '材料库内路径与所属卷不符（历史数据异常），请先修复路径再移动' },
+        { status: 409 }
+      );
+    }
   }
 
   /* 先迁目录后改库（同盘 rename 原子；文本材料无媒体目录则跳过）：
@@ -131,14 +164,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     db.transaction((tx) => {
       if (move) {
-        // media_path/peaks_path 换挂目标卷；跟读录音（<cid>/<matId>/rec/…）同目录布局，SQL 批量改前缀
-        const cur = tx
-          .select({ mediaPath: materials.mediaPath, peaksPath: materials.peaksPath })
-          .from(materials)
-          .where(eq(materials.id, pid))
-          .all()[0];
-        if (cur?.mediaPath) patch.mediaPath = remapMediaRel(cur.mediaPath, move.from, move.to, pid);
-        if (cur?.peaksPath) patch.peaksPath = remapMediaRel(cur.peaksPath, move.from, move.to, pid);
+        // media_path/peaks_path 换挂目标卷（前缀已在迁移前校验通过）；跟读录音
+        // （<cid>/<matId>/rec/…）同目录布局，SQL 批量改前缀
+        if (mediaPath) patch.mediaPath = remapMediaRel(mediaPath, move.from, move.to, pid);
+        if (peaksPath) patch.peaksPath = remapMediaRel(peaksPath, move.from, move.to, pid);
         const oldPrefix = `${move.from}/${pid}`;
         tx.run(
           sql`UPDATE recordings SET file_path = ${`${move.to}/${pid}`} || substr(file_path, ${oldPrefix.length + 1})
@@ -149,18 +178,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       tx.update(materials).set(patch).where(eq(materials.id, pid)).run();
     });
   } catch (err) {
-    // 库改写失败回滚目录（迁回失败也已如实上报，避免静默不一致）
-    if (moved) {
+    // 库改写失败回滚目录；回滚失败必须留痕（文件在 <to>/<pid> 而库指 <from>/<pid>，
+    // 材料会 404 且无线索），并按本路由统一的 { error } JSON 契约返回而非裸 throw
+    if (moved && move) {
       try {
         renameSync(
-          join(MEDIA_ROOT, String(move!.to), String(pid)),
-          join(MEDIA_ROOT, String(move!.from), String(pid))
+          join(MEDIA_ROOT, String(move.to), String(pid)),
+          join(MEDIA_ROOT, String(move.from), String(pid))
         );
-      } catch {
-        /* 迁回失败：文件留在目标卷目录而库指旧路径，错误随下方上抛可见 */
+      } catch (rollbackErr) {
+        console.error(`[materials/${pid}] 移卷目录回滚失败（库未改写，文件滞留 ${move.to}/${pid}）：`, rollbackErr);
       }
     }
-    throw err;
+    return NextResponse.json(
+      { error: `库路径改写失败：${err instanceof Error ? err.message : String(err)}` },
+      { status: 500 }
+    );
   }
   return NextResponse.json({ ok: true });
 }

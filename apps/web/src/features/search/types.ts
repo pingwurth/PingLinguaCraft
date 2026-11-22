@@ -5,6 +5,8 @@
  * 与 API route 共享同一份类型来源，避免两处手写漂移。
  */
 
+import type { MaterialSourceType, SubtitleStatus } from '@pinglc/core';
+
 /** 检索命中 · 材料集（按卷名匹配） */
 export interface SearchCollectionHit {
   /** 集卷 id（命中行跳 /collection/{id}） */
@@ -22,9 +24,9 @@ export interface SearchMaterialHit {
   /** 材料标题 */
   title: string;
   /** 来源类型：video / audio / text / link（展示用 SOURCE_META 映射图标） */
-  sourceType: string;
+  sourceType: MaterialSourceType;
   /** 字幕状态：none / processing / ready / failed（未就绪时结果行弱化提示） */
-  subtitleStatus: 'none' | 'processing' | 'ready' | 'failed';
+  subtitleStatus: SubtitleStatus;
   /** 所属集 id */
   collectionId: number;
   /** 所属集名 */
@@ -38,3 +40,6 @@ export interface SearchResults {
   /** 标题命中的材料 */
   materials: SearchMaterialHit[];
 }
+
+/** 检索词长度上限（客户端截断与 /api/search 服务端 400 闸共用单源） */
+export const SEARCH_QUERY_MAX = 100;
