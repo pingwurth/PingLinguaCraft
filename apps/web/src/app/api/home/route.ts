@@ -238,16 +238,13 @@ export async function GET() {
     .limit(5)
     .all();
 
-  const recentCueCounts = cueCountsFor(
-    db,
-    recentRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
-  );
+
   const recent: HomeRecentMaterial[] = recentRows.map((r) => {
     const mask = r.listenedMask as Buffer | null;
     /* 分母句数缺失（老数据）现数 cues 兜底；无位图行按 maxCueIndex+1 估算
        （与集卷聚合/集内列表同口径；resume 书签额外弃 maxCueIndex=0 的无位图
        存量行，见其甄别注释——估算口径本身一致） */
-    const total = r.sentenceCount ?? recentCueCounts.get(r.materialId) ?? 0;
+    const total = r.sentenceCount ?? denomCueCounts.get(r.materialId) ?? 0;
     const heard = mask ? countListenedBits(mask, total) : estimateHeardNoMask(r.maxCueIndex, total);
     return {
       materialId: r.materialId,

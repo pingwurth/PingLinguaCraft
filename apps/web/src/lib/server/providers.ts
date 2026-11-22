@@ -42,6 +42,17 @@ const BUILTIN_DEFAULTS: Partial<Record<AICapability, ResolvedProfile>> = {
 export const LLM_PROFILE_MISSING_MESSAGE = '未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）';
 
 /**
+ * 解析并校验「云端 LLM 档案可用」单源：LLM 入口（structuredLLM / 任务管线
+ * 三处 / ai/tutor / cues/imitate）共用——「未配置」的判定条件此后只改这一处，
+ * 不会出现「文案说未配置、实际却走了另一条分支」的六处手抄漂移
+ * @returns 可用的云档案；未配置或非云档案返回 null
+ */
+export function resolveCloudLlmProfile(): ResolvedProfile | null {
+  const profile = resolveProfile('llm');
+  return profile && profile.kind === 'cloud' ? profile : null;
+}
+
+/**
  * 解析能力档案
  * @param capability 能力类别
  * @param profileId 显式指定档案 id（可选；导入向导/设置页的临时切换）

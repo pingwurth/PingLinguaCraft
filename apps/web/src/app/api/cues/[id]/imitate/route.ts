@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
 import { EngineError, enginePost } from '@/lib/server/engine';
-import { LLM_PROFILE_MISSING_MESSAGE, resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { LLM_PROFILE_MISSING_MESSAGE, resolveCloudLlmProfile, toEngineProfile } from '@/lib/server/providers';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
@@ -35,8 +35,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const cue = db.select().from(cues).where(eq(cues.id, pid)).all()[0];
   if (!cue) return NextResponse.json({ error: '句段不存在' }, { status: 404 });
 
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
+  const profile = resolveCloudLlmProfile();
+  if (!profile) {
     return NextResponse.json({ error: LLM_PROFILE_MISSING_MESSAGE }, { status: 400 });
   }
   try {

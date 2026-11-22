@@ -44,7 +44,7 @@ import {
 } from '@/lib/server/engine';
 import { materialDir } from '@/lib/server/media';
 import { LlmProfileMissingError, structuredLLM } from '@/lib/server/structuredLlm';
-import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { resolveCloudLlmProfile, resolveProfile, toEngineProfile } from '@/lib/server/providers';
 import { ttsEngineFromParams } from '@/lib/providers';
 import { QUIZ_SYSTEM, buildQuizPrompt, QuizSchema } from '@/lib/quiz';
 import { DEEP_SYSTEM, buildDeepPrompt, DeepCardSchema } from '@/lib/deepCard';
@@ -815,8 +815,8 @@ const ANALYSIS_SYSTEM =
 async function aiAnalysisPipeline(jobId: string, cueId: number, payload: { favoriteId: number }): Promise<void> {
   const db = getDb();
   try {
-    const profile = resolveProfile('llm');
-    if (!profile || profile.kind !== 'cloud') {
+    const profile = resolveCloudLlmProfile();
+    if (!profile) {
       throw new LlmProfileMissingError();
     }
     const cue = db.select().from(cuesTable).where(eq(cuesTable.id, cueId)).all()[0];
@@ -874,8 +874,8 @@ function parseWordIdPayload(payload: { wordId: unknown }): number {
 async function aiNotePipeline(jobId: string, payload: { wordId: unknown }): Promise<void> {
   const wordId = parseWordIdPayload(payload);
   const db = getDb();
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
+  const profile = resolveCloudLlmProfile();
+  if (!profile) {
     // 判别类型与文案与 structuredLLM 同源（各自手抄会在措辞/语义调整时漏改）
     throw new LlmProfileMissingError();
   }
@@ -985,8 +985,8 @@ const LEVEL_SYSTEM =
  */
 async function aiLevelPipeline(jobId: string, cueId: number): Promise<void> {
   const db = getDb();
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
+  const profile = resolveCloudLlmProfile();
+  if (!profile) {
     throw new LlmProfileMissingError();
   }
   const cue = db.select().from(cuesTable).where(eq(cuesTable.id, cueId)).all()[0];

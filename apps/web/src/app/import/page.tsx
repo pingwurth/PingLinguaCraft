@@ -516,13 +516,13 @@ function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: Import
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
       const active = document.activeElement;
-      if (active === cardRef.current) {
-        // 焦点在卡容器本身（tabIndex=-1 的落焦点位）：Tab 落回首/末元素，
-        // 否则 Shift+Tab 会走默认行为逃到卡外背景
+      if (active !== cardRef.current && !cardRef.current?.contains(active)) {
+        // 焦点在卡外：按方向拉回末/首元素
         e.preventDefault();
         (e.shiftKey ? last : first).focus();
-      } else if (!cardRef.current?.contains(active)) {
-        // 焦点在卡外：按方向拉回末/首元素
+      } else if (active === cardRef.current) {
+        // 焦点在卡容器本身（tabIndex=-1 的落焦点位）：Tab 落回首/末元素，
+        // 否则 Shift+Tab 会走默认行为逃到卡外背景
         e.preventDefault();
         (e.shiftKey ? last : first).focus();
       } else if (!e.shiftKey && document.activeElement === last) {

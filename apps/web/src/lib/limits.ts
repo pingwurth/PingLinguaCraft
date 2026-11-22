@@ -14,5 +14,8 @@ export const SEARCH_QUERY_MAX = 100;
 /** 材料分页 pageSize 上限（服务端钳制闸与案头今研首页请求共用单源） */
 export const MATERIAL_PAGE_MAX = 100;
 
+/** 材料分页缺省页大小（集内列表路由缺省/非法参数回落共用单源） */
+export const MATERIAL_PAGE_DEFAULT = 20;
+
 /** 材料集名长度上限（collections 两路由清洗闸与藏经阁立卷/编辑弹窗 maxLength 共用单源） */
 export const COLLECTION_NAME_MAX = 40;

@@ -96,14 +96,22 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     maxCuePatch = { maxCueIndex: -1 };
   }
 
-  // lastPositionMs 同样收窄（与 maxCueIndex 同一防御口径）：非有限数经
-  // Math.round 得 NaN，绑 NOT NULL 列会 500——非法视同 0（新行/未走表）
+  // lastPositionMs 与 maxCueIndex 同一三态口径：合法值落库；省略/非法且是
+  // 存量行 → 不写该列（不良上报不得抹掉续播书签）；省略/非法且是新行 →
+  // 落 0。非有限数经 Math.round 得 NaN，绑 NOT NULL 列会 500
   const rawPositionMs = body.lastPositionMs;
-  const positionMs =
-    typeof rawPositionMs === 'number' && Number.isFinite(rawPositionMs) ? Math.max(0, Math.round(rawPositionMs)) : 0;
+  const positionValid = typeof rawPositionMs === 'number' && Number.isFinite(rawPositionMs);
+  let positionPatch: { lastPositionMs?: number };
+  if (positionValid) {
+    positionPatch = { lastPositionMs: Math.max(0, Math.round(rawPositionMs)) };
+  } else if (existing) {
+    positionPatch = {};
+  } else {
+    positionPatch = { lastPositionMs: 0 };
+  }
 
   const values = {
-    lastPositionMs: positionMs,
+    ...positionPatch,
     ...maxCuePatch,
     listenedMask: mask,
     listenedThrough,

@@ -11,7 +11,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
 import { getDb } from '@/lib/db';
 import { aiMessages, aiThreads } from '@/lib/db/schema';
-import { LLM_PROFILE_MISSING_MESSAGE, resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { LLM_PROFILE_MISSING_MESSAGE, resolveCloudLlmProfile, toEngineProfile } from '@/lib/server/providers';
 
 export const runtime = 'nodejs';
 
@@ -37,9 +37,9 @@ export async function POST(request: Request) {
   const content = body.content?.trim();
   if (!content) return new Response(JSON.stringify({ error: '内容为空' }), { status: 400 });
 
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
-    return new Response(JSON.stringify({ error: LLM_PROFILE_MISSING_MESSAGE }), { status: 400 });
+  const profile = resolveCloudLlmProfile();
+  if (!profile) {
+    return NextResponse.json({ error: LLM_PROFILE_MISSING_MESSAGE }, { status: 400 });
   }
 
   const db = getDb();

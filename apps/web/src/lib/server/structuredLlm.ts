@@ -8,7 +8,7 @@
 
 import type { z } from 'zod';
 import { EngineError, enginePost } from '@/lib/server/engine';
-import { LLM_PROFILE_MISSING_MESSAGE, resolveProfile, toEngineProfile, type ResolvedProfile } from '@/lib/server/providers';
+import { LLM_PROFILE_MISSING_MESSAGE, resolveCloudLlmProfile, toEngineProfile, type ResolvedProfile } from '@/lib/server/providers';
 import { repairPrompt } from '@/lib/quiz';
 
 /** LLM 档案未配置（调用方可据此映射 400；其余 EngineError 一律网关类错误）——
@@ -36,8 +36,8 @@ export async function structuredLLM<T>(opts: {
   label: string;
   onProgress?: (stage: 'generate' | 'repair', message: string) => void;
 }): Promise<{ data: T; profile: ResolvedProfile }> {
-  const profile = resolveProfile('llm');
-  if (!profile || profile.kind !== 'cloud') {
+  const profile = resolveCloudLlmProfile();
+  if (!profile) {
     throw new LlmProfileMissingError();
   }
 

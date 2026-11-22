@@ -13,7 +13,7 @@ import { getDb } from '@/lib/db';
 import { learningProgress, materials } from '@/lib/db/schema';
 import { parseIdParam } from '@/lib/server/params';
 import { cueCountsFor, estimateHeardNoMask, progressPct } from '@/lib/server/progress';
-import { MATERIAL_PAGE_MAX } from '@/lib/limits';
+import { MATERIAL_PAGE_DEFAULT, MATERIAL_PAGE_MAX } from '@/lib/limits';
 import type { MaterialListItem, MaterialSourceType, SubtitleStatus } from '@pinglc/core';
 
 export const runtime = 'nodejs';
@@ -34,13 +34,13 @@ export async function GET(
      显式 1 条）——直连 ?page=abc 也给默认页而非报错 */
   const pageRaw = url.searchParams.get('page');
   const pageSizeRaw = url.searchParams.get('pageSize');
-  const pageNum = pageRaw == null ? 1 : Number(pageRaw);
-  const pageSizeNum = pageSizeRaw == null ? 20 : Number(pageSizeRaw);
+  const pageNum = pageRaw === null ? 1 : Number(pageRaw);
+  const pageSizeNum = pageSizeRaw === null ? MATERIAL_PAGE_DEFAULT : Number(pageSizeRaw);
   const page = Number.isFinite(pageNum) && pageNum >= 1 ? Math.floor(pageNum) : 1;
   // 页大小上限钳制走 MATERIAL_PAGE_MAX 单源（与案头今研首页请求量同闸）
   const pageSize = Number.isFinite(pageSizeNum)
     ? Math.min(MATERIAL_PAGE_MAX, Math.max(1, Math.floor(pageSizeNum)))
-    : 20;
+    : MATERIAL_PAGE_DEFAULT;
   const status = url.searchParams.get('status');
 
   const db = getDb();
