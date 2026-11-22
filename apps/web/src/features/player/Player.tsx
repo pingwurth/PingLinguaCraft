@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './store';
 import { useMediaClock } from './useMediaClock';
-import { PLAYER_RATES, RESUME_SEEK_MIN_MS, clampSeekMs } from './rates';
+import { PLAYER_RATES, RESUME_SEEK_MIN_MS, clampSeekMs, resolveResumeSeekMs } from './rates';
 import { useProgressReporter } from './useProgressReporter';
 import type { CueDTO, MaterialDetail } from '@/lib/api';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
@@ -107,9 +107,9 @@ export function Player({
       if (Number.isFinite(d)) {
         usePlayer.getState().setDurationMs(d * 1000);
         // 元数据就绪后补跳暂存的定位值（详情先到、元数据后到的竞态）；
-        // clampSeekMs 统一按时长夹取（与续播 effect 同一助手）
+        // resolveResumeSeekMs 与续播 effect 同一助手（夹取 + 贴尾回落从头）
         if (pendingSeekRef.current > RESUME_SEEK_MIN_MS) {
-          m.currentTime = clampSeekMs(pendingSeekRef.current, d) / 1000;
+          m.currentTime = resolveResumeSeekMs(pendingSeekRef.current, d) / 1000;
           pendingSeekRef.current = 0;
         }
       }
@@ -126,10 +126,20 @@ export function Player({
     };
   }, []);
 
-  /* ---------- 续播定位 ---------- */
+  /* ---------- 续播定位（每材只消费一次） ---------- */
+  /** 已消费续播定位的材料 id：initialPositionMs 来自本页进度查询，而进度查询
+      的数据正是播放器自己 5s 一报的 PUT——播放中重连触发的 refetch 会把位置
+      刷新成刚上报的值，不隔离的话 effect 重跑会把播放头拉回几秒前 */
+  const appliedResumeRef = useRef<number | null>(null);
   useEffect(() => {
     const m = mediaRef.current;
     if (!m) return;
+    /* 先标记后判定：Player 只在 detail.data 就绪后渲染，首个 initialPositionMs
+       即真值——「从零开播」的材料走下方早返回若不记账，播放中重连 refetch 把
+       位置抬过阈值后守卫判「未消费」仍会二次 seek，正是要防的回跳 */
+    const applied = appliedResumeRef.current === material.id;
+    appliedResumeRef.current = material.id;
+    if (applied) return;
     /* 低于阈值的定位意图视同从头播：显式清掉挂起值——详情命中缓存时组件不
        重挂载，上一轮的 pendingSeek 会在新材料的 loadedmetadata 补跳到无关位置 */
     if (initialPositionMs <= RESUME_SEEK_MIN_MS) {
@@ -139,7 +149,7 @@ export function Player({
     if (Number.isFinite(m.duration)) {
       pendingSeekRef.current = 0;
       // 夹取与 onMeta 补跳同一助手：重导入后时长变短的材料，续播位置不至于越界
-      m.currentTime = clampSeekMs(initialPositionMs, m.duration) / 1000;
+      m.currentTime = resolveResumeSeekMs(initialPositionMs, m.duration) / 1000;
     } else {
       pendingSeekRef.current = initialPositionMs;
     }
@@ -312,7 +322,9 @@ export function Player({
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     // 手动拖拽 = 用户接管播放：放弃单句区间（否则残留区间会在旧句尾意外自停）
     usePlayer.getState().setPlayRange(null);
-    mediaRef.current.currentTime = ratio * (duration / 1000);
+    // 贴尾钳取与语流拖动/续播同源：拖到右缘落在恰好 duration 会立刻触发
+    // ended（整集循环下直接跳回 0 重播），尾音被吞——此处只钳尾不回落从头
+    mediaRef.current.currentTime = clampSeekMs(ratio * duration, mediaRef.current.duration) / 1000;
   };
   const scrubRatio = useMemo(() => {
     if (scrubbing === null || !scrubRef.current) return null;

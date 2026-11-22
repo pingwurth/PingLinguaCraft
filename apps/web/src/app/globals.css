@@ -141,10 +141,10 @@
   --color-on-shell-seal: var(--on-shell-seal);
   /* 壳层极淡投影（侧栏/顶栏/底栏统一；底栏向上为 shadow-shell-up）：
    * 设计稿 0 1px 8px 4% 黑，此前各组件内联裸值三处易失同步 */
-  --shadow-shell: 0 1px 8px rgb(0 0 0 / 0.04);
-  --shadow-shell-up: 0 -1px 8px rgb(0 0 0 / 0.04);
+  --shadow-shell: 0 1px 8px color-mix(in srgb, var(--foreground) 4%, transparent);
+  --shadow-shell-up: 0 -1px 8px color-mix(in srgb, var(--foreground) 4%, transparent);
   /* 浮层面板投影（检索下拉等悬浮面板；比壳层投影深一档） */
-  --shadow-panel: 0 4px 16px rgb(0 0 0 / 0.08);
+  --shadow-panel: 0 4px 16px color-mix(in srgb, var(--foreground) 8%, transparent);
   --color-shell-bamboo: var(--shell-bamboo);
   --color-shell-indigo: var(--shell-indigo);
   --color-shell-xuan: var(--shell-xuan);

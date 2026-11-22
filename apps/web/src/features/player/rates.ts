@@ -17,3 +17,20 @@ export function clampSeekMs(ms: number, durationSec: number): number {
   if (!Number.isFinite(durationSec) || durationSec <= 0) return ms;
   return Math.min(ms, Math.max(0, durationSec * 1000 - 500));
 }
+
+/** 续播贴尾判定阈值（毫秒）：夹取后距片尾不足此值视为「整篇听完」 */
+export const RESUME_TAIL_MS = 1000;
+
+/**
+ * 续播目标解析（精读/语流两播放器共用的完整语义）：夹取 + 贴尾回落。
+ * 整篇听完的材料 lastPositionMs ≈ 时长，落点贴片尾会「播半秒即 ended」——
+ * 语流被连播接力带走（chip 看似跳材）、精读停在末句，统一回落从头播
+ * @param ms          续播定位（毫秒）
+ * @param durationSec 媒体时长（秒）；未知/非有限值不夹取
+ * @returns 实际落点（毫秒）；贴尾时 0（从头）
+ */
+export function resolveResumeSeekMs(ms: number, durationSec: number): number {
+  if (!Number.isFinite(durationSec) || durationSec <= 0) return ms;
+  const clamped = Math.min(ms, Math.max(0, durationSec * 1000 - 500));
+  return durationSec * 1000 - clamped < RESUME_TAIL_MS ? 0 : clamped;
+}

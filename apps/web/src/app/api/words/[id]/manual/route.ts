@@ -5,7 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues, materials, srsCards, words } from '@/lib/db/schema';
 import { parseIdParam } from '@/lib/server/params';
@@ -35,7 +35,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       originCueId: words.originCueId,
     })
     .from(words)
-    .where(eq(words.id, wordId))
+    // userId=1 归属过滤：全库预留 user_id 列的统一约定（多用户化后不漏服他
+    // 人词条——手册聚合含笔记/语境，属隐私面）
+    .where(and(eq(words.id, wordId), eq(words.userId, 1)))
     .all()[0];
   if (!word) return NextResponse.json({ error: '单词不存在' }, { status: 404 });
 
@@ -47,7 +49,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       dueMs: srsCards.dueMs,
     })
     .from(srsCards)
-    .where(eq(srsCards.itemId, wordId))
+    .where(and(eq(srsCards.itemId, wordId), eq(srsCards.itemType, 'word'), eq(srsCards.userId, 1)))
     .all()[0] ?? null;
 
   // 原典语境：收录句段（双语 + 起止时间）+ 所属材料标题（去原声入口用）
@@ -72,7 +74,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         materialTitle: materials.title,
       })
       .from(cues)
-      .leftJoin(materials, eq(materials.id, cues.materialId))
+      // innerJoin 与 write-check 同口径：非本人材料的语境行整行排除（leftJoin
+      // 只会把标题置空，双语原句仍会下发——注释所称「语境属隐私面」要能排除行）
+      .innerJoin(materials, and(eq(materials.id, cues.materialId), eq(materials.userId, 1)))
       .where(eq(cues.id, word.originCueId))
       .all()[0];
     if (row) {
@@ -83,7 +87,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         startMs: row.startMs,
         endMs: row.endMs,
         materialId: row.materialId,
-        materialTitle: row.materialTitle ?? '（材料已移除）',
+        // innerJoin 下材料行必然存在且 title NOT NULL，无「材料已移除」路径
+        materialTitle: row.materialTitle,
       };
     }
   }

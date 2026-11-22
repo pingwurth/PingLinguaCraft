@@ -44,7 +44,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // 会按 truthiness 绕过幂等短路强制重生成
   const force = body.force === true;
   const db = getDb();
-  const word = db.select({ id: words.id }).from(words).where(eq(words.id, wordId)).all()[0];
+  // userId=1 归属过滤：全库预留 user_id 列的统一约定
+  const word = db
+    .select({ id: words.id })
+    .from(words)
+    .where(and(eq(words.id, wordId), eq(words.userId, 1)))
+    .all()[0];
   if (!word) return NextResponse.json({ error: '单词不存在' }, { status: 404 });
 
   // 幂等：已有「可解析且形状合规」的矩阵且未要求 force → 直接返回已有。
@@ -55,7 +60,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const exist = db
       .select({ contentMd: aiArtifacts.contentMd })
       .from(aiArtifacts)
-      .where(and(eq(aiArtifacts.kind, 'discriminate'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, wordId)))
+      .where(
+        and(
+          eq(aiArtifacts.kind, 'discriminate'),
+          eq(aiArtifacts.subjectType, 'word'),
+          eq(aiArtifacts.subjectId, wordId),
+          eq(aiArtifacts.userId, 1)
+        )
+      )
       .orderBy(desc(aiArtifacts.createdAt))
       .limit(1)
       .all()[0];
@@ -78,7 +90,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const row = db
     .select({ contentMd: aiArtifacts.contentMd })
     .from(aiArtifacts)
-    .where(and(eq(aiArtifacts.kind, 'discriminate'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, wordId)))
+    .where(
+      and(
+        eq(aiArtifacts.kind, 'discriminate'),
+        eq(aiArtifacts.subjectType, 'word'),
+        eq(aiArtifacts.subjectId, wordId),
+        eq(aiArtifacts.userId, 1)
+      )
+    )
     .orderBy(desc(aiArtifacts.createdAt))
     .limit(1)
     .all()[0];

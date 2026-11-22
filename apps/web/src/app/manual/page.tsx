@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
-import { waitForJob } from '@/lib/jobs/wait';
+import { genLabel, useArtifactGenerate, type WordArtifactKind } from '@/lib/useArtifactGeneration';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
 import { type Discriminate, type WriteCheck } from '@/lib/manualCard';
 import { WRITE_TEXT_MAX } from '@/lib/limits';
@@ -135,42 +135,24 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * 词产物生成 hook（词源卡/辨析矩阵卡同构抽一）：GET 查询 + POST（force 由
- * 「已有产物」谓词在提交时求值）→ waitForJob → refetch。产物契约只有一份，
- * 再添词产物卡不复制第四遍生成回路
+ * 词产物生成 hook（词源卡/辨析矩阵卡同构抽一）：GET 查询自持（各卡门控与
+ * 数据形态不同），生成回路（POST force → waitForJob → refetch）走
+ * lib/useArtifactGeneration 单源——再添词产物卡不复制第四遍生成回路
  * @param wordId  单词 id
  * @param kind    产物 API 路径段（同时作 queryKey 前缀：'deep' / 'discriminate'）
  * @param hasData 已有产物判定谓词（入参为查询缓存值；按钮文案同判据复用）
  */
 function useArtifactGeneration<T>(
   wordId: number,
-  kind: string,
+  kind: WordArtifactKind,
   hasData: (data: T | undefined) => boolean,
 ) {
   const query = useQuery({
     queryKey: [kind, wordId],
     queryFn: () => api<T>(`/api/words/${wordId}/${kind}`),
   });
-  const gen = useMutation({
-    mutationFn: async () => {
-      // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成
-      const r = await api<{ cached?: boolean; jobId?: string }>(`/api/words/${wordId}/${kind}`, {
-        method: 'POST',
-        body: JSON.stringify({ force: hasData(query.data) }),
-      });
-      if (r.cached || !r.jobId) return;
-      await waitForJob(r.jobId);
-    },
-    onSuccess: () => void query.refetch(),
-  });
+  const gen = useArtifactGenerate(wordId, kind, () => hasData(query.data), () => void query.refetch());
   return { query, gen };
-}
-
-/** 生成键文案（顺序判断，不嵌套三元） */
-function genLabel(hasData: boolean, pending: boolean): string {
-  if (hasData) return '重新生成';
-  if (pending) return '生成中…';
-  return '生成';
 }
 
 /**
@@ -559,6 +541,17 @@ function slotCls(t: string | undefined, c: string): string {
 }
 
 /**
+ * 首个错位下标（-1=全对或未输完）：槽位配色/「第 N 个字母有误」提示与提示键
+ * 修位逻辑共用——各写一份会在调整口径（如忽略大小写）时漂移，提示键修的
+ * 位置与文案报的位置对不上
+ * @param typed   已键入串（已与字母槽同口径归一为 a-z）
+ * @param letters 目标字母序列
+ */
+function firstWrongIndex(typed: string, letters: string[]): number {
+  return typed.split('').findIndex((c, i) => c !== letters[i]);
+}
+
+/**
  * 拼字演练卡：目标词逐字母默写（不区分大小写），完成即朗读印证（提示键
  * 补满完成的路径同样朗读——印证文案「已朗读」才永远属实）；有原句时同时
  * 展示挖空句辅助回忆
@@ -583,9 +576,10 @@ function SpellDrillCard({
   const letters = target.toLowerCase().replace(/[^a-z]/g, '').split('');
   const [typed, setTyped] = useState('');
 
-  /** 首个错位下标（-1=全对或未输完） */
-  const wrongAt = typed.split('').findIndex((c, i) => c !== letters[i]);
-  const complete = typed.length === letters.length && wrongAt === -1;
+  /** 首个错位下标（-1=全对或未输完；与提示键共用 firstWrongIndex 单源） */
+  const wrongAt = firstWrongIndex(typed, letters);
+  /* 归一后无字母（非拉丁词形）不设完成态——0==0 恒真会挂载即朗读 */
+  const complete = letters.length > 0 && typed.length === letters.length && wrongAt === -1;
 
   /* 完成即朗读（跃迁触发：键入补满与提示键补满两条路径统一在此收口） */
   const wasCompleteRef = useRef(false);
@@ -606,9 +600,18 @@ function SpellDrillCard({
       <div className="mb-2 flex items-center justify-between">
         <h4 className="text-xs font-medium text-muted-foreground">拼字演练 · 逐字母默写</h4>
         <div className="flex gap-2 text-xs">
-          {/* 提示键：补出下一正确字母 */}
+          {/* 提示键：先修首个错位再补下一字母 */}
           <button
-            onClick={() => setTyped((t) => (t.length < letters.length ? t + letters[t.length] : t))}
+            onClick={() =>
+              setTyped((t) => {
+                /* 直接在尾部追加会让错位字母永远留在槽里——complete（精确
+                   匹配）永不可达，完成朗读不再触发；先截到首个错位处（与
+                   槽位提示同口径）再补该位的正确字母 */
+                const wrong = firstWrongIndex(t, letters);
+                const base = wrong >= 0 ? t.slice(0, wrong) : t;
+                return base.length < letters.length ? base + letters[base.length] : t;
+              })
+            }
             disabled={complete}
             className="rounded border border-border px-2 py-1 text-muted-foreground disabled:opacity-40"
           >
@@ -702,7 +705,9 @@ function WriteCard({ wordId, displayForm, noteMd }: { wordId: number; displayFor
     mutationFn: () => {
       const fresh = qc.getQueryData<ManualData>(['manual', wordId]);
       const base = fresh?.word?.noteMd ?? noteMd;
-      const stamp = new Date().toISOString().slice(0, 10);
+      /* 本地时区日期戳：toISOString 是 UTC，北京时间 0-8 点保存会盖上昨日戳 */
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const appended = `${base ? base.trimEnd() + '\n\n' : ''}> 仿写（${stamp}）：${text}` + (checkCurrent ? `\n> 点拨：${checkCurrent.check.overall}` : '');
       return api(`/api/words/${wordId}`, { method: 'PATCH', body: JSON.stringify({ noteMd: appended }) });
     },

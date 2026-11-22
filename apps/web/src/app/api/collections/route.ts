@@ -4,10 +4,12 @@
 
 import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
-import { coverVolumeRank, parseCollectionCover, serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
+import { coverSortOrderRank, serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
+import { cleanCollectionTextFields } from '@/lib/server/collection-input';
 import { readJsonBody } from '@/lib/server/params';
+import { COLLECTION_NAME_MAX } from '@/lib/limits';
 
 export const runtime = 'nodejs';
 
@@ -56,8 +58,18 @@ export async function POST(request: Request) {
     cover?: CollectionCoverConfig | null;
   }>(request);
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
-  const name = body.name?.trim();
-  if (!name) return NextResponse.json({ error: '材料集名不能为空' }, { status: 400 });
+  /* 文本字段清洗与 PATCH 同源（此前两路各自为政，坏输入行为漂移）；POST 侧
+   * name 缺失或清洗后为空都按「材料集名不能为空」拒绝，超长给专属提示
+   * （先判超长：超长时 patch.name 未写，先判 undefined 会误报「不能为空」） */
+  const { patch: textPatch, nameInvalid, nameTooLong, typeInvalid } = cleanCollectionTextFields(
+    body as Record<string, unknown>,
+  );
+  if (typeInvalid) return NextResponse.json({ error: '文本字段类型非法' }, { status: 400 });
+  const name = textPatch.name;
+  if (nameTooLong) {
+    return NextResponse.json({ error: `材料集名超长（上限 ${COLLECTION_NAME_MAX} 字）` }, { status: 400 });
+  }
+  if (nameInvalid || name === undefined) return NextResponse.json({ error: '材料集名不能为空' }, { status: 400 });
   // 封面配置：对象形态必检（数组/原始值直接拒绝）；清洗后全字段非法同样 400
   // （与 PATCH 同口径——静默落 null 会让拼错字段的请求看似成功）
   let coverJson: string | null = null;
@@ -71,9 +83,10 @@ export async function POST(request: Request) {
     if (!coverJson) return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
   }
   // 册序即真排序：sortOrder 由「落库的清洗后配置」卷签 rank 派生（卷壹=10 …
-  // 别卷=90）；不能取原始请求串——serialize 归一别名卷签（「卷壹 · 启篇」→
-  // 「卷壹」）后 exact 匹配会落空，sortOrder 误归 0 排到真卷壹之前；未编排落 0
-  const sortOrder = coverVolumeRank(parseCollectionCover(coverJson)?.volume ?? '') ?? 0;
+  // 别卷=90，coverSortOrderRank 与 PATCH 存卷共用单源）；不能取原始请求串——
+  // serialize 归一别名卷签（「卷壹 · 启篇」→「卷壹」）后 exact 匹配会落空，
+  // sortOrder 误归 0 排到真卷壹之前；未编排落 0
+  const sortOrder = coverSortOrderRank(coverJson) ?? 0;
   const db = getDb();
   const now = new Date();
   const r = db
@@ -81,8 +94,8 @@ export async function POST(request: Request) {
     .values({
       userId: 1,
       name,
-      description: body.description?.trim() || null,
-      cefrLevel: body.cefrLevel || null,
+      description: textPatch.description ?? null,
+      cefrLevel: textPatch.cefrLevel ?? null,
       cover: coverJson,
       sortOrder,
       createdAt: now,

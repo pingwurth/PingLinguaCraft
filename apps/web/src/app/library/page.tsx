@@ -36,7 +36,6 @@ import {
   COVER_SEAL_CHARS,
   COVER_TEXTURES,
   COVER_VOLUMES,
-  coverVolumeRank,
   parseCollectionCover,
   type CoverTextureId,
 } from '@pinglc/core';
@@ -45,6 +44,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Pagination } from '@/components/Pagination';
 import { SOURCE_META, subtitleStatusMeta } from '@/lib/material-meta';
 import { fmtDuration, fmtInt, fmtRelative } from '@/lib/format';
+import { COLLECTION_NAME_MAX } from '@/lib/limits';
 import {
   bookCoverCls,
   BookInner,
@@ -61,7 +61,7 @@ type Filter = 'all' | 'recent' | 'fresh';
 const PAGE_SIZE = 12;
 
 /** 立卷弹窗卷名长度上限（仿「创建材料集」设计稿 40 字计数器） */
-const NAME_MAX = 40;
+const NAME_MAX = COLLECTION_NAME_MAX;
 
 /** CEFR 梯级选项（值落库 A2~C2；别称小注仿「创建材料集」设计稿梯级注解） */
 const CEFR_OPTIONS = [
@@ -311,8 +311,10 @@ export default function LibraryPage() {
           description,
           cefrLevel: cefr,
           cover: { texture, seal, volume, ...(image ? { image } : {}) },
-          /* 册序即真排序：卷签 rank 同步写入 sortOrder（select 恒出白名单值） */
-          sortOrder: coverVolumeRank(volume) ?? 0,
+          /* 册序即真排序由服务端单点派生：本请求恒带 cover，PATCH 的
+             「未传 sortOrder 但传了 cover」分支按卷签 rank 重算 sortOrder
+             （未编排保留现值）——前端同口径再算一遍属可省的重复写路径，
+             两侧行为改动时会互相覆盖 */
         }),
       });
     },
@@ -395,6 +397,9 @@ export default function LibraryPage() {
    * @param p 目标页码（1 起）
    */
   const changePage = (p: number) => {
+    /* 与有效页码比（page 在筛选缩页后会停在越界值，渲染用的 curPage 才是
+       当前高亮页）：点当前页不做任何事，不触发滚动副作用 */
+    if (p === curPage) return;
     setPage(p);
     gridRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -994,8 +999,8 @@ export default function LibraryPage() {
                         册序编排
                       </label>
                       {/* 原生 select（样式仿设计稿；候选集 core COVER_VOLUMES 单源 +
-                          「未编排」档——存量卷不编排也不被静默安签；册序即真排序，
-                          rank 映射 sortOrder 随立卷/存卷写入，未编排 rank=0 排最前） */}
+                          「未编排」档——存量卷不编排也不被静默安签；册序即真排序：
+                          立卷/存卷由服务端按卷签 rank 派生 sortOrder，未编排保留现值） */}
                       <select
                         id="create-volume"
                         value={volume}

@@ -7,10 +7,10 @@
  * - 5s 防抖 + pagehide 兜底 + 卸载/换材终报（keepalive 尽力送达）
  * - materialId 变化即重建：已听集合清零、旧材料卸载时终报
  *   （语流页连播切换材料依赖此语义接力上报）
- * - 上报值取「持续快照」而非实时读取：位置与句号随 store 变化持续快照，
- *   句号走高水位（只增不减）。卸载终报时 React 已置空 ref/重置激活句，
- *   实时读会发出脏值（语流换材曾把旧材料进度清零），故一律读快照；
- *   高水位则防句间间隙的 -1 覆盖服务端 max_cue_index（无条件覆盖语义）
+ * - 上报位置取「持续快照」：随 store 变化持续快照（卸载终报读实时位置会拿到
+ *   React 已置空的脏值）；句号取实际停留句（书签「第 N 句」引文与续研 seek
+ *   位置同句），高水位仅作句间间隙 -1 的兜底——全程未观测到激活句则整体
+ *   省略该字段，服务端保留库中现值（防 -1 被钳 0 抹掉已存续研书签）
  * - 卸载（真正离开播放页）后失效 ['home'] 聚合缓存：壳层统计常驻且有
  *   staleTime，不失效会挂旧数。失效等最后一次终报 PUT 落定再发（并发
  *   在途时 GET 可能先读旧进度），且不随 materialId 重建触发——语流连播
@@ -45,6 +45,10 @@ export function useProgressReporter(
   const qc = useQueryClient();
 
   useEffect(() => {
+    /* 清掉单例 store 里上一素材残留的播放头/激活句：本 effect 先于播放组件的
+     * setCues/reset effect 执行，若不清，setCues 触发的首个订阅回调会带上旧
+     * 值快照——幻影 listened 位、外来高水位句号、旧位置/0 覆盖新材续研书签 */
+    usePlayer.setState({ activeCueIndex: -1, currentTimeMs: 0 });
     listenedRef.current = new Set();
     snapRef.current = { positionMs: 0, maxCueIndex: -1 };
     // 起始时间记当前时刻：从 0 起算会让重建后第一条 store 变化立即上报，
@@ -72,13 +76,17 @@ export function useProgressReporter(
       let bin = '';
       buf.forEach((b) => (bin += String.fromCharCode(b)));
       const mask = btoa(bin);
+      // 上报句号 = 实际停留句（书签引文与续研位置一致）；句间间隙 -1 退高水位
+      // 兜底；全程未观测到激活句则整体省略——服务端保留库中现值（无条件钳 0
+      // 会把已存书签抹成「第 1 句」，首页续研入口随之消失）
+      const cueIndex = s.activeCueIndex >= 0 ? s.activeCueIndex : snapRef.current.maxCueIndex;
       // 返回 fetch Promise 并串入在途链（卸载路径等全链落定后再失效 home 缓存）
       const p = fetch(`/api/materials/${materialId}/progress`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lastPositionMs: livePositionMs ?? snapRef.current.positionMs,
-          maxCueIndex: snapRef.current.maxCueIndex,
+          ...(cueIndex >= 0 ? { maxCueIndex: cueIndex } : {}),
           listenedMask: mask,
           listenedThrough: listenedRef.current.size >= total,
         }),

@@ -33,7 +33,15 @@ for (const [ext, mime] of Object.entries(COVER_IMAGE_EXT_MIME)) MIME_EXT[mime] ?
  * @returns 嗅探出的 MIME；无法识别返回 null
  */
 function sniffImageMime(buf: Buffer): string | null {
-  if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  /* PNG 完整 8 字节签名（89 50 4E 47 0D 0A 1A 0A）：只查前 4 字节会让任意
+     同前缀的载荷过闸 */
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
   if (
     buf.length >= 12 &&
@@ -54,7 +62,7 @@ export async function POST(request: Request) {
   // 的请求在 formData 解析前拒绝，不白读整个 body
   const declared = Number(request.headers.get('content-length') ?? 0);
   if (declared > MAX_BYTES + 64 * 1024) {
-    return NextResponse.json({ error: '封面插画超过 5MB' }, { status: 413 });
+    return NextResponse.json({ error: `封面插画超过 ${COVER_IMAGE_MAX_BYTES / 1024 / 1024}MB` }, { status: 413 });
   }
   // formData 解析可能抛错（畸形/截断的 multipart、客户端中断）：包一层给可读
   // 的 400。判空/判体积都在 arrayBuffer 之前：缺 file 字段给格式错误而非笼统的
@@ -74,7 +82,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '封面插画仅支持 PNG / JPG / WebP' }, { status: 400 });
   }
   if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: '封面插画超过 5MB' }, { status: 413 });
+    return NextResponse.json({ error: `封面插画超过 ${COVER_IMAGE_MAX_BYTES / 1024 / 1024}MB` }, { status: 413 });
   }
   let bytes: Buffer;
   try {

@@ -40,6 +40,3 @@ export interface SearchResults {
   /** 标题命中的材料 */
   materials: SearchMaterialHit[];
 }
-
-/** 检索词长度上限（客户端截断与 /api/search 服务端 400 闸共用单源） */
-export const SEARCH_QUERY_MAX = 100;

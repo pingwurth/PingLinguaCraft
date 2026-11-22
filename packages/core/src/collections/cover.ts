@@ -62,14 +62,25 @@ export function coverVolumeRank(value: string): number | null {
   return COVER_VOLUMES.find((v) => v.value === value)?.rank ?? null;
 }
 
+/**
+ * cover 列落库 JSON → 卷签 rank（立卷/存卷两条写路径共用——各写一份会在
+ * 调整归一规则时漏改其一，「立卷新序、存卷旧序」）
+ * @param coverJson cover 列 JSON 串（可空）
+ * @returns 白名单卷签返回 rank；未编排/无封面返回 null（调用方决定保留现值或落默认）
+ */
+export function coverSortOrderRank(coverJson: string | null): number | null {
+  return coverVolumeRank(parseCollectionCover(coverJson)?.volume ?? '');
+}
+
 /** 封面插画扩展名 ↔ MIME 对照表（上传白名单 / 路径校验 / 出图回放共用单源，
  *  调整格式只改这一处） */
-export const COVER_IMAGE_EXT_MIME: Record<string, string> = {
+/* 冻结：路径白名单等派生物依此表构建，事后增删键会让派生物失同步 */
+export const COVER_IMAGE_EXT_MIME: Readonly<Record<string, string>> = Object.freeze({
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   webp: 'image/webp',
-};
+});
 
 /** 封面插画单图体积上限（字节；上传服务端闸与立卷弹窗前置校验共用单源） */
 export const COVER_IMAGE_MAX_BYTES = 5 * 1024 * 1024;

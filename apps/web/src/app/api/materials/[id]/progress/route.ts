@@ -80,9 +80,22 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     listenedThrough = existing?.listenedThrough ?? false;
   }
 
+  // maxCueIndex 三态平铺（不嵌套三元）：显式上报 → 钳非负落库；省略且是存量
+  // 行 → 不写该列（保留现值）；省略且是新行 → 落 -1（无实质句位，不挂
+  // 「第 1 句」书签）。此前无条件 Math.max(0, ??0) 会把 -1/undefined 钳成 0
+  // 无条件覆盖，抹掉已存续研书签
+  let maxCuePatch: { maxCueIndex?: number };
+  if (body.maxCueIndex != null) {
+    maxCuePatch = { maxCueIndex: Math.max(0, Math.round(body.maxCueIndex)) };
+  } else if (existing) {
+    maxCuePatch = {};
+  } else {
+    maxCuePatch = { maxCueIndex: -1 };
+  }
+
   const values = {
     lastPositionMs: Math.max(0, Math.round(body.lastPositionMs ?? 0)),
-    maxCueIndex: Math.max(0, Math.round(body.maxCueIndex ?? 0)),
+    ...maxCuePatch,
     listenedMask: mask,
     listenedThrough,
     ...(listenedThrough && !existing?.firstDone ? { firstListenCompletedAt: now } : {}),

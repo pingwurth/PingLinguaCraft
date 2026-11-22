@@ -8,10 +8,10 @@
 import { NextResponse } from 'next/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { aiArtifacts, cues, words } from '@/lib/db/schema';
+import { aiArtifacts, cues, materials, words } from '@/lib/db/schema';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
-import { EngineError, engineErrorResponse } from '@/lib/server/engine';
-import { structuredLLM } from '@/lib/server/structuredLlm';
+import { engineErrorResponse } from '@/lib/server/engine';
+import { LlmProfileMissingError, structuredLLM } from '@/lib/server/structuredLlm';
 import { WRITE_CHECK_SYSTEM, buildWriteCheckPrompt, WriteCheckSchema } from '@/lib/manualCard';
 import { WRITE_TEXT_MAX } from '@/lib/limits';
 
@@ -40,22 +40,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const db = getDb();
-  // 词条 + 原典例句（批改语境）
+  // 词条 + 原典例句（批改语境）；userId=1 归属过滤（全库预留列统一约定，
+  // 点拨会花 LLM 调用，不该落到他人词条上）
   const word = db
     .select({ displayForm: words.displayForm, originCueId: words.originCueId })
     .from(words)
-    .where(eq(words.id, wordId))
+    .where(and(eq(words.id, wordId), eq(words.userId, 1)))
     .all()[0];
   if (!word) return NextResponse.json({ error: '单词不存在' }, { status: 404 });
   const example = word.originCueId
-    ? db.select({ textEn: cues.textEn }).from(cues).where(eq(cues.id, word.originCueId)).all()[0]?.textEn ?? null
+    ? db
+        .select({ textEn: cues.textEn })
+        .from(cues)
+        .innerJoin(materials, and(eq(materials.id, cues.materialId), eq(materials.userId, 1)))
+        .where(eq(cues.id, word.originCueId))
+        .all()[0]?.textEn ?? null
     : null;
 
   // 仿写构架（深学卡 imitation 产物）作为参考提示
   const frameRow = db
     .select({ contentMd: aiArtifacts.contentMd })
     .from(aiArtifacts)
-    .where(and(eq(aiArtifacts.kind, 'imitation'), eq(aiArtifacts.subjectType, 'word'), eq(aiArtifacts.subjectId, wordId)))
+    .where(
+      and(
+        eq(aiArtifacts.kind, 'imitation'),
+        eq(aiArtifacts.subjectType, 'word'),
+        eq(aiArtifacts.subjectId, wordId),
+        eq(aiArtifacts.userId, 1)
+      )
+    )
     .orderBy(desc(aiArtifacts.createdAt))
     .limit(1)
     .all()[0];
@@ -83,8 +96,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ check: data });
   } catch (err) {
     /* 「未配置 LLM 档案」守卫只在 structuredLLM 一处（此前路由预检重复同一
-       判定与文案，改一处漏一处）；EngineError status=0 映射 400，其余 502 */
-    if (err instanceof EngineError && err.status === 0) {
+       判定与文案，改一处漏一处） */
+    /* 档案未配置 = 客户端可自愈的 400（去设置页配档案）。不能按 status===0
+       判别：LlmProfileMissingError 继承 EngineError 且 status 同为 0，先判
+       通用分支会把本类吞掉；引擎不可达/生成不合规/超时也用 0，混判会把
+       网关故障伪装成客户端错误——它们一律走统一出口（502 语义） */
+    if (err instanceof LlmProfileMissingError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }
     return engineErrorResponse(err, '点拨生成失败');

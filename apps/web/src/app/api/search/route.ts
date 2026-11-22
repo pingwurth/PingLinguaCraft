@@ -13,12 +13,10 @@ import { NextResponse } from 'next/server';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
-import { SEARCH_QUERY_MAX, type SearchMaterialHit, type SearchResults } from '@/features/search/types';
+import type { SearchMaterialHit, SearchResults } from '@/features/search/types';
+import { SEARCH_QUERY_MAX } from '@/lib/limits';
 
 export const runtime = 'nodejs';
-
-/** 检索词长度上限（超长直接拒绝，防误粘整段文本打爆 LIKE 扫描） */
-const MAX_QUERY_LENGTH = SEARCH_QUERY_MAX;
 
 /** 材料集命中条数上限 */
 const COLLECTION_LIMIT = 6;
@@ -41,8 +39,8 @@ function likePattern(q: string): string {
  */
 export async function GET(request: Request) {
   const q = (new URL(request.url).searchParams.get('q') ?? '').trim();
-  if (q.length > MAX_QUERY_LENGTH) {
-    return NextResponse.json({ error: `检索词过长（上限 ${MAX_QUERY_LENGTH} 字）` }, { status: 400 });
+  if (q.length > SEARCH_QUERY_MAX) {
+    return NextResponse.json({ error: `检索词过长（上限 ${SEARCH_QUERY_MAX} 字）` }, { status: 400 });
   }
   // 空词直接空命中：顶栏在防抖后仅在非空时请求，此处兜底防直连调用
   if (!q) {

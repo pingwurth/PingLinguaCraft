@@ -28,12 +28,15 @@ interface MobileSearchProps {
  */
 export function MobileSearch({ open, onClose }: MobileSearchProps) {
   /* 检索逻辑与桌面同源（关闭保留检索词：复位只在命中跳转后发生） */
-  const { raw, setRaw, q, search, hits, reset } = useGlobalSearch();
+  const { raw, setRaw, search, hits, reset, debouncing } = useGlobalSearch();
   const inputRef = useRef<HTMLInputElement>(null);
   /* 浮层容器引用：Tab 焦点陷阱用 */
   const overlayRef = useRef<HTMLDivElement>(null);
   /* 打开前的焦点元素：关闭时还原（键盘用户不丢位置） */
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  /* 最新 onClose 经 ref 入 document 监听闭包（防扩大 effect 依赖） */
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   /* 打开时聚焦输入框（弹软键盘）、锁定背景滚动、记录原焦点并约束 Tab 在
      浮层内环绕；关闭时恢复滚动与焦点 */
@@ -46,6 +49,12 @@ export function MobileSearch({ open, onClose }: MobileSearchProps) {
     /* effect 局部快照：cleanup 时 ref.current 可能已换指（晚于卸载变更） */
     const overlay = overlayRef.current;
     const onKey = (e: KeyboardEvent) => {
+      /* Esc 关闭（焦点在返回键/结果行时输入框 onKeyDown 收不到，须在
+         document 层接管；onClose 经 ref 入闭包防依赖扩大重跑 effect） */
+      if (e.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
       /* Tab 焦点陷阱：浮层 aria-modal，背景须不可达。监听挂 document（冒泡
          到 overlay 的方案在焦点落到 body——点了浮层内非可聚焦区域——时收不到
          事件，陷阱会失效） */
@@ -90,9 +99,6 @@ export function MobileSearch({ open, onClose }: MobileSearchProps) {
   /* 空态提示由未防抖的输入驱动（请求侧仍由 q 门控）：若用 q 切换，首字符
      敲下到防抖落定之间的 250ms 会残留「输入关键词」提示，与实际输入错位 */
   const hasInput = raw.trim().length > 0;
-  /* 防抖未落定也算加载：否则 250ms 窗口内 q 仍空、查询未启用，列表先闪
-     「未检得」再翻成「检索中」 */
-  const debouncing = raw.trim() !== q;
 
   return (
     /* 全屏浮层：案头 surface 底 + 安全区适配（刘海/手势条） */
@@ -123,10 +129,6 @@ export function MobileSearch({ open, onClose }: MobileSearchProps) {
             ref={inputRef}
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            onKeyDown={(e) => {
-              /* Esc 关闭（外接键盘场景；软键盘走返回键；保留检索词） */
-              if (e.key === 'Escape') onClose();
-            }}
             enterKeyHint="search"
             role="combobox"
             aria-expanded={hasInput}
@@ -150,7 +152,7 @@ export function MobileSearch({ open, onClose }: MobileSearchProps) {
           <SearchResultList
             hits={hits}
             collectionCount={search.data?.collections.length ?? 0}
-            loading={debouncing || (search.isFetching && (search.isPlaceholderData || !search.data))}
+            loading={debouncing || (!search.data && search.isFetching)}
             error={search.isError ? search.error.message : null}
             idPrefix="mobile-search"
             onSelect={onSelect}

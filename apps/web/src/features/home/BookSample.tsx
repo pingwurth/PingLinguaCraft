@@ -15,6 +15,7 @@
 
 import type { ReactNode } from 'react';
 import type { CoverTextureId } from '@pinglc/core';
+import { firstGlyph } from '@/lib/format';
 
 /**
  * 装帧质地 id → 视觉类（web 端呈现层映射；id 白名单在 core COVER_TEXTURES 单源，
@@ -91,8 +92,8 @@ export function BookInner({
 }: BookInnerProps) {
   /* 深色质地（深黛靛蓝）：书影文字换白系前景反色 */
   const inkLight = COVER_TEXTURE_BG[texture].ink === 'light';
-  /* 插画窗活字底：卷名首字（剥引号书名号前缀；空名回退「卷」） */
-  const glyph = name.replace(/^[「《\s]+/, '').slice(0, 1) || '卷';
+  /* 插画窗活字底：卷名首字（firstGlyph 与首页水印共用单源；空名回退「卷」） */
+  const glyph = firstGlyph(name) || '卷';
   return (
     <>
       {/* 左侧装订线（四枚装线点） */}

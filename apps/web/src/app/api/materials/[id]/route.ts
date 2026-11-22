@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
-import { collections, cues, jobs, learningProgress, materials } from '@/lib/db/schema';
+import { collections, cues, jobs, learningProgress, materials, recordings } from '@/lib/db/schema';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
@@ -44,6 +44,34 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 function remapMediaRel(rel: string, from: number, to: number, matId: number): string {
   const prefix = `${from}/${matId}`;
   return rel.startsWith(`${prefix}/`) ? `${to}/${matId}${rel.slice(prefix.length)}` : rel;
+}
+
+/** 任务占用复检命中（事务内抛出 → 外层 catch 回迁目录后按 409 返回，与前置检查同语义） */
+class BusyError extends Error {}
+
+/**
+ * 该材料在跑任务数（材料级 + restt_cue 句级）：移卷前置检查（db 直连）与
+ * 改库事务内复检（tx）共用同一判定——两份手抄副本会在口径调整时只改其一
+ * @param executor 数据库直连或事务执行器
+ * @param pid      材料 id
+ * @returns 在跑任务总数（>0 即占用）
+ */
+function countActiveJobs(executor: Pick<ReturnType<typeof getDb>, 'select'>, pid: number): number {
+  const busy = executor
+    .select({ n: sql<number>`count(*)` })
+    .from(jobs)
+    .where(and(eq(jobs.materialId, pid), inArray(jobs.status, ['queued', 'running'])))
+    .all()[0]!.n;
+  // 句级任务（restt_cue）不带 material_id，但其 cue_id 列可关联 cues 判定
+  // 归属：单句重 STT 同样往材料目录写切片产物，迁移同样要挡（SQL 侧
+  // 关联判定，不把全部在跑任务拉进 JS 过滤）
+  const cueBusy = executor
+    .select({ n: sql<number>`count(*)` })
+    .from(jobs)
+    .innerJoin(cues, eq(cues.id, jobs.cueId))
+    .where(and(eq(jobs.type, 'restt_cue'), inArray(jobs.status, ['queued', 'running']), eq(cues.materialId, pid)))
+    .all()[0]!.n;
+  return busy + cueBusy;
 }
 
 /**
@@ -88,21 +116,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             .where(and(eq(collections.id, targetId), eq(collections.userId, 1)))
             .all()[0];
           if (!target) return 'no-target' as const;
-          const busy = db
-            .select({ n: sql<number>`count(*)` })
-            .from(jobs)
-            .where(and(eq(jobs.materialId, pid), inArray(jobs.status, ['queued', 'running'])))
-            .all()[0]!.n;
-          // 句级任务（restt_cue）不带 material_id，但其 cue_id 列可关联 cues 判定
-          // 归属：单句重 STT 同样往材料目录写切片产物，迁移同样要挡（SQL 侧
-          // 关联判定，不把全部在跑任务拉进 JS 过滤）
-          const cueBusy = db
-            .select({ n: sql<number>`count(*)` })
-            .from(jobs)
-            .innerJoin(cues, eq(cues.id, jobs.cueId))
-            .where(and(eq(jobs.type, 'restt_cue'), inArray(jobs.status, ['queued', 'running']), eq(cues.materialId, pid)))
-            .all()[0]!.n;
-          if (busy > 0 || cueBusy > 0) return 'busy' as const;
+          if (countActiveJobs(db, pid) > 0) return 'busy' as const;
           return { from: row.collectionId, to: targetId };
         })()
       : null;
@@ -115,9 +129,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     );
   }
 
-  /* 路径校验先于目录迁移：media/peaks 路径若与 `<from>/<pid>/` 前缀不符
-   * （历史脏数据），迁完后 remap 会原样保留旧前缀 → 「库指旧路径、文件已
-   * 迁走」的死链还回 200。校验不过直接 409，一个文件都不动 */
+  /* 路径校验先于目录迁移：media/peaks/recordings 路径若与 `<from>/<pid>/`
+   * 前缀不符（历史脏数据），迁完后 remap/LIKE 改写会原样保留旧前缀 →
+   * 「库指旧路径、文件已迁走」的死链还回 200（recordings 的 LIKE 前缀改写
+   * 匹配不到的行会静默跳过，与 media/peaks 同类脏数据）。校验不过直接
+   * 409，一个文件都不动 */
   let mediaPath: string | null = null;
   let peaksPath: string | null = null;
   if (move) {
@@ -129,7 +145,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     mediaPath = cur?.mediaPath ?? null;
     peaksPath = cur?.peaksPath ?? null;
     const prefix = `${move.from}/${pid}/`;
-    if ((mediaPath && !mediaPath.startsWith(prefix)) || (peaksPath && !peaksPath.startsWith(prefix))) {
+    const badMedia = (mediaPath && !mediaPath.startsWith(prefix)) || (peaksPath && !peaksPath.startsWith(prefix));
+    const badRecording = db
+      .select({ n: sql<number>`count(*)` })
+      .from(recordings)
+      .where(and(eq(recordings.materialId, pid), sql`${recordings.filePath} NOT LIKE ${`${move.from}/${pid}/%`}`))
+      .all()[0]!.n;
+    if (badMedia || badRecording > 0) {
       return NextResponse.json(
         { error: '材料库内路径与所属卷不符（历史数据异常），请先修复路径再移动' },
         { status: 409 }
@@ -164,6 +186,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     db.transaction((tx) => {
       if (move) {
+        /* 任务占用在事务内复检：前置检查与目录迁移之间存在窗口——另一标签页
+         * 起的导入/重 STT 在此间落任务行，会往已迁走的旧绝对路径写产物（恰是
+         * busy 闸要防的散落）。复检不过即抛 BusyError 回滚，目录由外层 catch
+         * 回迁后按 409 返回 */
+        if (countActiveJobs(tx, pid) > 0) {
+          throw new BusyError('该材料有进行中的任务（字幕/翻译等），完成后再移动');
+        }
         // media_path/peaks_path 换挂目标卷（前缀已在迁移前校验通过）；跟读录音
         // （<cid>/<matId>/rec/…）同目录布局，SQL 批量改前缀
         if (mediaPath) patch.mediaPath = remapMediaRel(mediaPath, move.from, move.to, pid);
@@ -189,6 +218,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       } catch (rollbackErr) {
         console.error(`[materials/${pid}] 移卷目录回滚失败（库未改写，文件滞留 ${move.to}/${pid}）：`, rollbackErr);
       }
+    }
+    // 任务占用复检命中：目录已回迁，与前置检查同一 409 语义（可重试），
+    // 不混进「库路径改写失败 500」误报存储故障
+    if (err instanceof BusyError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
     }
     return NextResponse.json(
       { error: `库路径改写失败：${err instanceof Error ? err.message : String(err)}` },

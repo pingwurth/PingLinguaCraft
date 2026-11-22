@@ -7,3 +7,12 @@
 
 /** 仿写短句长度上限（write-check 路由 400 闸与手册页 textarea maxLength 共用） */
 export const WRITE_TEXT_MAX = 600;
+
+/** 检索词长度上限（/api/search 服务端 400 闸与客户端防抖归一共用单源） */
+export const SEARCH_QUERY_MAX = 100;
+
+/** 材料分页 pageSize 上限（服务端钳制闸与案头今研首页请求共用单源） */
+export const MATERIAL_PAGE_MAX = 100;
+
+/** 材料集名长度上限（collections 两路由清洗闸与藏经阁立卷/编辑弹窗 maxLength 共用单源） */
+export const COLLECTION_NAME_MAX = 40;

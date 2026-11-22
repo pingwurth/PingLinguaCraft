@@ -16,11 +16,13 @@ export function progressTone(pct: number): string {
 
 /**
  * ms → 「x 小时 y 分」展示（跨页共用：藏经阁卷卡 / 案头今研 / 统计卡）
- * @param ms 毫秒时长（非法/负值显示占位破折号；不足 1 分钟按秒展示，
- *            防短音频被四舍五入吞成「0 分」）
+ * @param ms 毫秒时长（非法/负值显示占位破折号；0 显示「0 秒」——空库统计卡
+ *            会被 Math.max(1,…) 钳成「1 秒」；不足 1 分钟按秒展示，防短音频
+ *            被四舍五入吞成「0 分」）
  */
 export function fmtDuration(ms: number | null): string {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
+  if (ms === 0) return '0 秒';
   if (ms < 60000) return `${Math.max(1, Math.round(ms / 1000))} 秒`;
   const min = Math.round(ms / 60000);
   if (min < 60) return `${min} 分`;
@@ -49,6 +51,17 @@ export function fmtRelative(ms: number): string {
  */
 export function fmtInt(n: number): string {
   return n.toLocaleString('zh-CN');
+}
+
+/**
+ * 卷名首字（码点级，剥「《 与空白前缀）：书影活字底与首页水印共用单源——
+ * slice 按码元切会把 emoji/扩展 B 区汉字切成半个代理项渲染成「�」，此前
+ * 两处各写一份且口径不一（一处剥前缀一处不剥）
+ * @param name 卷名
+ * @returns 首个码点；空名返回空串（回退字由调用方决定）
+ */
+export function firstGlyph(name: string): string {
+  return Array.from(name.replace(/^[「《\s]+/, ''))[0] ?? '';
 }
 
 /**

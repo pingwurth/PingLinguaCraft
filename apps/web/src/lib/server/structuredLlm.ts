@@ -11,6 +11,15 @@ import { EngineError, enginePost } from '@/lib/server/engine';
 import { resolveProfile, toEngineProfile, type ResolvedProfile } from '@/lib/server/providers';
 import { repairPrompt } from '@/lib/quiz';
 
+/** LLM 档案未配置（调用方可据此映射 400；其余 EngineError 一律网关类错误）——
+ *  不能靠 status===0 判别：引擎不可达/生成不合规也用 0，混判会把网关故障
+ *  伪装成客户端错误 */
+export class LlmProfileMissingError extends EngineError {
+  constructor(message: string) {
+    super(message, 0);
+  }
+}
+
 /**
  * 结构化生成：want_json 请求 + schema 校验 + 修复重试一次
  * @param opts.schema     产物 zod schema
@@ -29,7 +38,7 @@ export async function structuredLLM<T>(opts: {
 }): Promise<{ data: T; profile: ResolvedProfile }> {
   const profile = resolveProfile('llm');
   if (!profile || profile.kind !== 'cloud') {
-    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+    throw new LlmProfileMissingError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）');
   }
 
   // 进度文案复用调用方的领域 label（如「深学卡」），任务面板不丢上下文

@@ -19,7 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { usePlayer } from '@/features/player/store';
 import { useMediaClock } from '@/features/player/useMediaClock';
 import { useProgressReporter } from '@/features/player/useProgressReporter';
-import { PLAYER_RATES, RESUME_SEEK_MIN_MS, clampSeekMs } from '@/features/player/rates';
+import { PLAYER_RATES, RESUME_SEEK_MIN_MS, clampSeekMs, resolveResumeSeekMs } from '@/features/player/rates';
 import { api, type CueDTO, type StreamQueueItem } from '@/lib/api';
 import { fmtClock } from '@/lib/format';
 
@@ -123,14 +123,9 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
     if (!m) return;
     if (Number.isFinite(m.duration)) usePlayer.getState().setDurationMs(m.duration * 1000);
     if (pendingSeekMs.current > RESUME_SEEK_MIN_MS) {
-      const clamped = clampSeekMs(pendingSeekMs.current, m.duration);
-      /* 续播点已贴片尾（整篇听完的材料 lastPositionMs≈时长）：从头重听——
-       * 否则播半秒就 ended 又被连播接力带走，chip 看似跳到别的材料 */
-      if (Number.isFinite(m.duration) && m.duration * 1000 - clamped < 1000) {
-        m.currentTime = 0;
-      } else {
-        m.currentTime = clamped / 1000;
-      }
+      /* 贴尾回落（resolveResumeSeekMs）：整篇听完的材料从头重听——否则播
+       * 半秒就 ended 又被连播接力带走，chip 看似跳到别的材料 */
+      m.currentTime = resolveResumeSeekMs(pendingSeekMs.current, m.duration) / 1000;
     }
     // 消费即清：挂起的定位意图不清理的话，「点 chip 记下续播位置 → 立刻再点
     // 同 chip 从头重听」会被随后的 loadedmetadata 拉回旧意图位置
@@ -227,7 +222,9 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
     const d = durationMs || (raw != null && Number.isFinite(raw) ? raw * 1000 : 0);
     if (!m || d <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    m.currentTime = ((e.clientX - rect.left) / rect.width) * (d / 1000);
+    /* 贴尾钳取与续播路径同一助手：点进度条右缘会落到恰好 duration，ended
+       抢在尾音播出前触发、连播立即切下一材（末尾秒数被吞且不进位图） */
+    m.currentTime = clampSeekMs(((e.clientX - rect.left) / rect.width) * d, m.duration) / 1000;
   };
 
   /* ---------- 字幕瀑布：激活句居中滚动 ---------- */
@@ -310,7 +307,7 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
             if (cuesQuery.isLoading) {
               return <p className="text-center text-sm text-muted-foreground">字幕装载中…</p>;
             }
-            if (cuesQuery.isError) {
+            if (cuesQuery.isError && !cuesQuery.data) {
               /* 装载失败可见可重试：静默空白会让用户以为该材料没有字幕 */
               return (
                 <div className="flex flex-col items-center gap-2 py-8 text-center">

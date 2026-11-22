@@ -49,13 +49,8 @@ interface ShellNavItem {
   match: (p: string) => boolean;
 }
 
-/** 研习辅助条目形态（不带 group：不进移动 5-tab，仅桌面侧栏末组） */
-interface ShellAuxItem {
-  href: string;
-  label: string;
-  icon: string;
-  match: (p: string) => boolean;
-}
+/* 研习辅助条目形态：自导航条目派生（去 group）——两份独立声明会随字段增改漂移 */
+type ShellAuxItem = Omit<ShellNavItem, 'group'>;
 
 const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   {
@@ -279,7 +274,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     : 'text-on-surface-variant'
                 }`}
               >
-                <span className="material-symbols-outlined text-[22px]">{item.icon}</span>
+                <span className={`material-symbols-outlined text-[22px] ${item.match(pathname) ? 'font-semibold' : 'font-medium'}`}>
+                  {item.icon}
+                </span>
                 <span className={`text-label-sm ${item.match(pathname) ? 'font-semibold' : 'font-medium'}`}>
                   {item.label}
                 </span>

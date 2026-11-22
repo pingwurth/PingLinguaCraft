@@ -63,9 +63,13 @@ export function ConfirmDialog({
      箭头、pending 随提交翻转，挂进依赖会每次父渲染重跑 effect，cleanup 的
      「还原焦点」会在弹窗仍开着时把焦点拽回遮罩后的触发钮（HIGH 缺陷根源） */
   const pendingRef = useRef(pending);
-  pendingRef.current = pending;
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  /* 提交后再同步最新值（无依赖 effect）：渲染期赋值在并发渲染下被丢弃的
+     渲染会把未提交的 pending 留在 ref 里 */
+  useEffect(() => {
+    pendingRef.current = pending;
+    onCloseRef.current = onClose;
+  });
 
   /* 打开/关闭生命周期（依赖只挂 open） */
   useEffect(() => {
@@ -80,20 +84,34 @@ export function ConfirmDialog({
       /* Tab 焦点陷阱：在卡内可聚焦元素间环绕，不落到被遮罩挡住的背景上。
          pending 期间按钮全禁用、可聚焦集为空——把焦点锚在卡片自身，Tab 不外逃 */
       if (e.key === 'Tab' && cardRef.current) {
-        const focusables = cardRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+        const card = cardRef.current;
+        const focusables = card.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         );
         if (focusables.length === 0) {
           e.preventDefault();
-          cardRef.current.focus();
+          card.focus();
           return;
         }
         const first = focusables[0]!;
         const last = focusables[focusables.length - 1]!;
-        if (!e.shiftKey && document.activeElement === last) {
+        const active = document.activeElement;
+        /* 焦点已在卡外（body/被禁用钮）：无条件拉回 */
+        if (active !== card && !card.contains(active)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+          return;
+        }
+        /* 焦点在卡身（点了正文等非交互区）：Tab 落回首/末元素 */
+        if (active === card) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+          return;
+        }
+        if (!e.shiftKey && active === last) {
           e.preventDefault();
           first.focus();
-        } else if (e.shiftKey && document.activeElement === first) {
+        } else if (e.shiftKey && active === first) {
           e.preventDefault();
           last.focus();
         }
@@ -102,7 +120,9 @@ export function ConfirmDialog({
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
-      restoreFocusRef.current?.focus();
+      /* 还原前判存续：确认成功可能已卸载触发钮（删行/跳转） */
+      const target = restoreFocusRef.current;
+      if (target?.isConnected) target.focus();
     };
   }, [open]);
 

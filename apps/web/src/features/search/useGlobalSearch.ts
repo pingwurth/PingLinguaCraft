@@ -14,7 +14,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { SOURCE_META, subtitleStatusMeta } from '@/lib/material-meta';
-import { SEARCH_QUERY_MAX, type SearchResults } from '@/features/search/types';
+import type { SearchResults } from '@/features/search/types';
+import { SEARCH_QUERY_MAX } from '@/lib/limits';
 
 /** 扁平化结果项：材料集/材料两类命中统一成可渲染、可键盘选择的列表项 */
 export interface SearchHitItem {
@@ -40,6 +41,18 @@ export const SEARCH_PLACEHOLDER = {
 const DEBOUNCE_MS = 250;
 
 /**
+ * 检索词归一（防抖落定与「防抖中」判定共用同一口径）：去首尾空白、按共享
+ * 上限截断（截在代理对中间时去掉末尾落单的高位代理——孤立代理项会让
+ * encodeURIComponent 抛 URIError，界面报「检索失败：URI malformed」）
+ * @param raw 输入原值
+ */
+function normalizeQuery(raw: string): string {
+  const sliced = raw.trim().slice(0, SEARCH_QUERY_MAX);
+  const last = sliced.charCodeAt(sliced.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? sliced.slice(0, -1) : sliced;
+}
+
+/**
  * 全局检索 hook：防抖输入 + 检索请求 + 命中扁平化
  */
 export function useGlobalSearch() {
@@ -47,15 +60,9 @@ export function useGlobalSearch() {
   const [raw, setRaw] = useState('');
   const [q, setQ] = useState('');
 
-  /* 输入防抖：停顿 DEBOUNCE_MS 后才把 raw 落为请求词 q。超长按共享上限截断
-     （截在代理对中间时去掉末尾落单的高位代理——孤立代理项会让
-     encodeURIComponent 抛 URIError，界面报「检索失败：URI malformed」） */
+  /* 输入防抖：停顿 DEBOUNCE_MS 后才把归一化的 raw 落为请求词 q */
   useEffect(() => {
-    const t = setTimeout(() => {
-      const sliced = raw.trim().slice(0, SEARCH_QUERY_MAX);
-      const last = sliced.charCodeAt(sliced.length - 1);
-      setQ(last >= 0xd800 && last <= 0xdbff ? sliced.slice(0, -1) : sliced);
-    }, DEBOUNCE_MS);
+    const t = setTimeout(() => setQ(normalizeQuery(raw)), DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [raw]);
 
@@ -99,5 +106,9 @@ export function useGlobalSearch() {
     setQ('');
   };
 
-  return { raw, setRaw, q, search, hits, reset };
+  /* 防抖未落定判定（与落定同用 normalizeQuery 口径——拿 raw 原值直比 q 的
+     话，超过 SEARCH_QUERY_MAX 的输入截断后永远 ≠ raw，「检索中…」卡死） */
+  const debouncing = normalizeQuery(raw) !== q;
+
+  return { raw, setRaw, q, search, hits, reset, debouncing };
 }

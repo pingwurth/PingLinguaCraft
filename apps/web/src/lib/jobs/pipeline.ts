@@ -856,15 +856,29 @@ const WORD_NOTE_SYSTEM =
   '## 例句\n2 个例句（第一个尽量来自用户提供的原句语境）\n## 搭配\n高频搭配 3-5 个\n## 易混词\n1-2 个近形/近义词辨析';
 
 /**
+ * 任务载荷 wordId 校验（AI 笔记管线与词产物管线骨架共用）：先验 JSON 类型
+ * 再验整数——Number 强转会放过 true→1、"7"→7（载荷来自 JSON.parse）
+ * @param payload 任务载荷
+ * @returns 通过校验的 wordId
+ */
+function parseWordIdPayload(payload: { wordId: unknown }): number {
+  if (typeof payload.wordId !== 'number' || !Number.isInteger(payload.wordId) || payload.wordId <= 0) {
+    throw new Error('任务载荷 wordId 非法');
+  }
+  return payload.wordId;
+}
+
+/**
  * 单词 AI 笔记管线
  */
-async function aiNotePipeline(jobId: string, payload: { wordId: number }): Promise<void> {
+async function aiNotePipeline(jobId: string, payload: { wordId: unknown }): Promise<void> {
+  const wordId = parseWordIdPayload(payload);
   const db = getDb();
   const profile = resolveProfile('llm');
   if (!profile || profile.kind !== 'cloud') {
     throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
   }
-  const word = db.select().from(wordsTable).where(eq(wordsTable.id, payload.wordId)).all()[0];
+  const word = db.select().from(wordsTable).where(eq(wordsTable.id, wordId)).all()[0];
   if (!word) throw new Error('单词不存在');
   updateJob(jobId, { progress: 0.3, message: `AI 笔记生成中（${profile.name}）…` });
   const { content } = await enginePost<{ content: string | null }>('/llm/chat', {
@@ -879,7 +893,7 @@ async function aiNotePipeline(jobId: string, payload: { wordId: number }): Promi
       aiNoteProvider: profile.name,
       updatedAt: new Date(),
     })
-    .where(eq(wordsTable.id, payload.wordId))
+    .where(eq(wordsTable.id, wordId))
     .run();
   updateJob(jobId, { progress: 1, message: '笔记已生成' });
 }
@@ -1039,22 +1053,27 @@ type WordRow = typeof wordsTable.$inferSelect;
  * @param opts.onExtra    生成后同事务的额外写库（词源另写 words.etymologyJson 等）
  * @param opts.doneMessage 完成进度文案
  */
+/** 词产物 ai_artifacts kind 联合（写错会静默落无人读的产物，编译期拦下） */
+type WordArtifactKind = 'imitation' | 'discriminate';
+
+/** 事务句柄类型具名别名（一次推导多处复用） */
+type DbTx = Parameters<Parameters<ReturnType<typeof getDb>['transaction']>[0]>[0];
+
 async function runWordArtifactPipeline<T>(
   jobId: string,
   payload: { wordId: unknown },
   opts: {
-    kind: string;
+    kind: WordArtifactKind;
     label: string;
     system: string;
     schema: z.ZodType<T>;
     buildUser: (word: WordRow, example: string | null) => string;
     contentOf?: (card: T) => unknown;
-    onExtra?: (tx: Parameters<Parameters<ReturnType<typeof getDb>['transaction']>[0]>[0], word: WordRow, card: T, now: Date) => void;
+    onExtra?: (tx: DbTx, word: WordRow, card: T, now: Date) => void;
     doneMessage: string;
   },
 ): Promise<void> {
-  const wordId = Number(payload.wordId);
-  if (!Number.isInteger(wordId) || wordId <= 0) throw new Error('任务载荷 wordId 非法');
+  const wordId = parseWordIdPayload(payload);
   const db = getDb();
   const word = db.select().from(wordsTable).where(eq(wordsTable.id, wordId)).all()[0];
   if (!word) throw new Error('单词不存在');

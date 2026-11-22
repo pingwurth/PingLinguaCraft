@@ -11,11 +11,11 @@
  */
 
 import { NextResponse } from 'next/server';
-import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { countListenedBits } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { collections, cues, learningProgress, materials, words } from '@/lib/db/schema';
-import { progressPct } from '@/lib/server/progress';
+import { cueCountsFor, estimateHeardNoMask, progressPct } from '@/lib/server/progress';
 import type {
   HomeCollection,
   HomeData,
@@ -27,35 +27,6 @@ export const runtime = 'nodejs';
 
 /** 最近活跃时间表达式：学习时间与材料更新时间取大（select 与 orderBy 共用一份，防两处口径漂移） */
 const activityAtExpr = sql<number>`max(coalesce(${learningProgress.updatedAt}, 0), ${materials.updatedAt})`;
-
-/**
- * 批量现数句段（sentence_count 缺失的老材料分母兜底）：一条分组查询取多材料
- * cues 计数（本文件三处兜底共用，此前各写一份形态各异正是漂移源）
- * @param db   数据库连接
- * @param ids  材料 id 列表
- */
-function cueCountsFor(db: ReturnType<typeof getDb>, ids: number[]): Map<number, number> {
-  const map = new Map<number, number>();
-  if (ids.length === 0) return map;
-  for (const r of db
-    .select({ materialId: cues.materialId, n: sql<number>`count(*)` })
-    .from(cues)
-    .where(inArray(cues.materialId, ids))
-    .groupBy(cues.materialId)
-    .all()) {
-    map.set(r.materialId, r.n);
-  }
-  return map;
-}
-
-/**
- * 无位图行的听句估算（位图机制之前的存量进度）：按 maxCueIndex+1 封顶句数。
- * 本文件按卷聚合 / resume 书签 / 案头近况三处同口径调用，防同一材料在不同
- * 卡片上 0% 与 >0% 打架
- */
-function estimateHeardNoMask(maxCueIndex: number | null, total: number): number {
-  return maxCueIndex == null || total <= 0 ? 0 : Math.min(maxCueIndex + 1, total);
-}
 
 /**
  * GET —— 首页聚合数据
@@ -163,8 +134,10 @@ export async function GET() {
     lastStudiedAt: r.lastStudiedAt,
   }));
 
-  /* 续研书签：最近一次有实质进度的学习（maxCueIndex>0；材料须就绪且未删除） */
-  const resumeRow = db
+  /* 续研书签：最近一次有实质进度的学习（观测到任一句即算——含只听过首句的
+   * 卷，此前 >0 过滤会让「最近研习：刚刚」的卷同卡挂着「尚未开卷」的自相
+   * 矛盾；maxCueIndex=-1 表示未观测到句位，不上书签；材料须就绪且未删除） */
+  const resumeRows = db
     .select({
       materialId: materials.id,
       materialTitle: materials.title,
@@ -185,16 +158,25 @@ export async function GET() {
       )
     )
     .innerJoin(collections, eq(collections.id, materials.collectionId))
-    .where(and(eq(learningProgress.userId, 1), gt(learningProgress.maxCueIndex, 0)))
+    .where(and(eq(learningProgress.userId, 1), gte(learningProgress.maxCueIndex, 0)))
     .orderBy(desc(learningProgress.updatedAt))
-    .limit(1)
-    .all()[0];
+    // 多取几行：最新的行可能是待弃的存量行（见下甄别），单取一行会在弃掉后
+    // 直接回退「未开卷」而不落到次新的合格行
+    .limit(5)
+    .all();
 
   let resume: HomeResumePoint | null = null;
-  if (resumeRow) {
+  for (const resumeRow of resumeRows) {
     // 总句数：sentence_count 就绪时已统计；缺失（老数据）则现数 cues 兜底
     const cueCount =
       resumeRow.sentenceCount ?? cueCountsFor(db, [resumeRow.materialId]).get(resumeRow.materialId) ?? 0;
+    /* 存量行甄别：maxCueIndex=0 且位图全空 = 旧版上报器把 -1 钳 0 写成的
+     * 「只开过播放页」行（新版已改写 -1），不上书签——防凭空冒出「第 1 句」；
+     * 只听过首句的行位图 bit0 已置（或无位图存量行按 maxCueIndex 估算），正常入选 */
+    const mask = resumeRow.listenedMask as Buffer | null;
+    const heardAny =
+      resumeRow.maxCueIndex > 0 || (mask ? countListenedBits(mask, cueCount) > 0 : true);
+    if (!heardAny) continue;
     // 停留句引文：书签上展示「当前句」原文，缺失（句被重排等）静默降级为无引文
     const cue = db
       .select({ textEn: cues.textEn })
@@ -212,14 +194,13 @@ export async function GET() {
       // 一致；maxCueIndex 仅用于「第 N 句」定位展示。位图为空的存量行（位图机制
       // 之前写入）按 maxCueIndex+1 估算，避免「第 N 句」旁挂着刺眼的 0%
       progressPct: progressPct(
-        resumeRow.listenedMask
-          ? countListenedBits(resumeRow.listenedMask as Buffer, cueCount)
-          : estimateHeardNoMask(resumeRow.maxCueIndex, cueCount),
+        mask ? countListenedBits(mask, cueCount) : estimateHeardNoMask(resumeRow.maxCueIndex, cueCount),
         cueCount
       ),
       lastCueText: cue?.textEn ?? '',
       updatedAt: resumeRow.updatedAt.getTime(),
     };
+    break;
   }
 
   /* 案头近况：最近活跃（学习时间与材料更新时间取大）的前 5 条未删材料 */

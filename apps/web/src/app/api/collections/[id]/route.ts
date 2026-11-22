@@ -5,10 +5,12 @@
 import { NextResponse } from 'next/server';
 import { rmSync } from 'node:fs';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { coverVolumeRank, parseCollectionCover, serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
+import { coverSortOrderRank, serializeCollectionCover, type CollectionCoverConfig } from '@pinglc/core';
 import { getDb, MEDIA_ROOT } from '@/lib/db';
 import { collections, materials } from '@/lib/db/schema';
+import { cleanCollectionTextFields } from '@/lib/server/collection-input';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
+import { COLLECTION_NAME_MAX } from '@/lib/limits';
 
 export const runtime = 'nodejs';
 
@@ -52,9 +54,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   const db = getDb();
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const key of ['name', 'description', 'cefrLevel'] as const) {
-    if (body[key] !== undefined) patch[key] = body[key];
+  /* 文本字段清洗与 POST 同源：此前直拷 body 值，空名/纯空白简介/空梯级都能
+   * 入库（POST 却 400），同一份坏输入两端行为漂移 */
+  const { patch: textPatch, nameInvalid, nameTooLong, typeInvalid } = cleanCollectionTextFields(body);
+  if (typeInvalid) return NextResponse.json({ error: '文本字段类型非法' }, { status: 400 });
+  if (nameInvalid) return NextResponse.json({ error: '材料集名不能为空' }, { status: 400 });
+  if (nameTooLong) {
+    return NextResponse.json({ error: `材料集名超长（上限 ${COLLECTION_NAME_MAX} 字）` }, { status: 400 });
   }
+  Object.assign(patch, textPatch);
   // 封面配置：清洗序列化后落库。清洗后全字段非法（空串）按非法输入 400 拒绝
   // 而非静默置 null——字段拼错（如 texture:'linen2'）会把既有封面（插画/印文/
   // 册序）整条抹掉却仍回 ok；只有显式传 null 才走清空分支
@@ -80,7 +88,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     patch.sortOrder = body.sortOrder;
   } else if (typeof patch.cover === 'string') {
-    const ranked = coverVolumeRank(parseCollectionCover(patch.cover)?.volume ?? '');
+    // coverSortOrderRank 与 POST 立卷共用单源（parse+rank 各写一份会漂移）
+    const ranked = coverSortOrderRank(patch.cover);
     if (ranked !== null) patch.sortOrder = ranked;
   }
   db.update(collections)

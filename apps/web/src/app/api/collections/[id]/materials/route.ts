@@ -12,7 +12,7 @@ import { countListenedBits } from '@pinglc/core';
 import { getDb } from '@/lib/db';
 import { cues, learningProgress, materials } from '@/lib/db/schema';
 import { parseIdParam } from '@/lib/server/params';
-import { progressPct } from '@/lib/server/progress';
+import { estimateHeardNoMask, progressPct } from '@/lib/server/progress';
 import type { MaterialListItem, MaterialSourceType, SubtitleStatus } from '@pinglc/core';
 
 export const runtime = 'nodejs';
@@ -107,10 +107,11 @@ export async function GET(
           : {
               maxCueIndex: r.maxCueIndex ?? 0,
               listenedThrough: Boolean(r.listenedThrough),
-              /* 无位图存量行按 maxCueIndex+1 估算（与 /api/home 三处同口径，
-                 防卷首缎带 >0% 而该材料行恒「未研读」的跨面漂移） */
+              /* 无位图存量行按 maxCueIndex+1 估算（estimateHeardNoMask 与
+                 /api/home 三处同口径，防卷首缎带 >0% 而该材料行恒「未研读」
+                 的跨面漂移） */
               progressPct: progressPct(
-                mask ? countListenedBits(mask, total) : (r.maxCueIndex == null ? 0 : Math.min(r.maxCueIndex + 1, total)),
+                mask ? countListenedBits(mask, total) : estimateHeardNoMask(r.maxCueIndex, total),
                 total,
               ),
             },

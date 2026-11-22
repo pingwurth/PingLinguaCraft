@@ -28,9 +28,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { parseCollectionCover } from '@pinglc/core';
 import { api, type JobDTO, type MaterialListItem } from '@/lib/api';
 import { SOURCE_META, subtitleStatusMeta } from '@/lib/material-meta';
-import { fmtDuration, fmtMs, fmtRelative, progressTone } from '@/lib/format';
+import { firstGlyph, fmtDuration, fmtMs, fmtRelative, progressTone } from '@/lib/format';
 import { HOME_QUERY_KEY } from '@/features/home/query-keys';
 import type { HomeCollection, HomeData, HomeResumePoint } from '@/features/home/types';
+import { MATERIAL_PAGE_MAX } from '@/lib/limits';
 
 /** 研习状态档位（材料粒度）：研习中（0<p<100）/ 已完卷（≥100）/ 待启卷（0） */
 type StudyState = 'studying' | 'done' | 'fresh';
@@ -79,8 +80,8 @@ const STATE_META: Record<
   },
 };
 
-/** 卷内材料列表页大小（与 API pageSize 上限一致：首页定位速览，超量走「入卷查阅」分页） */
-const FOCUS_PAGE_SIZE = 100;
+/** 卷内材料列表页大小（顶格 API 上限：首页定位速览，超量走「入卷查阅」分页） */
+const FOCUS_PAGE_SIZE = MATERIAL_PAGE_MAX;
 
 /**
  * 首页组件：案头今研（聚焦最近研习的材料集）
@@ -96,9 +97,9 @@ export default function HomePage() {
   const collections = useMemo(() => home.data?.collections ?? [], [home.data]);
 
   /* 今研之卷选取：优先落座续研书签所在卷（resume 的材料口径比 lastStudiedAt 窄：
-   * 只取就绪材料且 maxCueIndex>0 的最新行——按 lastStudiedAt 选卷会出现「卷首
-   * 说未开卷、同卡进度却 >0」的自相矛盾）；无书签再取 lastStudiedAt 最大卷，
-   * 全库从未开卷时按库序回落首卷 */
+   * 只取就绪材料且观测到任一句（maxCueIndex≥0）的最新行——按 lastStudiedAt
+   * 选卷会出现「卷首说未开卷、同卡进度却 >0」的自相矛盾）；无书签再取
+   * lastStudiedAt 最大卷，全库从未开卷时按库序回落首卷 */
   const resumePoint = home.data?.resume ?? null;
   const focus = useMemo(() => {
     if (collections.length === 0) return null;
@@ -121,7 +122,7 @@ export default function HomePage() {
     queryFn: () => {
       if (focusId === null) throw new Error('未选定今研之卷');
       return api<{ materials: MaterialListItem[]; total: number }>(
-        `/api/collections/${focusId}/materials?page=1&pageSize=${FOCUS_PAGE_SIZE}`
+        `/api/collections/${focusId}/materials?page=1&pageSize=${MATERIAL_PAGE_MAX}`
       );
     },
     enabled: focusId !== null,
@@ -180,10 +181,11 @@ export default function HomePage() {
     });
   }, [materials, query, filter]);
 
-  /* 水印字：卷面印文优先，未配置则取卷名首字（全空兜底「文」） */
+  /* 水印字：卷面印文优先，未配置则取卷名首字（firstGlyph 与书影活字底共用
+     单源——剥「《 前缀、码点级取字；全空兜底「文」） */
   const watermark =
     (focus ? parseCollectionCover(focus.cover)?.seal : '') ||
-    (focus ? (Array.from(focus.name)[0] ?? '') : '') ||
+    (focus ? firstGlyph(focus.name) : '') ||
     '文';
 
   return (

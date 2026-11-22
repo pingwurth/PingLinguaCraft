@@ -40,7 +40,7 @@ export function TopBar() {
   const router = useRouter();
   /* 检索逻辑单源：防抖输入、请求、命中扁平化；面板开合是桌面下拉的本地
      状态（输入聚焦/点外关闭/快捷键展开，与移动端浮层的 props 驱动不同源） */
-  const { raw, setRaw, q, search, hits, reset } = useGlobalSearch();
+  const { raw, setRaw, q, search, hits, reset, debouncing } = useGlobalSearch();
   const [open, setOpen] = useState(false);
   /* 键盘选择游标：-1 表示未选中（Enter 落在首条命中） */
   const [active, setActive] = useState(-1);
@@ -69,9 +69,10 @@ export function TopBar() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         const el = document.activeElement;
-        /* 已在检索框：只拦默认（浏览器地址栏抢占），不重复抢焦 */
+        /* 已在检索框：拦默认并确保面板展开（Esc 收起后 ⌘K 应能重开，此前静默无动作） */
         if (el === inputRef.current) {
           e.preventDefault();
+          setOpen(true);
           return;
         }
         /* 文本类输入中不打断（复选/单选/按钮类 INPUT 不算——那里拦掉快捷键
@@ -82,7 +83,10 @@ export function TopBar() {
             el.isContentEditable ||
             (el instanceof HTMLInputElement &&
               !['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'file'].includes(el.type));
-          if (textLike) return;
+          if (textLike) {
+            e.preventDefault();
+            return;
+          }
         }
         e.preventDefault();
         inputRef.current?.focus();
@@ -139,10 +143,15 @@ export function TopBar() {
       e.preventDefault();
       setActive((i) => Math.max(i - 1, -1));
     } else if (e.key === 'Enter') {
-      const hit = hits[active] ?? hits[0];
-      if (hit) {
-        e.preventDefault();
-        go(hit.href);
+      /* 空词不跳（判 raw 而非 q）：reset 后 hits 因 keepPreviousData 仍挂着
+         disabled 键的旧结果；且手动删空后 250ms 内 q 还没归零——两种「看着
+         是空的」窗口里按回车都会导航到陈旧命中 */
+      if (raw.trim().length > 0) {
+        const hit = hits[active] ?? hits[0];
+        if (hit) {
+          e.preventDefault();
+          go(hit.href);
+        }
       }
     } else if (e.key === 'Escape') {
       if (open) {
@@ -213,7 +222,7 @@ export function TopBar() {
               <SearchResultList
                 hits={hits}
                 collectionCount={search.data?.collections.length ?? 0}
-                loading={search.isFetching && (search.isPlaceholderData || !search.data)}
+                loading={debouncing || (!search.data && search.isFetching)}
                 error={search.isError ? search.error.message : null}
                 idPrefix={SEARCH_ID_PREFIX}
                 activeIndex={active}
