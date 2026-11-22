@@ -11,7 +11,7 @@ import { getDb } from '@/lib/db';
 import { aiArtifacts, cues, words } from '@/lib/db/schema';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
-import { enginePost } from '@/lib/server/engine';
+import { enginePost, engineErrorResponse } from '@/lib/server/engine';
 import { repairPrompt } from '@/lib/quiz';
 import { WRITE_CHECK_SYSTEM, buildWriteCheckPrompt, WriteCheckSchema } from '@/lib/manualCard';
 
@@ -68,27 +68,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   // 同步结构化生成（want_json；zod 校验失败带错误修复重试一次，与管线
-  // structuredLLM 同款策略——批改 JSON 偶发不合规，一次往返的失败率不可接受）
+  // structuredLLM 同款策略——批改 JSON 偶发不合规，一次往返的失败率不可接受）；
+  // 引擎调用整体包 try/catch：引擎未启动/超时/非 2xx 抛 EngineError，映射为
+  // 可读错误响应而非框架级 500（与 shadow-score 等引擎代理路由同款出口）
   const user = buildWriteCheckPrompt(word.displayForm, framesHint, `${text}\n原典例句参考：${example ?? '（无）'}`);
-  let r = await enginePost<{ json: unknown }>('/llm/chat', {
-    profile: toEngineProfile(profile),
-    system: WRITE_CHECK_SYSTEM,
-    user,
-    want_json: true,
-    temperature: 0.3,
-  });
-  let parsed = WriteCheckSchema.safeParse(r.json);
-  if (!parsed.success) {
-    r = await enginePost<{ json: unknown }>('/llm/chat', {
+  let parsed: ReturnType<typeof WriteCheckSchema.safeParse> | undefined;
+  try {
+    let r = await enginePost<{ json: unknown }>('/llm/chat', {
       profile: toEngineProfile(profile),
       system: WRITE_CHECK_SYSTEM,
-      user: `${user}\n\n${repairPrompt(parsed.error.issues)}`,
+      user,
       want_json: true,
-      temperature: 0.2,
+      temperature: 0.3,
     });
     parsed = WriteCheckSchema.safeParse(r.json);
+    if (!parsed.success) {
+      r = await enginePost<{ json: unknown }>('/llm/chat', {
+        profile: toEngineProfile(profile),
+        system: WRITE_CHECK_SYSTEM,
+        user: `${user}\n\n${repairPrompt(parsed.error.issues)}`,
+        want_json: true,
+        temperature: 0.2,
+      });
+      parsed = WriteCheckSchema.safeParse(r.json);
+    }
+  } catch (err) {
+    return engineErrorResponse(err, '点拨生成失败');
   }
-  if (!parsed.success) {
+  if (!parsed?.success) {
     return NextResponse.json({ error: '点拨生成异常，请重试' }, { status: 502 });
   }
   return NextResponse.json({ check: parsed.data });

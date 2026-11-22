@@ -29,7 +29,15 @@ export function useProgressReporter(materialId: number): void {
   useEffect(() => {
     listenedRef.current = new Set();
     snapRef.current = { positionMs: 0, maxCueIndex: -1 };
-    let lastReport = 0;
+    // 起始时间记当前时刻：从 0 起算会让重建后第一条 store 变化立即上报，
+    // 此时快照可能仍是被切走材料的旧值（语流换材 setCues 触发订阅），
+    // 会把旧播放头写进新材料的进度行；首报落在 5s 后，期间快照已随新
+    // 材料的 rAF 帧刷新
+    let lastReport = Date.now();
+    // 是否观测到有效播放（终报守卫）：从未产生快照就卸载（StrictMode 双挂载、
+    // 秒进秒出）时终报会把 positionMs=0/maxCueIndex=-1 打给服务端无条件覆盖，
+    // 抹掉既有续研位置——只在真的听过/走表后才终报
+    let touched = false;
     const report = (final = false) => {
       const s = usePlayer.getState();
       if (s.cues.length === 0) return;
@@ -67,14 +75,18 @@ export function useProgressReporter(materialId: number): void {
         }
       }
       snapRef.current.positionMs = state.currentTimeMs;
+      // 有激活句或播放头已走表才算有效播放（换材归零重置触发的 store 写不算）
+      if (state.activeCueIndex >= 0 || snapRef.current.positionMs > 0) touched = true;
       if (Date.now() - lastReport >= 5000) report();
     });
-    const onHide = () => report(true);
+    const onHide = () => {
+      if (touched) report(true);
+    };
     window.addEventListener('pagehide', onHide);
     return () => {
       unsub();
       window.removeEventListener('pagehide', onHide);
-      report(true);
+      if (touched) report(true);
     };
   }, [materialId]);
 }

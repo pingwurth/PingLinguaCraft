@@ -95,18 +95,16 @@ start_web() {
   holder="$(port_pid "$WEB_PORT")"
   if [[ -n "$holder" ]]; then
     fail "端口 $WEB_PORT 已被 $(pid_desc "$holder") 占用（非本脚本管理），请先处理后再启动"
-    # 占用者是 next 进程时追加专属告警：next dev 与 next start 共用 apps/web/.next，
-    # 并存会互相污染构建产物（症状：全站 client-side exception / 页面卡「装载中」）；
-    # 且手动起的 next start 无 PID 文件，stop.sh 管不到，只能手动 kill
-    if pid_matches "$holder" 'next'; then
-      local pgid
-      pgid="$(pgid_of "$holder")"
-      warn "占用者是 next 进程：它与 next dev 共用 apps/web/.next，并存会互相污染构建产物"
-      if [[ -n "$pgid" ]]; then
-        warn "请手动停止（按进程组连带子进程）：kill -- -$pgid，或仅杀主进程：kill $holder"
-      else
-        warn "请手动停止：kill $holder"
-      fi
+    # 占用者疑似 next 进程时追加专属告警：next dev 与 next start 共用 apps/web/.next，
+    # 并存会互相污染构建产物（症状：全站 client-side exception / 页面卡「装载中」）。
+    # 识别约束：pid_matches 在无 procfs 平台 fail-open 恒真，须先显式判定 /proc
+    # 存在才可信，否则任意占用者都会被误报为 next；特征用与 stop.sh 同款的
+    # 锚定模式，防「nextcloud」类子串误命中。处置统一指向 stop.sh（其组杀有
+    # 「PID==自身 PGID」安全约束）：不直接建议 kill -- -PGID——手动起的 next
+    # start 与终端共享进程组，裸组杀会连带用户的 shell/编辑器
+    if [[ -d /proc ]] && pid_matches "$holder" 'next-server|next dev|@pinglc/web'; then
+      warn "占用者疑似 next 进程：它与 next dev 共用 apps/web/.next，并存会互相污染构建产物"
+      warn "可先运行 ./scripts/stop.sh web 安全清理（识别/组杀约束见其脚本注释），再重新启动"
     fi
     return 1
   fi

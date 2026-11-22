@@ -100,6 +100,15 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
     (m as MediaWithPitch).preservesPitch = true;
   }, [rate, current?.id]);
 
+  /* ---------- 换材/进页：重置单例 store 的时钟与激活句 ----------
+   * store 跨路由存活，精读页/上一材料残留的播放头与时长会让新材料控制条
+   * 在元数据就绪前显示旧值，也可能混入进度上报快照——换材即归零；
+   * 单次原子 setState：分三次 set 会让订阅者（进度上报）先看到
+   * 「旧播放头 + 已清激活句」的中间态，把旧位置误记为新材快照 */
+  useEffect(() => {
+    usePlayer.setState({ activeCueIndex: -1, currentTimeMs: 0, durationMs: 0 });
+  }, [current?.id]);
+
   /* ---------- 换材后的元数据就绪：定位 + 按意图续播 ---------- */
   const onLoadedMetadata = () => {
     const m = mediaRef.current;
@@ -108,6 +117,9 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
     if (pendingSeekMs.current > 500 && Number.isFinite(m.duration)) {
       m.currentTime = Math.min(pendingSeekMs.current / 1000, Math.max(0, m.duration - 0.5));
     }
+    // 消费即清：挂起的定位意图不清理的话，「点 chip 记下续播位置 → 立刻再点
+    // 同 chip 从头重听」会被随后的 loadedmetadata 拉回旧意图位置
+    pendingSeekMs.current = 0;
     if (autoPlayNext.current) void m.play().catch(() => undefined);
   };
 

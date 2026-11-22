@@ -51,8 +51,9 @@ pid_desc() { # $1=PID
   local cmd=""
   if [[ -d /proc ]]; then
     # 尾部 sed 裁剪：改写过进程标题的进程（如 next-server）cmdline 以 null 填充，
-    # tr 转空格后会拖一长串尾随空白
-    cmd="$(tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | cut -c1-80 | sed 's/[[:space:]]*$//')"
+    # tr 转空格后会拖一长串尾随空白；|| true 兜底与同族 pid_matches/pgid_of 一致
+    # （拿 PID 后进程恰好退出时重定向失败，pipefail 下会让整条赋值中断调用方）
+    cmd="$(tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | cut -c1-80 | sed 's/[[:space:]]*$//' || true)"
   fi
   if [[ -n "$cmd" ]]; then
     echo "PID $1（$cmd）"

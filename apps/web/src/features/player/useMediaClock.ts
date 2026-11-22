@@ -24,9 +24,6 @@ const SEEK_JUMP_MS = 250;
  * @param mediaRef 媒体元素 ref（<video>；音频材料也用同一元素，泛型兼容 <audio>）
  */
 export function useMediaClock<T extends HTMLMediaElement>(mediaRef: React.RefObject<T | null>): void {
-  // 循环参数从 store 读快照（tick 内 getState，避免闭包过期）
-  const cues = usePlayer((s) => s.cues);
-
   useEffect(() => {
     const media = mediaRef.current;
     if (!media) return;
@@ -44,6 +41,10 @@ export function useMediaClock<T extends HTMLMediaElement>(mediaRef: React.RefObj
     const tick = () => {
       rafId = requestAnimationFrame(tick);
       const s = usePlayer.getState();
+      // 句段/激活句/循环参数一律取同一份 store 快照：渲染闭包里的 cues 是
+      // 上一轮渲染值，与 getState 的句号混用会在换材间隙拿新句号配旧句段，
+      // 单句循环误判 endMs 后回跳到无关时间戳
+      const cues = s.cues;
       const t = media.currentTime * 1000;
       // seek 接管判定：seeking 事件（任意幅度，含暂停态拖动）或帧间大跳
       // （后台标签页 rAF 停摆、音频继续走，回前台时位置的静默跳变）
@@ -106,5 +107,5 @@ export function useMediaClock<T extends HTMLMediaElement>(mediaRef: React.RefObj
       cancelAnimationFrame(rafId);
       media.removeEventListener('seeking', onSeeking);
     };
-  }, [mediaRef, cues]);
+  }, [mediaRef]);
 }
