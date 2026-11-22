@@ -81,10 +81,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   /** 数值字段三态补丁单源（maxCueIndex 与 lastPositionMs 同口径）：合法
-   *  非负有限数 → 落取整值；省略/非法且是存量行 → 不写该列（不良上报不得
-   *  抹掉书签现值）；省略/非法且是新行 → 落 newRowDefault。负数（旧版
-   *  上报器的 -1 哨兵）与 NaN 都按非法处理（NaN 绑 NOT NULL 列会 500）
-   *  @param key        落库列名
+   *  非负有限数 → 落取整值；省略/非法且是存量行（闭包内 existing）→ 不写
+   *  该列（不良上报不得抹掉书签现值）；省略/非法且是新行 → 落 newRowDefault。
+   *  负数（旧版上报器的 -1 哨兵）与 NaN 都按非法处理（NaN 绑 NOT NULL 列会 500）
+   *  @param key        落库列名（限定两列，写错编译期拦下）
    *  @param raw        请求体原值
    *  @param newRowDefault 新行的默认值
    */
@@ -92,7 +92,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     key: 'maxCueIndex' | 'lastPositionMs',
     raw: unknown,
     newRowDefault: number,
-  ): Record<string, number> => {
+  ): { maxCueIndex?: number; lastPositionMs?: number } => {
     if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return { [key]: Math.round(raw) };
     if (existing) return {};
     return { [key]: newRowDefault };

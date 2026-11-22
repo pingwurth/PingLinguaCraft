@@ -66,16 +66,8 @@ export async function GET() {
     .orderBy(collections.sortOrder, collections.id)
     .all();
 
-  /* 位图听句数（按卷聚合）：逐进度行按材料句数截断的 popcount 在 JS 侧求和——
-   * 口径 = 实际听过句数（跳句不计，仅计 userId=1 的未软删材料）；统计卡「已研句段」
-   * 也取此聚合的总和（单一来源——旧实现另起全表位图查询且缺 deletedAt/userId 过滤，
-   * 软删材料后统计卡虚高、与集卷卡/书签/近况漂移）；单用户进度行量级小，开销可忽略。
-   * 截断到现句数与进度 PUT 同口径：重跑 STT 句数变少时位图合并保留的旧高位
-   * 不算已研（否则统计永久虚高、heard 可能超过 sentenceCount）。
-   * 句数缺失（老数据）现数 cues 兜底，保证与集卷分母 sum(sentence_count) 同一
-   * 材料集合——分子计 NULL 句数材料而分母跳过会让混装卷 heard 超过 sentenceCount */
   /* 全部未删材料（含从未打开的）：分母按卷聚合一源，句数兜底 denomCueCounts
-   * 同时供按卷聚合/分母/简历书签/案头近况四处复用（此前各起一份 cueCountsFor，
+   * 同时供按卷聚合/分母/续研书签/案头近况四处复用（此前各起一份 cueCountsFor，
    * 同一请求对 cues 重复分组扫描且口径易漂）。分母必须含未打开材料，否则
    * 「10 篇只听过 1 篇」的卷会算出 100%；NULL sentence_count 走 cues 兜底
    * （SQL sum 会跳过 NULL 行，混装卷会出现 heard > 分母、被 progressPct 的
