@@ -13,7 +13,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
 import { waitForJob } from '@/lib/jobs/wait';
-import { genLabel, useArtifactGenerate } from '@/lib/useArtifactGeneration';
+import { genLabel, hasDeepArtifact, useArtifactGenerate } from '@/lib/useArtifactGeneration';
 
 /** 错误信息提取（网络异常与服务端 { error } 统一为可展示文本） */
 function errMsg(e: unknown): string {
@@ -214,13 +214,11 @@ function WordRow({
       }>(`/api/words/${word.id}/deep`),
     enabled: expanded,
   });
-  const genDeep = useArtifactGenerate(
-    word.id,
-    'deep',
-    // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成（幂等分支只对首次）
-    () => Boolean(deep.data?.etymology && deep.data?.frames),
-    () => void deep.refetch(),
-  );
+  /* 「已有产物」谓词走 hasDeepArtifact 单源（与手册页词源卡同判据；
+     force 判定与按钮文案共用——两处写开会漂移出「文案说重新生成、
+     实际却走幂等分支」的错位） */
+  const hasDeep = hasDeepArtifact(deep.data);
+  const genDeep = useArtifactGenerate(word.id, 'deep', () => hasDeep, () => void deep.refetch());
 
   const saveNote = useMutation({
     mutationFn: () =>
@@ -275,7 +273,7 @@ function WordRow({
               >
                 <span className="material-symbols-outlined text-sm">account_tree</span>
                 {/* 文案走 genLabel 单源（与手册页各产物卡同口径） */}
-                {genLabel(Boolean(deep.data?.etymology && deep.data?.frames), genDeep.isPending)}
+                {genLabel(hasDeep, genDeep.isPending)}
               </button>
             </div>
             {/* 深学卡生成失败提示 */}

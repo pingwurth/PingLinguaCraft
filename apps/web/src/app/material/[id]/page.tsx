@@ -99,8 +99,11 @@ export default function MaterialPage({
   const activeJob = jobs.data?.jobs.find((j) => j.status === 'queued' || j.status === 'running');
 
   /* 定位值：深链优先，无深链回落续播位置（上界夹取在 Player 内统一处理，
-   * 两条路径共用 clampSeekMs 助手，此处不再各自夹） */
-  const initialPositionMs = rawDeepLinkMs > 0 ? rawDeepLinkMs : (progress?.lastPositionMs ?? 0);
+   * 两条路径共用 clampSeekMs 助手，此处不再各自夹）。fromDeepLink 与取值
+   * 同源——两处判据分开写会漂移（值来自深链而标记为续播时，贴尾回落会把
+   * 深链目标句跳丢） */
+  const fromDeepLink = rawDeepLinkMs > 0;
+  const initialPositionMs = fromDeepLink ? rawDeepLinkMs : (progress?.lastPositionMs ?? 0);
 
   return (
     /* 播放页容器：移动单列 / 桌面左右分栏 */
@@ -131,7 +134,7 @@ export default function MaterialPage({
           cues={cues}
           initialPositionMs={initialPositionMs}
           /* 深链来源标记：?t= 定位只钳尾不贴尾回落（目标可以是末句） */
-          deepLinkSeek={rawDeepLinkMs > 0}
+          deepLinkSeek={fromDeepLink}
         />
       </div>
 

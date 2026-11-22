@@ -36,6 +36,11 @@ const BUILTIN_DEFAULTS: Partial<Record<AICapability, ResolvedProfile>> = {
   tts: { kind: 'local', model: 'en-GB-RyanNeural', params: {}, name: '内置 · edge-tts 英音', profileId: 0 },
 };
 
+/** 「未配置 LLM 档案」提示文案（structuredLLM、任务管线、ai/tutor、
+ *  cues/imitate 四处入口共用单源——各写一份会在措辞调整时漏改其一，
+ *  同一提示多个入口多种说法） */
+export const LLM_PROFILE_MISSING_MESSAGE = '未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）';
+
 /**
  * 解析能力档案
  * @param capability 能力类别

@@ -29,7 +29,7 @@ interface MobileSearchProps {
  */
 export function MobileSearch({ open, onClose }: MobileSearchProps) {
   /* 检索逻辑与桌面同源（关闭保留检索词：复位只在命中跳转后发生） */
-  const { raw, setRaw, search, hits, reset, loading } = useGlobalSearch();
+  const { raw, setRaw, search, hits, reset, loading, staleWhileFetching } = useGlobalSearch();
   const inputRef = useRef<HTMLInputElement>(null);
   /* 浮层容器引用：Tab 焦点陷阱用 */
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -158,7 +158,7 @@ export function MobileSearch({ open, onClose }: MobileSearchProps) {
               /* 移动端叠加防误点守卫：换词重取窗口内 keepPreviousData 的旧命中
                  仍是可点 Link（点击即导航+关浮层），宁闪「检索中」也不让旧词
                  命中被当成新词结果点走 */
-              loading || (search.isPlaceholderData && search.isFetching)
+              loading || staleWhileFetching
             }
             error={search.isError ? search.error.message : null}
             idPrefix="mobile-search"

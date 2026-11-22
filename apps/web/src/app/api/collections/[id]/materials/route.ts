@@ -29,9 +29,18 @@ export async function GET(
   const pid = parseIdParam(id);
   if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const url = new URL(request.url);
-  const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
+  /* 分页参数缺失/非法（NaN）回落默认值：Math.min/max 对 NaN 透传，落进
+     limit/offset 会 500；先判缺失再转数（Number(null) 是 0，会把缺省当成
+     显式 1 条）——直连 ?page=abc 也给默认页而非报错 */
+  const pageRaw = url.searchParams.get('page');
+  const pageSizeRaw = url.searchParams.get('pageSize');
+  const pageNum = pageRaw == null ? 1 : Number(pageRaw);
+  const pageSizeNum = pageSizeRaw == null ? 20 : Number(pageSizeRaw);
+  const page = Number.isFinite(pageNum) && pageNum >= 1 ? Math.floor(pageNum) : 1;
   // 页大小上限钳制走 MATERIAL_PAGE_MAX 单源（与案头今研首页请求量同闸）
-  const pageSize = Math.min(MATERIAL_PAGE_MAX, Math.max(1, Number(url.searchParams.get('pageSize') ?? '20')));
+  const pageSize = Number.isFinite(pageSizeNum)
+    ? Math.min(MATERIAL_PAGE_MAX, Math.max(1, Math.floor(pageSizeNum)))
+    : 20;
   const status = url.searchParams.get('status');
 
   const db = getDb();

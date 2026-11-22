@@ -46,9 +46,11 @@ export function useProgressReporter(
 
   useEffect(() => {
     /* 清掉单例 store 里上一素材残留的播放头/激活句（resetClock 与语流换材
-     * 同一动作单源）：本 effect 先于播放组件的 setCues/reset effect 执行，
-     * 若不清，setCues 触发的首个订阅回调会带上旧值快照——幻影 listened 位、
-     * 外来高水位句号、旧位置/0 覆盖新材续研书签 */
+     * 同一动作单源）。时序收益按调用方分述：语流（hook 在组件顶部调用）
+     * 本 effect 先于 setCues 订阅注册，拦住首个回调带旧值——幻影 listened
+     * 位、外来高水位句号、旧位置覆盖续研书签；精读（hook 在组件尾部调用）
+     * effect 晚于定位/setCues 跑，此清零供控制条/上报快照用，不承担拦截
+     * 首回调（精读挂载时 store 本就是干净的或由语流离场清过） */
     usePlayer.getState().resetClock();
     listenedRef.current = new Set();
     snapRef.current = { positionMs: 0, maxCueIndex: -1 };

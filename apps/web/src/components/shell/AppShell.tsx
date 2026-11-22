@@ -187,10 +187,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
                       }`}
                     >
-                      {/* Material Symbols 图标（20px；活动态随 font-semibold 加粗笔画，同设计稿） */}
-                      <span className={`material-symbols-outlined text-[20px] ${active ? 'font-semibold' : ''}`}>
-                        {item.icon}
-                      </span>
+                      {/* Material Symbols 图标（20px；活动态笔画随 Link 的
+                          font-semibold 经 font-weight 继承加粗——图标 span 自身
+                          不钉 wght 轴，无需重复挂类；移动端 tab 的 text-label-sm
+                          钉了 font-weight 才需要显式挂） */}
+                      <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                       <span className="text-body-md">{item.label}</span>
                     </Link>
                   );

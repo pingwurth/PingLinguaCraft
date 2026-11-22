@@ -11,7 +11,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
 import { getDb } from '@/lib/db';
 import { aiMessages, aiThreads } from '@/lib/db/schema';
-import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { LLM_PROFILE_MISSING_MESSAGE, resolveProfile, toEngineProfile } from '@/lib/server/providers';
 
 export const runtime = 'nodejs';
 
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
   const profile = resolveProfile('llm');
   if (!profile || profile.kind !== 'cloud') {
-    return new Response(JSON.stringify({ error: '未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）' }), { status: 400 });
+    return new Response(JSON.stringify({ error: LLM_PROFILE_MISSING_MESSAGE }), { status: 400 });
   }
 
   const db = getDb();

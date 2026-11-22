@@ -96,8 +96,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     maxCuePatch = { maxCueIndex: -1 };
   }
 
+  // lastPositionMs 同样收窄（与 maxCueIndex 同一防御口径）：非有限数经
+  // Math.round 得 NaN，绑 NOT NULL 列会 500——非法视同 0（新行/未走表）
+  const rawPositionMs = body.lastPositionMs;
+  const positionMs =
+    typeof rawPositionMs === 'number' && Number.isFinite(rawPositionMs) ? Math.max(0, Math.round(rawPositionMs)) : 0;
+
   const values = {
-    lastPositionMs: Math.max(0, Math.round(body.lastPositionMs ?? 0)),
+    lastPositionMs: positionMs,
     ...maxCuePatch,
     listenedMask: mask,
     listenedThrough,

@@ -170,7 +170,11 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
     }
     setFallbackIndex(i);
     setCurrentId(item.id);
-    setActiveCueIndex(-1); // 新材激活句未知，先清（防旧 index 索引错位）
+    // 新材激活句未知，先清（防旧 index 索引错位）。与 resetClock 单源收敛后
+    // 本行仍保留：resetClock 在 effect 时机跑（晚于本次点击后的渲染提交），
+    // 点击到 effect 之间的一帧瀑布会用旧 index 索引新 cues——此行是渲染前
+    // 的即时清零，不可省
+    setActiveCueIndex(-1);
     pendingSeekMs.current = opts?.fromStart
       ? 0
       : (sessionPosRef.current.get(item.id) ?? item.progress?.lastPositionMs ?? 0);

@@ -817,7 +817,7 @@ async function aiAnalysisPipeline(jobId: string, cueId: number, payload: { favor
   try {
     const profile = resolveProfile('llm');
     if (!profile || profile.kind !== 'cloud') {
-      throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+      throw new LlmProfileMissingError();
     }
     const cue = db.select().from(cuesTable).where(eq(cuesTable.id, cueId)).all()[0];
     if (!cue) throw new Error('句段不存在');
@@ -987,7 +987,7 @@ async function aiLevelPipeline(jobId: string, cueId: number): Promise<void> {
   const db = getDb();
   const profile = resolveProfile('llm');
   if (!profile || profile.kind !== 'cloud') {
-    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+    throw new LlmProfileMissingError();
   }
   const cue = db.select().from(cuesTable).where(eq(cuesTable.id, cueId)).all()[0];
   if (!cue) throw new Error('句段不存在');

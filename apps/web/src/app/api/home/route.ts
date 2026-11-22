@@ -115,7 +115,9 @@ export async function GET() {
     const total = r.sentenceCount ?? denomCueCounts.get(r.materialId) ?? 0;
     sentenceTotalByCollection.set(r.collectionId, (sentenceTotalByCollection.get(r.collectionId) ?? 0) + total);
   }
-  /* 位图为空的存量行按 maxCueIndex+1 估算（与 resume 同口径） */
+  /* 位图为空的存量行按 maxCueIndex+1 估算（与 resume 甄别兼容：仅 maxCueIndex>0
+     * 的无位图行与之同口径；maxCueIndex=0 的无位图行在 resume 按弃行处理，
+     * 但仍计入卷进度/近况——两处判定不可互相套用） */
   const heardByCollection = new Map<number, number>();
   for (const r of heardRows) {
     // blob() 列经 drizzle select 推断为 unknown，按 schema 实际类型（Buffer|null）收窄
@@ -168,16 +170,14 @@ export async function GET() {
     .limit(RESUME_CANDIDATE_LIMIT)
     .all();
 
-  /* 候选行句数缺失兜底一次批量取（循环内逐行单查是 N+1，且被弃的行白查） */
-  const resumeCueCounts = cueCountsFor(
-    db,
-    resumeRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
-  );
+  /* 候选行句数兜底直接复用上方 cueCountByMaterial：heardRows（全部 userId=1
+   * 进度行 × 未删材料）是本候选集的超集，同材料 NULL sentence_count 的计数
+   * 必然一致——再发一次批量查询是同一口径的第二份源 */
 
   let resume: HomeResumePoint | null = null;
   for (const resumeRow of resumeRows) {
     // 总句数：sentence_count 就绪时已统计；缺失（老数据）则现数 cues 兜底
-    const cueCount = resumeRow.sentenceCount ?? resumeCueCounts.get(resumeRow.materialId) ?? 0;
+    const cueCount = resumeRow.sentenceCount ?? cueCountByMaterial.get(resumeRow.materialId) ?? 0;
     /* 存量行甄别：maxCueIndex=0 且位图全空（或无位图）= 旧版上报器把 -1 钳 0
      * 写成的「只开过播放页」行（新版已改写 -1），不上书签——防凭空冒出
      * 「第 1 句」；只听过首句的行位图 bit0 已置、无位图存量行按 maxCueIndex>0
@@ -245,7 +245,8 @@ export async function GET() {
   const recent: HomeRecentMaterial[] = recentRows.map((r) => {
     const mask = r.listenedMask as Buffer | null;
     /* 分母句数缺失（老数据）现数 cues 兜底；无位图行按 maxCueIndex+1 估算
-       （与集卷聚合/resume 书签/集内列表四处同口径） */
+       （与集卷聚合/集内列表同口径；resume 书签额外弃 maxCueIndex=0 的无位图
+       存量行，见其甄别注释——估算口径本身一致） */
     const total = r.sentenceCount ?? recentCueCounts.get(r.materialId) ?? 0;
     const heard = mask ? countListenedBits(mask, total) : estimateHeardNoMask(r.maxCueIndex, total);
     return {

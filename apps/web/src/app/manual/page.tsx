@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
-import { genLabel, useArtifactGenerate, type WordArtifactPath } from '@/lib/useArtifactGeneration';
+import { genLabel, hasDeepArtifact, useArtifactGenerate, type WordArtifactPath } from '@/lib/useArtifactGeneration';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
 import { type Discriminate, type WriteCheck } from '@/lib/manualCard';
 import { WRITE_TEXT_MAX } from '@/lib/limits';
@@ -378,8 +378,9 @@ function ContextCueCard({ data, speak }: { data: ManualData; speak: (t: string) 
  * @param props.example 原典例句（无语境时提示词可参考）
  */
 function EtymologyCard({ wordId, example }: { wordId: number; example: string | null }) {
-  /* 已有产物判定（force 与按钮文案同判据） */
-  const hasDeep = (d: DeepData | undefined) => Boolean(d?.etymology && d?.frames);
+  /* 已有产物判定（force 与按钮文案同判据；hasDeepArtifact 与词藏页
+     深学行共用单源） */
+  const hasDeep = hasDeepArtifact;
   const { query: deep, gen } = useArtifactGeneration<DeepData>(wordId, 'deep', hasDeep);
 
   return (

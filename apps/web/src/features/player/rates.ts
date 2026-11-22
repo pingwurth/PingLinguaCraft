@@ -35,3 +35,15 @@ export function resolveResumeSeekMs(ms: number, durationSec: number): number {
   const clamped = clampSeekMs(ms, durationSec);
   return durationSec * 1000 - clamped < RESUME_TAIL_MS ? 0 : clamped;
 }
+
+/**
+ * 定位落点解析（精读 Player 的 loadedmetadata 补跳与续播 effect 共用单源）：
+ * 深链（?t=，手册「去原声」等）只钳尾不贴尾回落——目标可以是末句，回落
+ * 从头会跳丢目标句；续播走完整的贴尾回落语义
+ * @param ms          定位值（毫秒）
+ * @param durationSec 媒体时长（秒）
+ * @param deepLink    定位值来自 ?t= 深链（true 时只钳尾）
+ */
+export function resolveSeekTargetMs(ms: number, durationSec: number, deepLink: boolean): number {
+  return deepLink ? clampSeekMs(ms, durationSec) : resolveResumeSeekMs(ms, durationSec);
+}

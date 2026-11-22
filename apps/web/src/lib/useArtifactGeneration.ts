@@ -54,3 +54,13 @@ export function genLabel(hasData: boolean, pending: boolean): string {
   if (hasData) return '重新生成';
   return '生成';
 }
+
+/**
+ * 深学卡「已有产物」判定单源（词源与仿写构架同时就位才算完整——深学卡
+ * 只落 frames 时不算已有）：手册页词源卡与词藏页深学行的 force 判定与
+ * 按钮文案共用，判据改动只改这一处
+ * @param d 深学卡查询数据（可空）
+ */
+export function hasDeepArtifact(d: { etymology?: unknown; frames?: unknown } | null | undefined): boolean {
+  return Boolean(d?.etymology && d?.frames);
+}

@@ -146,7 +146,9 @@ export function TopBar() {
       /* 空词不跳（判 raw 而非 q）：reset 后 hits 因 keepPreviousData 仍挂着
          disabled 键的旧结果；且手动删空后 250ms 内 q 还没归零——两种「看着
          是空的」窗口里按回车都会导航到陈旧命中。防抖窗内也不跳：此时列表
-         显示的是「检索中」，跳一个不在屏上的命中比不跳更困惑 */
+         显示的是「检索中」，跳一个不在屏上的命中比不跳更困惑。换词重取窗口
+         （staleWhileFetching）刻意不拦：桌面下拉该窗口内旧命中保持可点，
+         回车与点击同语义（移动端才做防误点守卫）——两端分歧是有意的 */
       if (raw.trim().length > 0 && !debouncing) {
         const hit = hits[active] ?? hits[0];
         if (hit) {

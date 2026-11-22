@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { cues } from '@/lib/db/schema';
 import { EngineError, enginePost } from '@/lib/server/engine';
-import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
+import { LLM_PROFILE_MISSING_MESSAGE, resolveProfile, toEngineProfile } from '@/lib/server/providers';
 import { parseIdParam, readJsonBody } from '@/lib/server/params';
 
 export const runtime = 'nodejs';
@@ -37,7 +37,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const profile = resolveProfile('llm');
   if (!profile || profile.kind !== 'cloud') {
-    return NextResponse.json({ error: '未配置 LLM 档案（设置页添加）' }, { status: 400 });
+    return NextResponse.json({ error: LLM_PROFILE_MISSING_MESSAGE }, { status: 400 });
   }
   try {
     const { content } = await enginePost<{ content: string | null }>('/llm/chat', {

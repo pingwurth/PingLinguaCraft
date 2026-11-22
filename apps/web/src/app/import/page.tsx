@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Collection, type JobDTO } from '@/lib/api';
+import { FOCUSABLE_SELECTOR } from '@/lib/focus';
 
 /** 导入路径 tab */
 type ImportKind = 'file' | 'link' | 'text';
@@ -508,17 +509,22 @@ function FlowGuide({ onClose, onGo }: { onClose: () => void; onGo: (kind: Import
         return;
       }
       if (e.key !== 'Tab') return;
-      // 弹窗卡内可聚焦元素（首尾两个做循环锚点）
-      const focusable = cardRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
+      // 弹窗卡内可聚焦元素（首尾两个做循环锚点；FOCUSABLE_SELECTOR 与
+      // ConfirmDialog/MobileSearch 两处陷阱共用单源）
+      const focusable = cardRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
       if (!focusable || focusable.length === 0) return;
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
-      if (!cardRef.current?.contains(document.activeElement)) {
-        // 焦点在卡外（如刚打开落在卡容器本身）：拉回首个元素
+      const active = document.activeElement;
+      if (active === cardRef.current) {
+        // 焦点在卡容器本身（tabIndex=-1 的落焦点位）：Tab 落回首/末元素，
+        // 否则 Shift+Tab 会走默认行为逃到卡外背景
         e.preventDefault();
-        first.focus();
+        (e.shiftKey ? last : first).focus();
+      } else if (!cardRef.current?.contains(active)) {
+        // 焦点在卡外：按方向拉回末/首元素
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
       } else if (!e.shiftKey && document.activeElement === last) {
         e.preventDefault(); // 正向到尾 → 回首
         first.focus();

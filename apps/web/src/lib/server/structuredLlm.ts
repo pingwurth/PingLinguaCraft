@@ -8,12 +8,8 @@
 
 import type { z } from 'zod';
 import { EngineError, enginePost } from '@/lib/server/engine';
-import { resolveProfile, toEngineProfile, type ResolvedProfile } from '@/lib/server/providers';
+import { LLM_PROFILE_MISSING_MESSAGE, resolveProfile, toEngineProfile, type ResolvedProfile } from '@/lib/server/providers';
 import { repairPrompt } from '@/lib/quiz';
-
-/** 「未配置 LLM 档案」提示文案（structuredLLM 与 ai-note 管线两处入口共用
- *  单源——各写一份会在措辞调整时漏改其一，同一提示两个入口两种说法） */
-export const LLM_PROFILE_MISSING_MESSAGE = '未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）';
 
 /** LLM 档案未配置（调用方可据此映射 400；其余 EngineError 一律网关类错误）——
  *  不能靠 status===0 判别：引擎不可达/生成不合规也用 0，混判会把网关故障
