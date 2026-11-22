@@ -45,10 +45,11 @@ export function useProgressReporter(
   const qc = useQueryClient();
 
   useEffect(() => {
-    /* 清掉单例 store 里上一素材残留的播放头/激活句：本 effect 先于播放组件的
-     * setCues/reset effect 执行，若不清，setCues 触发的首个订阅回调会带上旧
-     * 值快照——幻影 listened 位、外来高水位句号、旧位置/0 覆盖新材续研书签 */
-    usePlayer.setState({ activeCueIndex: -1, currentTimeMs: 0 });
+    /* 清掉单例 store 里上一素材残留的播放头/激活句（resetClock 与语流换材
+     * 同一动作单源）：本 effect 先于播放组件的 setCues/reset effect 执行，
+     * 若不清，setCues 触发的首个订阅回调会带上旧值快照——幻影 listened 位、
+     * 外来高水位句号、旧位置/0 覆盖新材续研书签 */
+    usePlayer.getState().resetClock();
     listenedRef.current = new Set();
     snapRef.current = { positionMs: 0, maxCueIndex: -1 };
     // 起始时间记当前时刻：从 0 起算会让重建后第一条 store 变化立即上报，

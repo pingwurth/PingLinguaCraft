@@ -28,6 +28,11 @@ export const runtime = 'nodejs';
 /** 最近活跃时间表达式：学习时间与材料更新时间取大（select 与 orderBy 共用一份，防两处口径漂移） */
 const activityAtExpr = sql<number>`max(coalesce(${learningProgress.updatedAt}, 0), ${materials.updatedAt})`;
 
+/** 续研书签候选窗口宽度：甄别（弃「只开过播放页」的存量行）在 JS 侧做
+ *  （SQL 表达不了「位图全空」），窗口外的合格行会静默降级为无书签——单
+ *  用户最近几条进度行全为待弃行的情况极罕见，取此取舍 */
+const RESUME_CANDIDATE_LIMIT = 5;
+
 /**
  * GET —— 首页聚合数据
  */
@@ -160,22 +165,25 @@ export async function GET() {
     .innerJoin(collections, eq(collections.id, materials.collectionId))
     .where(and(eq(learningProgress.userId, 1), gte(learningProgress.maxCueIndex, 0)))
     .orderBy(desc(learningProgress.updatedAt))
-    // 多取几行：最新的行可能是待弃的存量行（见下甄别），单取一行会在弃掉后
-    // 直接回退「未开卷」而不落到次新的合格行
-    .limit(5)
+    .limit(RESUME_CANDIDATE_LIMIT)
     .all();
+
+  /* 候选行句数缺失兜底一次批量取（循环内逐行单查是 N+1，且被弃的行白查） */
+  const resumeCueCounts = cueCountsFor(
+    db,
+    resumeRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
+  );
 
   let resume: HomeResumePoint | null = null;
   for (const resumeRow of resumeRows) {
     // 总句数：sentence_count 就绪时已统计；缺失（老数据）则现数 cues 兜底
-    const cueCount =
-      resumeRow.sentenceCount ?? cueCountsFor(db, [resumeRow.materialId]).get(resumeRow.materialId) ?? 0;
-    /* 存量行甄别：maxCueIndex=0 且位图全空 = 旧版上报器把 -1 钳 0 写成的
-     * 「只开过播放页」行（新版已改写 -1），不上书签——防凭空冒出「第 1 句」；
-     * 只听过首句的行位图 bit0 已置（或无位图存量行按 maxCueIndex 估算），正常入选 */
+    const cueCount = resumeRow.sentenceCount ?? resumeCueCounts.get(resumeRow.materialId) ?? 0;
+    /* 存量行甄别：maxCueIndex=0 且位图全空（或无位图）= 旧版上报器把 -1 钳 0
+     * 写成的「只开过播放页」行（新版已改写 -1），不上书签——防凭空冒出
+     * 「第 1 句」；只听过首句的行位图 bit0 已置、无位图存量行按 maxCueIndex>0
+     * 判定（mask NULL 正是旧版未带位图的形态），正常入选 */
     const mask = resumeRow.listenedMask as Buffer | null;
-    const heardAny =
-      resumeRow.maxCueIndex > 0 || (mask ? countListenedBits(mask, cueCount) > 0 : true);
+    const heardAny = resumeRow.maxCueIndex > 0 || (mask != null && countListenedBits(mask, cueCount) > 0);
     if (!heardAny) continue;
     // 停留句引文：书签上展示「当前句」原文，缺失（句被重排等）静默降级为无引文
     const cue = db

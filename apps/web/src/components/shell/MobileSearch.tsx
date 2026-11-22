@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react';
 import { SEARCH_PLACEHOLDER, useGlobalSearch } from '@/features/search/useGlobalSearch';
 import { SearchResultList } from '@/features/search/SearchResultList';
+import { FOCUSABLE_SELECTOR } from '@/lib/focus';
 
 /** 全屏检索浮层 props */
 interface MobileSearchProps {
@@ -28,15 +29,18 @@ interface MobileSearchProps {
  */
 export function MobileSearch({ open, onClose }: MobileSearchProps) {
   /* 检索逻辑与桌面同源（关闭保留检索词：复位只在命中跳转后发生） */
-  const { raw, setRaw, search, hits, reset, debouncing } = useGlobalSearch();
+  const { raw, setRaw, search, hits, reset, loading } = useGlobalSearch();
   const inputRef = useRef<HTMLInputElement>(null);
   /* 浮层容器引用：Tab 焦点陷阱用 */
   const overlayRef = useRef<HTMLDivElement>(null);
   /* 打开前的焦点元素：关闭时还原（键盘用户不丢位置） */
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  /* 最新 onClose 经 ref 入 document 监听闭包（防扩大 effect 依赖） */
+  /* 最新 onClose 经 ref 入 document 监听闭包（防扩大 effect 依赖）；提交期
+     同步——渲染期直接赋 ref 在并发渲染下会把未提交的值留在 ref 里 */
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   /* 打开时聚焦输入框（弹软键盘）、锁定背景滚动、记录原焦点并约束 Tab 在
      浮层内环绕；关闭时恢复滚动与焦点 */
@@ -59,9 +63,7 @@ export function MobileSearch({ open, onClose }: MobileSearchProps) {
          到 overlay 的方案在焦点落到 body——点了浮层内非可聚焦区域——时收不到
          事件，陷阱会失效） */
       if (e.key !== 'Tab' || !overlay) return;
-      const focusables = overlay.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
+      const focusables = overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
       if (focusables.length === 0) return;
       const first = focusables[0]!;
       const last = focusables[focusables.length - 1]!;
@@ -152,7 +154,12 @@ export function MobileSearch({ open, onClose }: MobileSearchProps) {
           <SearchResultList
             hits={hits}
             collectionCount={search.data?.collections.length ?? 0}
-            loading={debouncing || (!search.data && search.isFetching)}
+            loading={
+              /* 移动端叠加防误点守卫：换词重取窗口内 keepPreviousData 的旧命中
+                 仍是可点 Link（点击即导航+关浮层），宁闪「检索中」也不让旧词
+                 命中被当成新词结果点走 */
+              loading || (search.isPlaceholderData && search.isFetching)
+            }
             error={search.isError ? search.error.message : null}
             idPrefix="mobile-search"
             onSelect={onSelect}

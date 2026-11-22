@@ -45,6 +45,7 @@ import { Pagination } from '@/components/Pagination';
 import { SOURCE_META, subtitleStatusMeta } from '@/lib/material-meta';
 import { fmtDuration, fmtInt, fmtRelative } from '@/lib/format';
 import { COLLECTION_NAME_MAX } from '@/lib/limits';
+import { CEFR_LEVELS, type CefrLevel } from '@/lib/cefr';
 import {
   bookCoverCls,
   BookInner,
@@ -63,14 +64,17 @@ const PAGE_SIZE = 12;
 /** 立卷弹窗卷名长度上限（仿「创建材料集」设计稿 40 字计数器） */
 const NAME_MAX = COLLECTION_NAME_MAX;
 
-/** CEFR 梯级选项（值落库 A2~C2；别称小注仿「创建材料集」设计稿梯级注解） */
-const CEFR_OPTIONS = [
-  { value: 'A2', alias: '启蒙发轫' },
-  { value: 'B1', alias: '登堂渐进' },
-  { value: 'B2', alias: '沉潜熟稔' },
-  { value: 'C1', alias: '文采雅致' },
-  { value: 'C2', alias: '神会通达' },
-] as const;
+/** CEFR 梯级别称（键集受 CefrLevel 约束：CEFR_LEVELS 加档而此处缺键会编译
+ *  报错，选择器与清洗白名单不漂移；别称仿「创建材料集」设计稿梯级注解） */
+const CEFR_ALIASES: Record<CefrLevel, string> = {
+  A2: '启蒙发轫',
+  B1: '登堂渐进',
+  B2: '沉潜熟稔',
+  C1: '文采雅致',
+  C2: '神会通达',
+};
+/** CEFR 梯级选项（值集派生自 CEFR_LEVELS 单源） */
+const CEFR_OPTIONS = CEFR_LEVELS.map((value) => ({ value, alias: CEFR_ALIASES[value] }));
 
 /* 封面插画闸（core 单源：MIME 集合自扩展名↔MIME 对照表、体积上限常量，
  * 与上传服务端闸同源——两侧各自手写字面量会静默漂移） */

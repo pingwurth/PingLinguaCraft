@@ -7,12 +7,13 @@
  */
 
 import { NextResponse } from 'next/server';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { countListenedBits } from '@pinglc/core';
 import { getDb } from '@/lib/db';
-import { cues, learningProgress, materials } from '@/lib/db/schema';
+import { learningProgress, materials } from '@/lib/db/schema';
 import { parseIdParam } from '@/lib/server/params';
-import { estimateHeardNoMask, progressPct } from '@/lib/server/progress';
+import { cueCountsFor, estimateHeardNoMask, progressPct } from '@/lib/server/progress';
+import { MATERIAL_PAGE_MAX } from '@/lib/limits';
 import type { MaterialListItem, MaterialSourceType, SubtitleStatus } from '@pinglc/core';
 
 export const runtime = 'nodejs';
@@ -29,7 +30,8 @@ export async function GET(
   if (pid === null) return NextResponse.json({ error: '参数非法' }, { status: 400 });
   const url = new URL(request.url);
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
-  const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get('pageSize') ?? '20')));
+  // 页大小上限钳制走 MATERIAL_PAGE_MAX 单源（与案头今研首页请求量同闸）
+  const pageSize = Math.min(MATERIAL_PAGE_MAX, Math.max(1, Number(url.searchParams.get('pageSize') ?? '20')));
   const status = url.searchParams.get('status');
 
   const db = getDb();
@@ -69,20 +71,12 @@ export async function GET(
     .all();
 
   /* 分母兜底：存量就绪材料 sentence_count 可空（schema 允许 NULL），缺失时现数
-   * cues 作分母（与 /api/home resume 路径同口径）——否则老材料位图口径进度恒 0%，
-   * 「已完卷」筛选永远筛不出整篇听过的老材料 */
-  const cueCounts = new Map<number, number>();
-  const missingIds = rows.filter((r) => r.sentenceCount === null).map((r) => r.id);
-  if (missingIds.length > 0) {
-    for (const cr of db
-      .select({ materialId: cues.materialId, n: sql<number>`count(*)` })
-      .from(cues)
-      .where(inArray(cues.materialId, missingIds))
-      .groupBy(cues.materialId)
-      .all()) {
-      cueCounts.set(cr.materialId, cr.n);
-    }
-  }
+   * cues 作分母（cueCountsFor 与 /api/home 各处同口径单源）——否则老材料位图
+   * 口径进度恒 0%，「已完卷」筛选永远筛不出整篇听过的老材料 */
+  const cueCounts = cueCountsFor(
+    db,
+    rows.filter((r) => r.sentenceCount === null).map((r) => r.id),
+  );
 
   /* DTO 组装：有进度行才落 progress 对象（位图按句数截断口径与 /api/home 一致）；
    * blob() 列经 drizzle select 推断为 unknown，按 schema 实际类型（Buffer|null）收窄；

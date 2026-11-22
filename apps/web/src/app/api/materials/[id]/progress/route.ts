@@ -80,13 +80,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     listenedThrough = existing?.listenedThrough ?? false;
   }
 
-  // maxCueIndex 三态平铺（不嵌套三元）：显式上报 → 钳非负落库；省略且是存量
-  // 行 → 不写该列（保留现值）；省略且是新行 → 落 -1（无实质句位，不挂
-  // 「第 1 句」书签）。此前无条件 Math.max(0, ??0) 会把 -1/undefined 钳成 0
-  // 无条件覆盖，抹掉已存续研书签
+  // maxCueIndex 收窄 + 三态平铺（readJsonBody 只保证对象形态）：非有限数/
+  // 负数与省略同态——负数正是旧版上报器「未观测到句位」的 -1（被 service
+  // worker 缓住的旧 bundle 仍会发），钳 0 会伪装成「第 1 句」顶替已存书签；
+  // NaN 绑 NOT NULL 列会 500。合法值 → 落库；省略/非法且是存量行 → 不写该列
+  // （保留现值）；省略/非法且是新行 → 落 -1（无实质句位，不挂书签）
+  const rawCueIndex = body.maxCueIndex;
+  const cueIndexValid = typeof rawCueIndex === 'number' && Number.isFinite(rawCueIndex) && rawCueIndex >= 0;
   let maxCuePatch: { maxCueIndex?: number };
-  if (body.maxCueIndex != null) {
-    maxCuePatch = { maxCueIndex: Math.max(0, Math.round(body.maxCueIndex)) };
+  if (cueIndexValid) {
+    maxCuePatch = { maxCueIndex: Math.round(rawCueIndex) };
   } else if (existing) {
     maxCuePatch = {};
   } else {

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COVER_TEXTURES,
   COVER_VOLUMES,
+  coverSortOrderRank,
   coverVolumeRank,
   parseCollectionCover,
   serializeCollectionCover,
@@ -114,5 +115,23 @@ describe('coverVolumeRank（册序 → sortOrder 建议值）', () => {
 
   it('候选集与 rank 表一致（七档：卷壹~卷陆 + 别卷）', () => {
     expect(COVER_VOLUMES.map((v) => v.value)).toEqual(['卷壹', '卷贰', '卷叁', '卷肆', '卷伍', '卷陆', '别卷']);
+  });
+});
+
+describe('coverSortOrderRank（落库 cover JSON → 卷签 rank，立卷/存卷写路径单源）', () => {
+  it('已编排卷取 rank（serialize 归一后的卷签）', () => {
+    expect(coverSortOrderRank(serializeCollectionCover({ texture: 'linen', volume: '卷壹' }))).toBe(10);
+    expect(coverSortOrderRank(serializeCollectionCover({ volume: '别卷' }))).toBe(90);
+  });
+
+  it('未编排/无封面返回 null（调用方决定落默认或保留现值）', () => {
+    expect(coverSortOrderRank(serializeCollectionCover({ texture: 'linen' }))).toBeNull();
+    expect(coverSortOrderRank('{}')).toBeNull();
+    expect(coverSortOrderRank(null)).toBeNull();
+  });
+
+  it('非 JSON 的历史裸值（质地 id / 装帧图路径）返回 null', () => {
+    expect(coverSortOrderRank('linen')).toBeNull();
+    expect(coverSortOrderRank('covers/abc.png')).toBeNull();
   });
 });

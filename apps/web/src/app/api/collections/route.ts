@@ -51,19 +51,14 @@ export async function GET() {
  * 服务端清洗序列化后落库，非法字段静默丢弃，不透传原始输入。
  */
 export async function POST(request: Request) {
-  const body = await readJsonBody<{
-    name?: string;
-    description?: string;
-    cefrLevel?: string;
-    cover?: CollectionCoverConfig | null;
-  }>(request);
+  /* 请求体按宽类型收（文本字段由 cleanCollectionTextFields 逐字段收窄，
+   * cover 在使用点 typeof 判定——预声明窄泛型再 as 回宽类型是自欺） */
+  const body = await readJsonBody<Record<string, unknown>>(request);
   if (body === null) return NextResponse.json({ error: '请求体非法' }, { status: 400 });
   /* 文本字段清洗与 PATCH 同源（此前两路各自为政，坏输入行为漂移）；POST 侧
    * name 缺失或清洗后为空都按「材料集名不能为空」拒绝，超长给专属提示
    * （先判超长：超长时 patch.name 未写，先判 undefined 会误报「不能为空」） */
-  const { patch: textPatch, nameInvalid, nameTooLong, typeInvalid } = cleanCollectionTextFields(
-    body as Record<string, unknown>,
-  );
+  const { patch: textPatch, nameInvalid, nameTooLong, typeInvalid } = cleanCollectionTextFields(body);
   if (typeInvalid) return NextResponse.json({ error: '文本字段类型非法' }, { status: 400 });
   const name = textPatch.name;
   if (nameTooLong) {
@@ -79,13 +74,15 @@ export async function POST(request: Request) {
     }
     // 清洗后全字段非法（如 texture 拼错）按非法输入 400——与 PATCH 同口径，
     // 静默落 null 会让两端对同一份坏输入行为漂移
-    coverJson = serializeCollectionCover(body.cover);
+    coverJson = serializeCollectionCover(body.cover as CollectionCoverConfig);
     if (!coverJson) return NextResponse.json({ error: 'cover 封面配置非法' }, { status: 400 });
   }
   // 册序即真排序：sortOrder 由「落库的清洗后配置」卷签 rank 派生（卷壹=10 …
   // 别卷=90，coverSortOrderRank 与 PATCH 存卷共用单源）；不能取原始请求串——
   // serialize 归一别名卷签（「卷壹 · 启篇」→「卷壹」）后 exact 匹配会落空，
-  // sortOrder 误归 0 排到真卷壹之前；未编排落 0
+  // sortOrder 误归 0 排到真卷壹之前。未编排=不表达排序意图：新建无现值可保
+  // 落默认 0；PATCH 存卷侧对未编排保留现值（不覆盖经 API 手工排过的卷）——
+  // 两路是同一语义在「有无现值」上的自然分叉
   const sortOrder = coverSortOrderRank(coverJson) ?? 0;
   const db = getDb();
   const now = new Date();

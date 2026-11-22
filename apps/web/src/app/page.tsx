@@ -122,7 +122,7 @@ export default function HomePage() {
     queryFn: () => {
       if (focusId === null) throw new Error('未选定今研之卷');
       return api<{ materials: MaterialListItem[]; total: number }>(
-        `/api/collections/${focusId}/materials?page=1&pageSize=${MATERIAL_PAGE_MAX}`
+        `/api/collections/${focusId}/materials?page=1&pageSize=${FOCUS_PAGE_SIZE}`
       );
     },
     enabled: focusId !== null,

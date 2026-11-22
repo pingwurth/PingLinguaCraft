@@ -46,13 +46,12 @@ function remapMediaRel(rel: string, from: number, to: number, matId: number): st
   return rel.startsWith(`${prefix}/`) ? `${to}/${matId}${rel.slice(prefix.length)}` : rel;
 }
 
-/** 任务占用复检命中（事务内抛出 → 外层 catch 回迁目录后按 409 返回，与前置检查同语义） */
-class BusyError extends Error {}
-
 /**
- * 该材料在跑任务数（材料级 + restt_cue 句级）：移卷前置检查（db 直连）与
- * 改库事务内复检（tx）共用同一判定——两份手抄副本会在口径调整时只改其一
- * @param executor 数据库直连或事务执行器
+ * 该材料在跑任务数（材料级 + restt_cue 句级）：移卷前置检查用。
+ * 只在改库前查一次即可——readJsonBody 之后本 handler 全程同步（better-sqlite3
+ * 单连接、web 是唯一 DB 写入方），预检与目录迁移/事务之间不存在其他请求
+ * 插入任务行的交错窗口，事务内复检是查不到新结果的死代码。
+ * @param executor 数据库直连
  * @param pid      材料 id
  * @returns 在跑任务总数（>0 即占用）
  */
@@ -186,13 +185,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     db.transaction((tx) => {
       if (move) {
-        /* 任务占用在事务内复检：前置检查与目录迁移之间存在窗口——另一标签页
-         * 起的导入/重 STT 在此间落任务行，会往已迁走的旧绝对路径写产物（恰是
-         * busy 闸要防的散落）。复检不过即抛 BusyError 回滚，目录由外层 catch
-         * 回迁后按 409 返回 */
-        if (countActiveJobs(tx, pid) > 0) {
-          throw new BusyError('该材料有进行中的任务（字幕/翻译等），完成后再移动');
-        }
         // media_path/peaks_path 换挂目标卷（前缀已在迁移前校验通过）；跟读录音
         // （<cid>/<matId>/rec/…）同目录布局，SQL 批量改前缀
         if (mediaPath) patch.mediaPath = remapMediaRel(mediaPath, move.from, move.to, pid);
@@ -218,11 +210,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       } catch (rollbackErr) {
         console.error(`[materials/${pid}] 移卷目录回滚失败（库未改写，文件滞留 ${move.to}/${pid}）：`, rollbackErr);
       }
-    }
-    // 任务占用复检命中：目录已回迁，与前置检查同一 409 语义（可重试），
-    // 不混进「库路径改写失败 500」误报存储故障
-    if (err instanceof BusyError) {
-      return NextResponse.json({ error: err.message }, { status: 409 });
     }
     return NextResponse.json(
       { error: `库路径改写失败：${err instanceof Error ? err.message : String(err)}` },

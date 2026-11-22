@@ -40,7 +40,7 @@ export function TopBar() {
   const router = useRouter();
   /* 检索逻辑单源：防抖输入、请求、命中扁平化；面板开合是桌面下拉的本地
      状态（输入聚焦/点外关闭/快捷键展开，与移动端浮层的 props 驱动不同源） */
-  const { raw, setRaw, q, search, hits, reset, debouncing } = useGlobalSearch();
+  const { raw, setRaw, q, search, hits, reset, debouncing, loading } = useGlobalSearch();
   const [open, setOpen] = useState(false);
   /* 键盘选择游标：-1 表示未选中（Enter 落在首条命中） */
   const [active, setActive] = useState(-1);
@@ -145,8 +145,9 @@ export function TopBar() {
     } else if (e.key === 'Enter') {
       /* 空词不跳（判 raw 而非 q）：reset 后 hits 因 keepPreviousData 仍挂着
          disabled 键的旧结果；且手动删空后 250ms 内 q 还没归零——两种「看着
-         是空的」窗口里按回车都会导航到陈旧命中 */
-      if (raw.trim().length > 0) {
+         是空的」窗口里按回车都会导航到陈旧命中。防抖窗内也不跳：此时列表
+         显示的是「检索中」，跳一个不在屏上的命中比不跳更困惑 */
+      if (raw.trim().length > 0 && !debouncing) {
         const hit = hits[active] ?? hits[0];
         if (hit) {
           e.preventDefault();
@@ -222,7 +223,7 @@ export function TopBar() {
               <SearchResultList
                 hits={hits}
                 collectionCount={search.data?.collections.length ?? 0}
-                loading={debouncing || (!search.data && search.isFetching)}
+                loading={loading}
                 error={search.isError ? search.error.message : null}
                 idPrefix={SEARCH_ID_PREFIX}
                 activeIndex={active}

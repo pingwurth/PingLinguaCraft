@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
+import { FOCUSABLE_SELECTOR } from '@/lib/focus';
 
 /** 确认弹窗属性 */
 export interface ConfirmDialogProps {
@@ -85,9 +86,7 @@ export function ConfirmDialog({
          pending 期间按钮全禁用、可聚焦集为空——把焦点锚在卡片自身，Tab 不外逃 */
       if (e.key === 'Tab' && cardRef.current) {
         const card = cardRef.current;
-        const focusables = card.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        );
+        const focusables = card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
         if (focusables.length === 0) {
           e.preventDefault();
           card.focus();

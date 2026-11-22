@@ -109,6 +109,10 @@ export function useGlobalSearch() {
   /* 防抖未落定判定（与落定同用 normalizeQuery 口径——拿 raw 原值直比 q 的
      话，超过 SEARCH_QUERY_MAX 的输入截断后永远 ≠ raw，「检索中…」卡死） */
   const debouncing = normalizeQuery(raw) !== q;
+  /* 加载态基础谓词（双端共用单源）：防抖未落定，或首查在途（尚无任何数据）。
+     换词重取窗口（keepPreviousData 旧命中仍在）刻意不算加载——桌面下拉不闪
+     「检索中」；移动端点击即导航，自行叠加该窗口的防误点守卫 */
+  const loading = debouncing || (!search.data && search.isFetching);
 
-  return { raw, setRaw, q, search, hits, reset, debouncing };
+  return { raw, setRaw, q, search, hits, reset, debouncing, loading };
 }

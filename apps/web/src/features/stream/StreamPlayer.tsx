@@ -110,11 +110,12 @@ export function StreamPlayer({ queue }: { queue: StreamQueueItem[] }) {
 
   /* ---------- 换材/进页：重置单例 store 的时钟与激活句 ----------
    * store 跨路由存活，精读页/上一材料残留的播放头与时长会让新材料控制条
-   * 在元数据就绪前显示旧值，也可能混入进度上报快照——换材即归零；
-   * 单次原子 setState：分三次 set 会让订阅者（进度上报）先看到
-   * 「旧播放头 + 已清激活句」的中间态，把旧位置误记为新材快照 */
+   * 在元数据就绪前显示旧值，也可能混入进度上报快照——换材即归零。
+   * resetClock 与进度上报器的进页清残留同一动作单源（含时长的字段集差
+   * 由 includeDuration 表达）；原子 set：分次 set 会让订阅者（进度上报）
+   * 先看到「旧播放头 + 已清激活句」的中间态，把旧位置误记为新材快照 */
   useEffect(() => {
-    usePlayer.setState({ activeCueIndex: -1, currentTimeMs: 0, durationMs: 0 });
+    usePlayer.getState().resetClock({ includeDuration: true });
   }, [current?.id]);
 
   /* ---------- 换材后的元数据就绪：定位 + 按意图续播 ---------- */

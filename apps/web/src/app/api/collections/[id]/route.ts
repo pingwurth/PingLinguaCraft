@@ -79,7 +79,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   // sortOrder：显式传入则收整数（Number 强转会放过 [3]/true 之类结构非法值）；
   // 未传但本次改了封面时，由清洗后卷签重算（与 POST 同源——「册序即真排序」
-  // 不应只靠前端记得传 sortOrder 维持），卷签未编排则保留现值不强行归 0
+  // 不应只靠前端记得传 sortOrder 维持）。未编排=不表达排序意图：保留现值
+  // 不强行归 0（不覆盖经 API 手工排过的卷）；POST 立卷侧无现值可保落默认
+  // 0——同一语义在「有无现值」上的自然分叉，非两路口径漂移
   if (body.sortOrder !== undefined) {
     // 先验 JSON 类型再验整数：裸 Number 强转会放过 true/[3]/null 之类
     // （null→0 会静默把卷顶到书架最前）

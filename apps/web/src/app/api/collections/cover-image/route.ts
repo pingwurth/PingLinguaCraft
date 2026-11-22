@@ -19,6 +19,9 @@ export const runtime = 'nodejs';
 /* 单图上限（core 单源：服务端闸与立卷弹窗前置校验一致） */
 const MAX_BYTES = COVER_IMAGE_MAX_BYTES;
 
+/** 413 超限文案（前置体积闸与解析后体积闸两处共用——各写一份会漂移） */
+const TOO_LARGE_ERROR = `封面插画超过 ${COVER_IMAGE_MAX_BYTES / 1024 / 1024}MB`;
+
 /** 允许的插画 MIME → 扩展名（自 core 扩展名↔MIME 对照表反转单源；扩展名
  *  取自 mime 而非原始文件名，防怪后缀落盘；jpeg 折叠为 jpg） */
 const MIME_EXT: Record<string, string> = {};
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
   // 的请求在 formData 解析前拒绝，不白读整个 body
   const declared = Number(request.headers.get('content-length') ?? 0);
   if (declared > MAX_BYTES + 64 * 1024) {
-    return NextResponse.json({ error: `封面插画超过 ${COVER_IMAGE_MAX_BYTES / 1024 / 1024}MB` }, { status: 413 });
+    return NextResponse.json({ error: TOO_LARGE_ERROR }, { status: 413 });
   }
   // formData 解析可能抛错（畸形/截断的 multipart、客户端中断）：包一层给可读
   // 的 400。判空/判体积都在 arrayBuffer 之前：缺 file 字段给格式错误而非笼统的
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '封面插画仅支持 PNG / JPG / WebP' }, { status: 400 });
   }
   if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: `封面插画超过 ${COVER_IMAGE_MAX_BYTES / 1024 / 1024}MB` }, { status: 413 });
+    return NextResponse.json({ error: TOO_LARGE_ERROR }, { status: 413 });
   }
   let bytes: Buffer;
   try {

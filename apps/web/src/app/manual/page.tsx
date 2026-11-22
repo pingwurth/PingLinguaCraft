@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
-import { genLabel, useArtifactGenerate, type WordArtifactKind } from '@/lib/useArtifactGeneration';
+import { genLabel, useArtifactGenerate, type WordArtifactPath } from '@/lib/useArtifactGeneration';
 import { ttsAudioUrl } from '@/lib/ttsUrl';
 import { type Discriminate, type WriteCheck } from '@/lib/manualCard';
 import { WRITE_TEXT_MAX } from '@/lib/limits';
@@ -144,7 +144,7 @@ const STATUS_LABEL: Record<string, string> = {
  */
 function useArtifactGeneration<T>(
   wordId: number,
-  kind: WordArtifactKind,
+  kind: WordArtifactPath,
   hasData: (data: T | undefined) => boolean,
 ) {
   const query = useQuery({

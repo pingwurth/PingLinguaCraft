@@ -46,6 +46,11 @@ interface PlayerState {
   playRange: { startMs: number; endMs: number } | null;
 
   // ---- 动作 ----
+  /** 重置单例 store 的时钟残留（进页/换材清上一素材的播放头与激活句）。
+   *  includeDuration 控制是否一并清时长：语流换材清（控制条不显旧材时长），
+   *  上报器进页不清（元数据未就绪时它无权清时长）——两处调用的字段集
+   *  收在同一动作里，不再各自 setState 漂移 */
+  resetClock: (opts?: { includeDuration?: boolean }) => void;
   setCues: (cues: CueDTO[]) => void;
   setActiveCueIndex: (i: number) => void;
   setCurrentTimeMs: (ms: number) => void;
@@ -83,6 +88,12 @@ export const usePlayer = create<PlayerState>((set) => ({
   pendingSpeak: null,
   playRange: null,
 
+  resetClock: (opts) =>
+    set({
+      activeCueIndex: -1,
+      currentTimeMs: 0,
+      ...(opts?.includeDuration ? { durationMs: 0 } : {}),
+    }),
   setCues: (cues) => set({ cues }),
   setActiveCueIndex: (activeCueIndex) => set({ activeCueIndex }),
   setCurrentTimeMs: (currentTimeMs) => set({ currentTimeMs }),

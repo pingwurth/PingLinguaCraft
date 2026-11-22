@@ -130,6 +130,8 @@ export default function MaterialPage({
           material={material}
           cues={cues}
           initialPositionMs={initialPositionMs}
+          /* 深链来源标记：?t= 定位只钳尾不贴尾回落（目标可以是末句） */
+          deepLinkSeek={rawDeepLinkMs > 0}
         />
       </div>
 

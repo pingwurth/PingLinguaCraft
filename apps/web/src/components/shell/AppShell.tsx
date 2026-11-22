@@ -172,22 +172,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   {group.label}
                 </div>
-                {group.items.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={item.match(pathname) ? 'page' : undefined}
-                    className={`flex items-center gap-2 rounded-md px-4 py-2 transition-colors ${
-                      item.match(pathname)
-                        ? 'bg-surface-container-highest font-semibold text-on-surface'
-                        : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-                    }`}
-                  >
-                    {/* Material Symbols 图标（20px；活动态随 font-semibold 加粗笔画，同设计稿） */}
-                    <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                    <span className="text-body-md">{item.label}</span>
-                  </Link>
-                ))}
+                {group.items.map((item) => {
+                  /* 活动态单次求值：aria/className/图标/标签四处共用一份，
+                     各自重复求值会各自漂移 */
+                  const active = item.match(pathname);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      aria-current={active ? 'page' : undefined}
+                      className={`flex items-center gap-2 rounded-md px-4 py-2 transition-colors ${
+                        active
+                          ? 'bg-surface-container-highest font-semibold text-on-surface'
+                          : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+                      }`}
+                    >
+                      {/* Material Symbols 图标（20px；活动态随 font-semibold 加粗笔画，同设计稿） */}
+                      <span className={`material-symbols-outlined text-[20px] ${active ? 'font-semibold' : ''}`}>
+                        {item.icon}
+                      </span>
+                      <span className="text-body-md">{item.label}</span>
+                    </Link>
+                  );
+                })}
               </Fragment>
             ))}
           </nav>
@@ -259,29 +266,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             5-tab 与桌面侧栏五条目同构（同 label/icon/目的地），活动态同桌面（container-highest 染底半粗） */}
         <nav className="fixed inset-x-0 bottom-0 z-30 bg-surface-container-low pb-safe shadow-shell-up md:hidden">
           <div className="grid grid-cols-5">
-            {SHELL_NAV_ITEMS.map((item) => (
-              /* 单个 tab：活动态染底药丸 + 浓墨半粗，44px+ 触控目标。
-                 字重挂在标签 span 上——角色 token 的 font-weight 声明在子元素
-                 自身，父级继承压不过它，挂 Link 上是无效样式 */
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-label={item.label}
-                aria-current={item.match(pathname) ? 'page' : undefined}
-                className={`mx-1 my-2 flex flex-col items-center justify-center gap-0.5 rounded-md py-1.5 transition-colors ${
-                  item.match(pathname)
-                    ? 'bg-surface-container-highest text-on-surface'
-                    : 'text-on-surface-variant'
-                }`}
-              >
-                <span className={`material-symbols-outlined text-[22px] ${item.match(pathname) ? 'font-semibold' : 'font-medium'}`}>
-                  {item.icon}
-                </span>
-                <span className={`text-label-sm ${item.match(pathname) ? 'font-semibold' : 'font-medium'}`}>
-                  {item.label}
-                </span>
-              </Link>
-            ))}
+            {SHELL_NAV_ITEMS.map((item) => {
+              /* 活动态单次求值（aria/className/图标/标签四处共用一份） */
+              const active = item.match(pathname);
+              return (
+                /* 单个 tab：活动态染底药丸 + 浓墨半粗，44px+ 触控目标。
+                   字重挂在标签 span 上——角色 token 的 font-weight 声明在子元素
+                   自身，父级继承压不过它，挂 Link 上是无效样式 */
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-label={item.label}
+                  aria-current={active ? 'page' : undefined}
+                  className={`mx-1 my-2 flex flex-col items-center justify-center gap-0.5 rounded-md py-1.5 transition-colors ${
+                    active ? 'bg-surface-container-highest text-on-surface' : 'text-on-surface-variant'
+                  }`}
+                >
+                  <span className={`material-symbols-outlined text-[22px] ${active ? 'font-semibold' : 'font-medium'}`}>
+                    {item.icon}
+                  </span>
+                  <span className={`text-label-sm ${active ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
+                </Link>
+              );
+            })}
           </div>
         </nav>
 

@@ -8,10 +8,7 @@
  */
 
 import { COLLECTION_NAME_MAX } from '@/lib/limits';
-
-/** CEFR 梯级白名单（客户端选项不构成服务端约束：白名单外的值归一为 null，
- *  防直连 API 把任意字符串写进 cefr_level 并在卷卡「梯级 xx」处原样渲染） */
-const CEFR_LEVELS = new Set(['A2', 'B1', 'B2', 'C1', 'C2']);
+import { CEFR_LEVEL_SET } from '@/lib/cefr';
 
 /** 清洗结果：patch 仅含请求体出现的字段（PATCH 语义：未出现不动；
  *  显式 null = 清空该字段——前端取消已设简介/梯级正是发 null） */
@@ -55,8 +52,11 @@ export function cleanCollectionTextFields(body: Record<string, unknown>): Cleane
   }
   if (body.cefrLevel !== undefined) {
     if (typeof body.cefrLevel === 'string') {
+      /* 梯级白名单归一（CEFR_LEVEL_SET 与藏经阁选择器共用单源）：白名单外
+       * 的值归一为 null，防直连 API 把任意字符串写进 cefr_level 并在卷卡
+       * 「梯级 xx」处原样渲染 */
       const cefr = body.cefrLevel.trim().toUpperCase();
-      patch.cefrLevel = CEFR_LEVELS.has(cefr) ? cefr : null;
+      patch.cefrLevel = CEFR_LEVEL_SET.has(cefr) ? cefr : null;
     } else if (body.cefrLevel === null) {
       patch.cefrLevel = null;
     } else {

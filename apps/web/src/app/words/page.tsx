@@ -13,6 +13,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { MarkdownView } from '@/components/MarkdownView';
 import { api } from '@/lib/api';
 import { waitForJob } from '@/lib/jobs/wait';
+import { genLabel, useArtifactGenerate } from '@/lib/useArtifactGeneration';
 
 /** 错误信息提取（网络异常与服务端 { error } 统一为可展示文本） */
 function errMsg(e: unknown): string {
@@ -200,11 +201,10 @@ function WordRow({
 }) {
   const [editNote, setEditNote] = useState(false);
   const [note, setNote] = useState(word.noteMd ?? '');
-  // 按钮文案先行计算（顺序赋值，不用嵌套三元）
-  let noteLabel = word.aiNoteStatus === 'ready' ? '重新生成' : '生成';
-  if (notePending) noteLabel = '生成中…';
+  // 按钮文案走 genLabel 单源（与词源/辨析/深学卡同口径：进行中优先于已有产物）
+  const noteLabel = genLabel(word.aiNoteStatus === 'ready', notePending);
 
-  /* ---- 深学卡（词源拓扑 + 仿写构架，M4）---- */
+  /* ---- 深学卡（词源拓扑 + 仿写构架，M4；生成回路走 useArtifactGenerate 单源）---- */
   const deep = useQuery({
     queryKey: ['deep', word.id],
     queryFn: () =>
@@ -214,20 +214,13 @@ function WordRow({
       }>(`/api/words/${word.id}/deep`),
     enabled: expanded,
   });
-  const genDeep = useMutation({
-    mutationFn: async () => {
-      const r = await api<{ cached?: boolean; jobId?: string }>(`/api/words/${word.id}/deep`, {
-        method: 'POST',
-        // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成（幂等分支只对首次）
-        body: JSON.stringify({ force: Boolean(deep.data?.etymology && deep.data?.frames) }),
-      });
-      if (r.cached || !r.jobId) return;
-      // 轮询收在 mutationFn 内：isPending 全程为真（不会提前恢复可点致重复建任务），
-      // 终态/失败/超时都有明确出口，卸载也不留游离定时器
-      await waitForJob(r.jobId);
-    },
-    onSuccess: () => void deep.refetch(),
-  });
+  const genDeep = useArtifactGenerate(
+    word.id,
+    'deep',
+    // force 与已有数据绑定：按钮文案为「重新生成」时必须真重生成（幂等分支只对首次）
+    () => Boolean(deep.data?.etymology && deep.data?.frames),
+    () => void deep.refetch(),
+  );
 
   const saveNote = useMutation({
     mutationFn: () =>
@@ -281,7 +274,8 @@ function WordRow({
                 className="flex items-center gap-1 rounded border border-secondary/50 px-2.5 py-1 text-xs text-secondary disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-sm">account_tree</span>
-                {deep.data?.etymology && deep.data?.frames ? '重新生成' : genDeep.isPending ? '生成中…' : '生成'}
+                {/* 文案走 genLabel 单源（与手册页各产物卡同口径） */}
+                {genLabel(Boolean(deep.data?.etymology && deep.data?.frames), genDeep.isPending)}
               </button>
             </div>
             {/* 深学卡生成失败提示 */}

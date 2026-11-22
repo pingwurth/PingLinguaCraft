@@ -43,7 +43,7 @@ import {
   engineSubmitJob,
 } from '@/lib/server/engine';
 import { materialDir } from '@/lib/server/media';
-import { structuredLLM } from '@/lib/server/structuredLlm';
+import { LlmProfileMissingError, structuredLLM } from '@/lib/server/structuredLlm';
 import { resolveProfile, toEngineProfile } from '@/lib/server/providers';
 import { ttsEngineFromParams } from '@/lib/providers';
 import { QUIZ_SYSTEM, buildQuizPrompt, QuizSchema } from '@/lib/quiz';
@@ -876,7 +876,8 @@ async function aiNotePipeline(jobId: string, payload: { wordId: unknown }): Prom
   const db = getDb();
   const profile = resolveProfile('llm');
   if (!profile || profile.kind !== 'cloud') {
-    throw new EngineError('未配置 LLM 档案（设置页添加 GLM/DeepSeek/GPT 等端点）', 0);
+    // 判别类型与文案与 structuredLLM 同源（各自手抄会在措辞/语义调整时漏改）
+    throw new LlmProfileMissingError();
   }
   const word = db.select().from(wordsTable).where(eq(wordsTable.id, wordId)).all()[0];
   if (!word) throw new Error('单词不存在');
@@ -1037,6 +1038,12 @@ async function aiLevelPipeline(jobId: string, cueId: number): Promise<void> {
 /** words 行类型（管线共用骨架取词形态） */
 type WordRow = typeof wordsTable.$inferSelect;
 
+/** 词产物 ai_artifacts kind 联合（写错会静默落无人读的产物，编译期拦下） */
+type WordArtifactKind = 'imitation' | 'discriminate';
+
+/** 事务句柄类型具名别名（一次推导多处复用） */
+type DbTx = Parameters<Parameters<ReturnType<typeof getDb>['transaction']>[0]>[0];
+
 /**
  * 词产物管线共用骨架（deepCard / discriminate 同构抽一，再添词产物不复制
  * userId=1 / 覆盖式更新 / artifact 事务口径）：wordId 校验 → 取词 + 语境
@@ -1053,11 +1060,6 @@ type WordRow = typeof wordsTable.$inferSelect;
  * @param opts.onExtra    生成后同事务的额外写库（词源另写 words.etymologyJson 等）
  * @param opts.doneMessage 完成进度文案
  */
-/** 词产物 ai_artifacts kind 联合（写错会静默落无人读的产物，编译期拦下） */
-type WordArtifactKind = 'imitation' | 'discriminate';
-
-/** 事务句柄类型具名别名（一次推导多处复用） */
-type DbTx = Parameters<Parameters<ReturnType<typeof getDb>['transaction']>[0]>[0];
 
 async function runWordArtifactPipeline<T>(
   jobId: string,

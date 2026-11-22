@@ -26,15 +26,19 @@ import { ttsAudioUrl } from '@/lib/ttsUrl';
  * @param props.material 材料详情（mediaMime 判断音视频）
  * @param props.cues     句段列表
  * @param props.initialPositionMs 续播位置
+ * @param props.deepLinkSeek 定位值来自 ?t= 深链（true 时只钳尾、不做贴尾
+ *                           回落——深链目标可以是末句）
  */
 export function Player({
   material,
   cues,
   initialPositionMs,
+  deepLinkSeek = false,
 }: {
   material: MaterialDetail;
   cues: CueDTO[];
   initialPositionMs: number;
+  deepLinkSeek?: boolean;
 }) {
   const mediaRef = useRef<HTMLVideoElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,8 +89,10 @@ export function Player({
   }, [rate, volume, muted]);
 
   /* 未消化的定位值：详情/进度先到、音频元数据后到时续播 effect 扑空（duration
-     仍 NaN），暂存到 loadedmetadata 补跳——否则续播与 ?t= 深链都可能停在 0 */
-  const pendingSeekRef = useRef(0);
+     仍 NaN），暂存到 loadedmetadata 补跳——否则续播与 ?t= 深链都可能停在 0；
+     tail 记录补跳时是否做贴尾回落（续播回落从头、深链只钳尾——深链目标可以
+     是末句，回落会把目标句跳丢） */
+  const pendingSeekRef = useRef<{ ms: number; tail: boolean } | null>(null);
 
   /* ---------- 整集循环（ended 事件）---------- */
   useEffect(() => {
@@ -107,10 +113,11 @@ export function Player({
       if (Number.isFinite(d)) {
         usePlayer.getState().setDurationMs(d * 1000);
         // 元数据就绪后补跳暂存的定位值（详情先到、元数据后到的竞态）；
-        // resolveResumeSeekMs 与续播 effect 同一助手（夹取 + 贴尾回落从头）
-        if (pendingSeekRef.current > RESUME_SEEK_MIN_MS) {
-          m.currentTime = resolveResumeSeekMs(pendingSeekRef.current, d) / 1000;
-          pendingSeekRef.current = 0;
+        // 续播意图走 resolveResumeSeekMs（夹取+贴尾回落），深链只钳尾
+        const pending = pendingSeekRef.current;
+        if (pending && pending.ms > RESUME_SEEK_MIN_MS) {
+          m.currentTime = (pending.tail ? resolveResumeSeekMs(pending.ms, d) : clampSeekMs(pending.ms, d)) / 1000;
+          pendingSeekRef.current = null;
         }
       }
     };
@@ -143,19 +150,23 @@ export function Player({
     /* 低于阈值的定位意图视同从头播：显式清掉挂起值——详情命中缓存时组件不
        重挂载，上一轮的 pendingSeek 会在新材料的 loadedmetadata 补跳到无关位置 */
     if (initialPositionMs <= RESUME_SEEK_MIN_MS) {
-      pendingSeekRef.current = 0;
+      pendingSeekRef.current = null;
       return;
     }
     if (Number.isFinite(m.duration)) {
-      pendingSeekRef.current = 0;
-      // 夹取与 onMeta 补跳同一助手：重导入后时长变短的材料，续播位置不至于越界
-      m.currentTime = resolveResumeSeekMs(initialPositionMs, m.duration) / 1000;
+      pendingSeekRef.current = null;
+      // 夹取与 onMeta 补跳同一助手：重导入后时长变短的材料，续播位置不至于
+      // 越界；深链（?t=）只钳尾不贴尾回落——目标可以是末句
+      m.currentTime =
+        (deepLinkSeek
+          ? clampSeekMs(initialPositionMs, m.duration)
+          : resolveResumeSeekMs(initialPositionMs, m.duration)) / 1000;
     } else {
-      pendingSeekRef.current = initialPositionMs;
+      pendingSeekRef.current = { ms: initialPositionMs, tail: !deepLinkSeek };
     }
     // material.id 入依赖：缓存命中不重挂载时前后两材定位值可能相同（都续播
     // 自 20s），effect 不重跑会让新材的定位意图丢失（从 0 开始）
-  }, [initialPositionMs, material.id]);
+  }, [initialPositionMs, material.id, deepLinkSeek]);
 
   /* ---------- 控制条渐隐策略（需求 6）---------- */
   const armHide = useCallback((delayMs: number) => {
