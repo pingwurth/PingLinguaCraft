@@ -22,6 +22,7 @@ import { api, type Collection, type JobDTO, type MaterialListItem } from '@/lib/
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SOURCE_META } from '@/lib/material-meta';
 import { fmtMs } from '@/lib/format';
+import { HOME_QUERY_KEY } from '@/features/home/query-keys';
 
 /**
  * 材料集详情页
@@ -70,7 +71,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
       void qc.invalidateQueries({ queryKey: ['materials'] });
       void qc.invalidateQueries({ queryKey: ['collection'] });
       void qc.invalidateQueries({ queryKey: ['collections'] });
-      void qc.invalidateQueries({ queryKey: ['home'] });
+      void qc.invalidateQueries({ queryKey: HOME_QUERY_KEY });
       void qc.invalidateQueries({ queryKey: ['focus-materials'] });
     },
     // 移动失败必须可见（静默时用户以为已移走，切卷才发现材料还在）
@@ -90,7 +91,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
     mutationFn: () => api(`/api/collections/${collectionId}`, { method: 'DELETE' }),
     onSuccess: () => {
       /* 卷已删：失效首页聚合并跳回藏经阁（停留本页会让详情查询 404） */
-      void qc.invalidateQueries({ queryKey: ['home'] });
+      void qc.invalidateQueries({ queryKey: HOME_QUERY_KEY });
       router.replace('/library');
     },
     // 删除失败必须可见（静默时用户以为已删，重进才知卷还在；确认弹窗保持打开可取消）

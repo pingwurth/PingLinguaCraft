@@ -117,18 +117,36 @@ export async function GET() {
     db,
     heardRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
   );
-  /* 分子分母同一材料集合：分母也走 cues 兜底（SQL sum(sentence_count) 会跳过
-   * NULL 行，混装卷会出现 heard > 分母、被 progressPct 的上界静默夹成 100% 的
-   * 假完卷）；位图为空的存量行按 maxCueIndex+1 估算（与 resume 同口径） */
-  const heardByCollection = new Map<number, number>();
+  /* 分母按卷聚合：全部未删材料（含从未打开的）——此前只在进度行循环里累计，
+   * 「10 篇只听过 1 篇」的卷会算出 100%；NULL sentence_count 同样走 cues 兜底
+   * （SQL sum(sentence_count) 会跳过 NULL 行，混装卷会出现 heard > 分母、被
+   * progressPct 的上界静默夹成 100% 的假完卷） */
+  const denomRows = db
+    .select({
+      materialId: materials.id,
+      collectionId: materials.collectionId,
+      sentenceCount: materials.sentenceCount,
+    })
+    .from(materials)
+    .where(and(eq(materials.userId, 1), isNull(materials.deletedAt)))
+    .all();
+  const denomCueCounts = cueCountsFor(
+    db,
+    denomRows.filter((r) => r.sentenceCount == null).map((r) => r.materialId),
+  );
   const sentenceTotalByCollection = new Map<number, number>();
+  for (const r of denomRows) {
+    const total = r.sentenceCount ?? denomCueCounts.get(r.materialId) ?? 0;
+    sentenceTotalByCollection.set(r.collectionId, (sentenceTotalByCollection.get(r.collectionId) ?? 0) + total);
+  }
+  /* 位图为空的存量行按 maxCueIndex+1 估算（与 resume 同口径） */
+  const heardByCollection = new Map<number, number>();
   for (const r of heardRows) {
     // blob() 列经 drizzle select 推断为 unknown，按 schema 实际类型（Buffer|null）收窄
     const mask = r.mask as Buffer | null;
     const total = r.sentenceCount ?? cueCountByMaterial.get(r.materialId) ?? 0;
     const heard = mask ? countListenedBits(mask, total) : estimateHeardNoMask(r.maxCueIndex, total);
     heardByCollection.set(r.collectionId, (heardByCollection.get(r.collectionId) ?? 0) + heard);
-    sentenceTotalByCollection.set(r.collectionId, (sentenceTotalByCollection.get(r.collectionId) ?? 0) + total);
   }
 
   const collectionList: HomeCollection[] = collectionRows.map((r) => ({
@@ -139,7 +157,8 @@ export async function GET() {
     cefrLevel: r.cefrLevel,
     materialCount: r.materialCount,
     totalDurationMs: r.totalDurationMs,
-    sentenceCount: r.sentenceCount,
+    // 展示句数与百分比分母同源（cues 兜底口径），卷卡「X 句」与「已研 Y%」不打架
+    sentenceCount: sentenceTotalByCollection.get(r.id) ?? r.sentenceCount,
     progressPct: progressPct(heardByCollection.get(r.id) ?? 0, sentenceTotalByCollection.get(r.id) ?? 0),
     lastStudiedAt: r.lastStudiedAt,
   }));

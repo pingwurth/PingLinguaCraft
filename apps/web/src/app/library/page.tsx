@@ -51,6 +51,7 @@ import {
   BookSample,
   COVER_TEXTURE_BG,
 } from '@/features/home/BookSample';
+import { HOME_QUERY_KEY } from '@/features/home/query-keys';
 import type { HomeCollection, HomeData } from '@/features/home/types';
 
 /** 轻筛选档位：全部卷帙 / 最近研习 / 未开卷 */
@@ -237,7 +238,7 @@ export default function LibraryPage() {
   }, [coverUrl]);
 
   /* 首页聚合数据（一次请求供全页） */
-  const home = useQuery({ queryKey: ['home'], queryFn: () => api<HomeData>('/api/home') });
+  const home = useQuery({ queryKey: HOME_QUERY_KEY, queryFn: () => api<HomeData>('/api/home') });
 
   const data = home.data;
   // memo 兜底空数组：保证 useMemo(筛选) 依赖引用稳定（未加载时不产生新数组）
@@ -289,7 +290,7 @@ export default function LibraryPage() {
       setCreating(false);
       resetForm();
       setCreateError(null);
-      void qc.invalidateQueries({ queryKey: ['home'] });
+      void qc.invalidateQueries({ queryKey: HOME_QUERY_KEY });
     },
     // 创建失败必须可见（静默复位会让用户无从得知失败原因）
     onError: (err) => setCreateError(err.message),
@@ -319,7 +320,7 @@ export default function LibraryPage() {
       setCreating(false);
       setEditing(null);
       setCreateError(null);
-      void qc.invalidateQueries({ queryKey: ['home'] });
+      void qc.invalidateQueries({ queryKey: HOME_QUERY_KEY });
       /* 详情页缓存同步刷新（浏览器返回详情时看到新卷名） */
       if (editing) void qc.invalidateQueries({ queryKey: ['collection', editing.id] });
     },
@@ -350,7 +351,7 @@ export default function LibraryPage() {
   const remove = useMutation({
     mutationFn: (id: number) => api(`/api/collections/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['home'] });
+      void qc.invalidateQueries({ queryKey: HOME_QUERY_KEY });
       /* 删除成功关确认弹窗（失败保持打开：用户可改主意取消或重试） */
       setDeleting(null);
     },

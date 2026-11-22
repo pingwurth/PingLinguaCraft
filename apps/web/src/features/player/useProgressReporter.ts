@@ -11,10 +11,17 @@
  *   句号走高水位（只增不减）。卸载终报时 React 已置空 ref/重置激活句，
  *   实时读会发出脏值（语流换材曾把旧材料进度清零），故一律读快照；
  *   高水位则防句间间隙的 -1 覆盖服务端 max_cue_index（无条件覆盖语义）
+ * - 卸载（真正离开播放页）后失效 ['home'] 聚合缓存：壳层统计常驻且有
+ *   staleTime，不失效会挂旧数。失效等最后一次终报 PUT 落定再发（并发
+ *   在途时 GET 可能先读旧进度），且不随 materialId 重建触发——语流连播
+ *   每次换材都跑一次 cleanup，跟着失效会让常驻 home 查询连播一晚打
+ *   十几次重聚合
  */
 
 import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePlayer } from './store';
+import { HOME_QUERY_KEY } from '@/features/home/query-keys';
 
 /**
  * 启动进度上报（挂载期间持续，随 materialId 重建）
@@ -32,6 +39,10 @@ export function useProgressReporter(
   const listenedRef = useRef<Set<number>>(new Set());
   /** 持续快照：最近位置（毫秒）与高水位句号（终报兜底用，见文件头注释） */
   const snapRef = useRef({ positionMs: 0, maxCueIndex: -1 });
+  /** 在途上报链：所有已发出的 PUT 依次串链（终报与 5s 防抖上报都计入——
+   *  卸载时任何在途 PUT 晚落都会让紧随的 GET 读到旧进度） */
+  const inflightRef = useRef<Promise<void>>(Promise.resolve());
+  const qc = useQueryClient();
 
   useEffect(() => {
     listenedRef.current = new Set();
@@ -45,11 +56,11 @@ export function useProgressReporter(
     // 秒进秒出）时终报会把 positionMs=0/maxCueIndex=-1 打给服务端无条件覆盖，
     // 抹掉既有续研位置——只在真的听过/走表后才终报
     let touched = false;
-    const report = (final = false, livePositionMs?: number) => {
+    const report = (final = false, livePositionMs?: number): Promise<void> | undefined => {
       const s = usePlayer.getState();
-      if (s.cues.length === 0) return;
+      if (s.cues.length === 0) return undefined;
       const now = Date.now();
-      if (!final && now - lastReport < 5000) return;
+      if (!final && now - lastReport < 5000) return undefined;
       lastReport = now;
       // 位图序列化
       const total = s.cues.length;
@@ -61,7 +72,8 @@ export function useProgressReporter(
       let bin = '';
       buf.forEach((b) => (bin += String.fromCharCode(b)));
       const mask = btoa(bin);
-      void fetch(`/api/materials/${materialId}/progress`, {
+      // 返回 fetch Promise 并串入在途链（卸载路径等全链落定后再失效 home 缓存）
+      const p = fetch(`/api/materials/${materialId}/progress`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -71,7 +83,11 @@ export function useProgressReporter(
           listenedThrough: listenedRef.current.size >= total,
         }),
         keepalive: final,
-      }).catch(() => undefined);
+      })
+        .then(() => undefined)
+        .catch(() => undefined);
+      inflightRef.current = inflightRef.current.then(() => p);
+      return p;
     };
     // store 变化即快照（位置随时钟帧更新、句号取高水位），激活句记入已听集合
     const unsub = usePlayer.subscribe((state) => {
@@ -84,19 +100,32 @@ export function useProgressReporter(
       snapRef.current.positionMs = state.currentTimeMs;
       // 有激活句或播放头已走表才算有效播放（换材归零重置触发的 store 写不算）
       if (state.activeCueIndex >= 0 || snapRef.current.positionMs > 0) touched = true;
-      if (Date.now() - lastReport >= 5000) report();
+      if (Date.now() - lastReport >= 5000) void report();
     });
     const onHide = () => {
       if (!touched) return;
-      // 后台收听场景 rAF 停摆：终报位置优先取媒体元素实时值（见 hook 头注释）
+      // 后台收听场景 rAF 停摆：终报位置优先取媒体元素实时值（见 hook 头注释）。
+      // 此处不失效 home：页面正在隐藏，触发的重取大概率被中断；回前台聚焦自会重取
       const live = mediaRef?.current;
-      report(true, live ? live.currentTime * 1000 : undefined);
+      void report(true, live ? live.currentTime * 1000 : undefined);
     };
     window.addEventListener('pagehide', onHide);
     return () => {
       unsub();
       window.removeEventListener('pagehide', onHide);
-      if (touched) report(true);
+      if (touched) void report(true);
     };
   }, [materialId, mediaRef]);
+
+  /* 卸载时（真正离开播放页，不随 materialId 重建触发）：等在途上报链全部
+   * 落定后失效 home 聚合缓存。声明在上报 effect 之后——卸载 cleanup 按
+   * 声明序执行，本 cleanup 运行时上报 effect 的 cleanup 已把终报串入链；
+   * 声明在前的话读到的是不含终报的旧链，失效与终报 PUT 并发在途 */
+  useEffect(() => {
+    return () => {
+      void inflightRef.current.then(() => {
+        void qc.invalidateQueries({ queryKey: HOME_QUERY_KEY });
+      });
+    };
+  }, [qc]);
 }

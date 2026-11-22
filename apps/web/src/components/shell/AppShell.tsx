@@ -25,6 +25,7 @@ import { useQuery } from '@tanstack/react-query';
 import { TopBar } from '@/components/shell/TopBar';
 import { MobileSearch } from '@/components/shell/MobileSearch';
 import { api } from '@/lib/api';
+import { HOME_QUERY_KEY } from '@/features/home/query-keys';
 import type { HomeData } from '@/features/home/types';
 
 /**
@@ -128,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * staleTime 60s：壳层常驻每个路由都挂着，不设 stale 的话窗口每次重新聚焦都
    * 重取一次重聚合接口（集卷聚合 + 全表位图 + 三条查询），移动端也照付 */
   const home = useQuery({
-    queryKey: ['home'],
+    queryKey: HOME_QUERY_KEY,
     queryFn: () => api<HomeData>('/api/home'),
     staleTime: 60_000,
   });

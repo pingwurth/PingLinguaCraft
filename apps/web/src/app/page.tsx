@@ -29,6 +29,7 @@ import { parseCollectionCover } from '@pinglc/core';
 import { api, type JobDTO, type MaterialListItem } from '@/lib/api';
 import { SOURCE_META, subtitleStatusMeta } from '@/lib/material-meta';
 import { fmtDuration, fmtMs, fmtRelative, progressTone } from '@/lib/format';
+import { HOME_QUERY_KEY } from '@/features/home/query-keys';
 import type { HomeCollection, HomeData, HomeResumePoint } from '@/features/home/types';
 
 /** 研习状态档位（材料粒度）：研习中（0<p<100）/ 已完卷（≥100）/ 待启卷（0） */
@@ -91,7 +92,7 @@ export default function HomePage() {
   const [filter, setFilter] = useState<StudyFilter>('all');
 
   /* 首页聚合（与壳层共享 ['home'] 缓存：卷列表/统计/续研书签一次到位） */
-  const home = useQuery({ queryKey: ['home'], queryFn: () => api<HomeData>('/api/home') });
+  const home = useQuery({ queryKey: HOME_QUERY_KEY, queryFn: () => api<HomeData>('/api/home') });
   const collections = useMemo(() => home.data?.collections ?? [], [home.data]);
 
   /* 今研之卷选取：优先落座续研书签所在卷（resume 的材料口径比 lastStudiedAt 窄：
@@ -142,7 +143,7 @@ export default function HomePage() {
     mutationFn: (id: number) => api(`/api/materials/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       setRemovingTarget(null);
-      void qc.invalidateQueries({ queryKey: ['home'] });
+      void qc.invalidateQueries({ queryKey: HOME_QUERY_KEY });
       void qc.invalidateQueries({ queryKey: ['focus-materials'] });
       void qc.invalidateQueries({ queryKey: ['collection'] });
     },

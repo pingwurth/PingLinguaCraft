@@ -31,6 +31,8 @@ export function useMediaClock<T extends HTMLMediaElement>(mediaRef: React.RefObj
     let lastActive = -2; // 去重：只在激活句变化时写 store
     let prevT = -1; // 上一帧位置（毫秒）：判帧间跳变
     let seekFlag = false; // 媒体 seeking 事件旗标：下一帧按「seek 接管」处理
+    // 上一帧的 cues 引用：换材重臂判据（见 tick 内注释）
+    let lastCues: ReturnType<typeof usePlayer.getState>['cues'] | null = null;
 
     /** 任何 seek（用户操作或本 tick 的循环回跳）都置旗标，供下一帧判别 */
     const onSeeking = () => {
@@ -45,6 +47,16 @@ export function useMediaClock<T extends HTMLMediaElement>(mediaRef: React.RefObj
       // 上一轮渲染值，与 getState 的句号混用会在换材间隙拿新句号配旧句段，
       // 单句循环误判 endMs 后回跳到无关时间戳
       const cues = s.cues;
+      // —— 换材重臂 ——：cues 引用变化（换材 setCues）时清去重值与跳变基线。
+      // 切材方已把 activeCueIndex 重置 -1，若新材首个激活句恰与旧 lastActive
+      // 同值，下方 `active !== lastActive` 不成立会跳过 store 写入——高亮
+      // 丢失、该句不进 listened 位图；基线不清则换材续播的大跳会被误判为
+      // seek 接管，首帧循环回跳语义错乱
+      if (cues !== lastCues) {
+        lastCues = cues;
+        lastActive = -2;
+        prevT = -1;
+      }
       const t = media.currentTime * 1000;
       // seek 接管判定：seeking 事件（任意幅度，含暂停态拖动）或帧间大跳
       // （后台标签页 rAF 停摆、音频继续走，回前台时位置的静默跳变）
